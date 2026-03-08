@@ -1,0 +1,381 @@
+"""Category tree management."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from beartype import beartype
+
+from src.models import SystemNode
+
+
+@dataclass
+class CategoryNode:
+    """Node in category tree."""
+    name: str
+    full_path: str
+    parent: CategoryNode | None = None
+    children: dict[str, CategoryNode] = field(default_factory=dict)
+    is_enabled: bool = True
+    is_custom: bool = False
+    pattern: str | None = None  # For custom categories
+
+
+class CategoryTree:
+    """Tree structure for category management."""
+    
+    @beartype
+    def __init__(self):
+        self._root = CategoryNode(name="", full_path="")
+        self._nodes: dict[str, CategoryNode] = {}
+    
+    @beartype
+    def add_category(self, path: str) -> None:
+        """
+        Add a category path to the tree.
+        
+        Args:
+            path: Category path like "HordeMode/scripts/app"
+        """
+        if not path:
+            return
+        
+        parts = path.split('/')
+        current = self._root
+        current_path = ""
+        
+        for part in parts:
+            if not part:
+                continue
+            
+            current_path = f"{current_path}/{part}" if current_path else part
+            
+            if part not in current.children:
+                node = CategoryNode(
+                    name=part,
+                    full_path=current_path,
+                    parent=current
+                )
+                current.children[part] = node
+                self._nodes[current_path] = node
+            
+            current = current.children[part]
+    
+    @beartype
+    def toggle(self, path: str, enabled: bool) -> None:
+        """
+        Toggle category and all children.
+        
+        When a parent is toggled, all children are toggled to the same state.
+        Child toggles do NOT affect parent.
+        
+        Args:
+            path: Category path
+            enabled: New enabled state
+        """
+        node = self._nodes.get(path)
+        if node is None:
+            return
+        
+        node.is_enabled = enabled
+        self._set_children_enabled(node, enabled)
+    
+    @beartype
+    def set_enabled(self, path: str, enabled: bool) -> None:
+        """
+        Set category enabled state WITHOUT cascading to children.
+        
+        Use this when you want to set the exact state of each category
+        individually, without affecting children.
+        
+        Args:
+            path: Category path
+            enabled: New enabled state
+        """
+        node = self._nodes.get(path)
+        if node is None:
+            return
+        
+        node.is_enabled = enabled
+    
+    def _set_children_enabled(self, node: CategoryNode, enabled: bool) -> None:
+        """Recursively set enabled state for all children."""
+        for child in node.children.values():
+            child.is_enabled = enabled
+            self._set_children_enabled(child, enabled)
+    
+    @beartype
+    def is_enabled(self, path: str) -> bool:
+        """
+        Check if category is enabled.
+        
+        Args:
+            path: Category path
+            
+        Returns:
+            True if enabled, False otherwise
+        """
+        node = self._nodes.get(path)
+        if node is None:
+            return True
+        return node.is_enabled
+    
+    @beartype
+    def is_category_visible(self, path: str) -> bool:
+        """
+        Check if a category's logs should be visible.
+        
+        A category is visible if it OR any ancestor is enabled.
+        
+        // Ref: docs/specs/features/category-checkbox-behavior.md §6.1.3
+        // Logic: Walk up tree checking self then ancestors
+        // Error: Returns True (default enabled) for invalid paths
+        
+        Args:
+            path: Category path
+            
+        Returns:
+            True if visible, False otherwise
+        """
+        # Check if the category itself is enabled
+        if self.is_enabled(path):
+            return True
+        
+        # Get the node to walk up the tree
+        node = self._nodes.get(path)
+        if node is None:
+            # Path not found - return True (default enabled) per spec §7.1
+            return True
+        
+        # Walk up the tree checking ancestors
+        current = node.parent
+        while current is not None and current.full_path != "":
+            if current.is_enabled:
+                return True
+            current = current.parent
+        
+        return False
+    
+    @beartype
+    def get_enabled_categories(self) -> set[str]:
+        """
+        Get all enabled category paths.
+        
+        Returns:
+            Set of enabled category paths
+        """
+        return {
+            path for path, node in self._nodes.items()
+            if node.is_enabled
+        }
+    
+    @beartype
+    def get_all_categories(self) -> set[str]:
+        """
+        Get all category paths.
+        
+        Returns:
+            Set of all category paths
+        """
+        return set(self._nodes.keys())
+    
+    @beartype
+    def add_custom_category(
+        self,
+        name: str,
+        pattern: str,
+        parent: str | None = None
+    ) -> None:
+        """
+        Add a custom category with pattern matching.
+        
+        Args:
+            name: Category name
+            pattern: Regex pattern for matching
+            parent: Optional parent category path
+        """
+        # Determine full path
+        if parent:
+            full_path = f"{parent}/{name}"
+        else:
+            full_path = name
+        
+        # Find parent node
+        parent_node = self._root
+        if parent:
+            parent_node = self._nodes.get(parent, self._root)
+        
+        # Create custom node
+        node = CategoryNode(
+            name=name,
+            full_path=full_path,
+            parent=parent_node,
+            is_custom=True,
+            pattern=pattern
+        )
+        
+        parent_node.children[name] = node
+        self._nodes[full_path] = node
+    
+    def clear(self) -> None:
+        """Clear all categories."""
+        self._root = CategoryNode(name="", full_path="")
+        self._nodes.clear()
+    
+    @beartype
+    def get_node(self, path: str) -> CategoryNode | None:
+        """
+        Get node by path.
+        
+        Args:
+            path: Category path
+            
+        Returns:
+            CategoryNode if found, None otherwise
+        """
+        return self._nodes.get(path)
+    
+    @beartype
+    def get_children(self, path: str | None = None) -> list[CategoryNode]:
+        """
+        Get direct children of a category.
+        
+        Args:
+            path: Category path, or None for root children
+            
+        Returns:
+            List of child nodes
+        """
+        if path is None or path == "":
+            return list(self._root.children.values())
+        
+        node = self._nodes.get(path)
+        if node is None:
+            return []
+        
+        return list(node.children.values())
+    
+    @beartype
+    def get_root_categories(self) -> list[CategoryNode]:
+        """
+        Get all root-level categories.
+        
+        Returns:
+            List of root category nodes
+        """
+        return list(self._root.children.values())
+    
+    @beartype
+    def has_category(self, path: str) -> bool:
+        """
+        Check if category exists.
+        
+        Args:
+            path: Category path
+            
+        Returns:
+            True if category exists
+        """
+        return path in self._nodes
+    
+    @beartype
+    def get_custom_categories(self) -> list[CategoryNode]:
+        """
+        Get all custom categories.
+        
+        Returns:
+            List of custom category nodes
+        """
+        return [node for node in self._nodes.values() if node.is_custom]
+    
+    @beartype
+    def enable_all(self) -> None:
+        """Enable all categories."""
+        for node in self._nodes.values():
+            node.is_enabled = True
+    
+    @beartype
+    def disable_all(self) -> None:
+        """Disable all categories."""
+        for node in self._nodes.values():
+            node.is_enabled = False
+    
+    def __len__(self) -> int:
+        """Return number of categories."""
+        return len(self._nodes)
+    
+    def __contains__(self, path: str) -> bool:
+        """Check if category path exists."""
+        return path in self._nodes
+
+
+@beartype
+def build_system_nodes(tree: CategoryTree) -> list[SystemNode]:
+    """Build system nodes from a category tree.
+
+    Transforms a CategoryTree into a list of SystemNode instances
+    for display in the systems panel.
+
+    Args:
+        tree: The CategoryTree to transform.
+
+    Returns:
+        List of SystemNode instances representing the system tree.
+    """
+    nodes: list[SystemNode] = []
+
+    # Get root categories from the category tree
+    root_categories = tree.get_root_categories()
+
+    for root_cat in root_categories:
+        node = _build_system_node_from_category(tree, root_cat)
+        if node:
+            nodes.append(node)
+
+    return nodes
+
+
+@beartype
+def _build_system_node_from_category(
+    tree: CategoryTree,
+    category: CategoryNode | str
+) -> SystemNode | None:
+    """Build a system node from a category.
+
+    Args:
+        tree: The CategoryTree to use.
+        category: CategoryNode or category path string.
+
+    Returns:
+        SystemNode or None.
+    """
+    # Handle both CategoryNode and string path
+    if isinstance(category, CategoryNode):
+        category_node = category
+        category_path = category.full_path
+    else:
+        category_path = category
+        category_node = tree.get_node(category_path)
+
+    if category_node is None:
+        return None
+
+    # Get children for this category
+    children = tree.get_children(category_path)
+
+    # Build child nodes
+    child_nodes: list[SystemNode] = []
+    for child in children:
+        child_node = _build_system_node_from_category(tree, child)
+        if child_node:
+            child_nodes.append(child_node)
+
+    # Create node
+    # Extract the last part of the category path for display
+    display_name = category_path.split("/")[-1] if "/" in category_path else category_path
+
+    return SystemNode(
+        name=display_name,
+        path=category_path,
+        checked=True,
+        children=child_nodes
+    )

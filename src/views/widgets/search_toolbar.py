@@ -1,0 +1,250 @@
+"""Search toolbar with input field and filter icons.
+
+This module provides a search input widget with filter action buttons,
+including filter mode selection.
+"""
+from __future__ import annotations
+
+from typing import Optional
+from PySide6.QtWidgets import (
+    QWidget, QHBoxLayout, QPushButton, QLabel, QComboBox
+)
+from PySide6.QtCore import Qt, Signal
+
+from src.views.components.search_input import SearchInput
+
+
+# Stylesheet for icon buttons (open file, refresh, settings)
+_ICON_BUTTON_STYLE = """
+    QPushButton {
+        background-color: #f5f5f5;
+        border: 1px solid #c0c0c0;
+        border-radius: 3px;
+        padding: 0px;
+        min-width: 24px;
+        max-width: 24px;
+        min-height: 24px;
+        max-height: 24px;
+    }
+    QPushButton:hover {
+        background-color: #e8e8e8;
+        border: 1px solid #a0a0a0;
+    }
+    QPushButton:pressed {
+        background-color: #d0d0d0;
+    }
+"""
+
+
+class SearchToolbar(QWidget):
+    """Toolbar with search input and filter buttons.
+    
+    Provides:
+    - Open file button (folder icon)
+    - Refresh button (refresh icon)
+    - Search input (stretches to fill available space)
+    - Filter mode dropdown (Plain/Regex/Simple)
+    
+    Filter is applied on Enter. Empty text clears the filter.
+    """
+    
+    # Signals
+    filter_applied = Signal(str, str)  # search_text, mode - emitted when Enter is pressed
+    filter_cleared = Signal()  # emitted when Enter is pressed on empty text
+    open_file_clicked = Signal()  # open file button clicked
+    refresh_clicked = Signal()  # refresh button clicked
+    
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initialize the search toolbar.
+        
+        Args:
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self._setup_ui()
+        self._connect_signals()
+    
+    def _setup_ui(self) -> None:
+        """Set up the UI components."""
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+        
+        # Open file button (folder icon)
+        self._open_file_button = QPushButton("📁")
+        self._open_file_button.setFixedSize(24, 24)
+        self._open_file_button.setToolTip("Open file (Ctrl+O)")
+        self._open_file_button.setCursor(Qt.PointingHandCursor)
+        self._open_file_button.setStyleSheet(_ICON_BUTTON_STYLE)
+        layout.addWidget(self._open_file_button)
+        
+        # Refresh button (refresh icon)
+        self._refresh_button = QPushButton("🔄")
+        self._refresh_button.setFixedSize(24, 24)
+        self._refresh_button.setToolTip("Refresh file (F5)")
+        self._refresh_button.setCursor(Qt.PointingHandCursor)
+        self._refresh_button.setStyleSheet(_ICON_BUTTON_STYLE)
+        layout.addWidget(self._refresh_button)
+        
+        # Separator
+        separator = QLabel("|")
+        separator.setFixedWidth(10)
+        separator.setAlignment(Qt.AlignCenter)
+        layout.addWidget(separator)
+        
+        # Search input - stretches to fill available space
+        self._search_input = SearchInput()
+        self._search_input.setPlaceholderText("Enter filter text (Enter to apply, empty to clear)...")
+        layout.addWidget(self._search_input, 1)  # stretch factor 1
+        
+        # Filter mode dropdown
+        self._mode_combo = QComboBox()
+        self._mode_combo.addItem("Plain", "plain")
+        self._mode_combo.addItem("Regex", "regex")
+        self._mode_combo.addItem("Simple", "simple")
+        self._mode_combo.setToolTip(
+            "Plain: Case-insensitive substring search\n"
+            "Regex: Python regular expression\n"
+            "Simple: Custom query language (and, or, not)"
+        )
+        self._mode_combo.setFixedWidth(80)
+        layout.addWidget(self._mode_combo)
+    
+    def _connect_signals(self) -> None:
+        """Connect internal signals."""
+        self._open_file_button.clicked.connect(self.open_file_clicked)
+        self._refresh_button.clicked.connect(self.refresh_clicked)
+        self._search_input.returnPressed.connect(self._on_return_pressed)
+    
+    def _on_return_pressed(self) -> None:
+        """Handle Enter key press in search input.
+        
+        If text is empty, clears the filter.
+        If text is not empty, applies the filter.
+        """
+        text = self._search_input.text().strip()
+        if text:
+            mode = self._mode_combo.currentData()
+            self.filter_applied.emit(text, mode)
+        else:
+            self.filter_cleared.emit()
+    
+    def set_search_text(self, text: str) -> None:
+        """Set the search text.
+        
+        Args:
+            text: Text to set.
+        """
+        self._search_input.setText(text)
+    
+    def get_search_text(self) -> str:
+        """Get the current search text.
+        
+        Returns:
+            Current search text.
+        """
+        return self._search_input.text()
+    
+    def get_filter_mode(self) -> str:
+        """Get the current filter mode.
+        
+        Returns:
+            Current filter mode ('plain', 'regex', or 'simple').
+        """
+        return self._mode_combo.currentData()
+    
+    def set_filter_mode(self, mode: str) -> None:
+        """Set the filter mode.
+        
+        Args:
+            mode: Filter mode ('plain', 'regex', or 'simple').
+        """
+        index = self._mode_combo.findData(mode)
+        if index >= 0:
+            self._mode_combo.setCurrentIndex(index)
+    
+    def clear_search(self) -> None:
+        """Clear the search input."""
+        self._search_input.clear()
+    
+    def set_focus(self) -> None:
+        """Set focus to the search input."""
+        self._search_input.setFocus()
+    
+    def select_all(self) -> None:
+        """Select all text in the search input."""
+        self._search_input.selectAll()
+
+
+class SearchToolbarWithStats(QWidget):
+    """Search toolbar wrapper for backward compatibility.
+    
+    Note: Statistics bar has been moved to MainStatusBar.
+    This class now wraps SearchToolbar for backward compatibility.
+    """
+    
+    # Signals (forwarded from search toolbar)
+    filter_applied = Signal(str, str)  # search_text, mode
+    filter_cleared = Signal()
+    open_file_clicked = Signal()
+    refresh_clicked = Signal()
+    
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initialize the toolbar wrapper.
+        
+        Args:
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self._setup_ui()
+        self._connect_signals()
+    
+    def _setup_ui(self) -> None:
+        """Set up the UI components."""
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        # Just the search toolbar
+        self._search_toolbar = SearchToolbar()
+        layout.addWidget(self._search_toolbar)
+    
+    def _connect_signals(self) -> None:
+        """Connect internal signals."""
+        self._search_toolbar.filter_applied.connect(self.filter_applied)
+        self._search_toolbar.filter_cleared.connect(self.filter_cleared)
+        self._search_toolbar.open_file_clicked.connect(self.open_file_clicked)
+        self._search_toolbar.refresh_clicked.connect(self.refresh_clicked)
+    
+    # Forward methods to search toolbar
+    def set_search_text(self, text: str) -> None:
+        """Set the search text."""
+        self._search_toolbar.set_search_text(text)
+    
+    def get_search_text(self) -> str:
+        """Get the current search text."""
+        return self._search_toolbar.get_search_text()
+    
+    def get_filter_mode(self) -> str:
+        """Get the current filter mode.
+        
+        Returns:
+            Current filter mode ('plain', 'regex', or 'simple').
+        """
+        return self._search_toolbar.get_filter_mode()
+    
+    def set_filter_mode(self, mode: str) -> None:
+        """Set the filter mode.
+        
+        Args:
+            mode: Filter mode ('plain', 'regex', or 'simple').
+        """
+        self._search_toolbar.set_filter_mode(mode)
+    
+    def clear_search(self) -> None:
+        """Clear the search input."""
+        self._search_toolbar.clear_search()
+    
+    def set_focus(self) -> None:
+        """Set focus to the search input."""
+        self._search_toolbar.set_focus()
