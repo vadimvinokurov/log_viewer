@@ -426,6 +426,11 @@ class MainController(QObject):
             # Update filter controller with restored states
             for category_path, checked in saved_states.items():
                 self._filter_controller.set_category_enabled(category_path, checked)
+            
+            # Recompile filter with restored category states
+            # Ref: docs/specs/features/category-checkbox-behavior.md §6.3
+            # This updates _state.enabled_categories from the category tree
+            self._filter_controller.apply_filter()
         # If no saved states, all categories remain checked (default from set_categories)
 
     @beartype
