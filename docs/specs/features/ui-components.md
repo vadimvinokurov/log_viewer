@@ -1,7 +1,7 @@
 # UI Components Specification
 
-**Version:** 1.1  
-**Last Updated:** 2026-03-14  
+**Version:** 1.2
+**Last Updated:** 2026-03-14
 **Project Context:** Python Tooling (Desktop Application)
 
 ---
@@ -30,8 +30,8 @@ MainWindow (QMainWindow)
 │   └── CategoryPanel (QWidget)
 │       ├── QTabWidget
 │       │   ├── Categories tab
-│       │   ├── Processes tab
-│       │   └── Threads tab
+│       │   ├── Filters tab
+│       │   └── Highlights tab
 │       ├── Search input
 │       ├── QTreeView
 │       │   └── QStandardItemModel
@@ -558,5 +558,6 @@ def test_category_panel_check_all(category_panel):
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2 | 2026-03-14 | Renamed CategoryPanel tabs: Processes→Filters, Threads→Highlights |
 | 1.1 | 2026-03-14 | Removed custom categories from CategoryPanel |
 | 1.0 | 2026-03-13 | Initial UI components specification |

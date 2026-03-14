@@ -1,6 +1,6 @@
 """Category panel with tabs, tree view, and search.
 
-This module provides a panel with tabs (Categories/Processes/Threads)
+This module provides a panel with tabs (Categories/Filters/Highlights)
 and a tree view with checkboxes for filtering log entries.
 
 Architecture Note:
@@ -46,7 +46,7 @@ class CategoryPanel(QWidget):
     """Panel for category filtering with tabs and tree view.
     
     Features:
-    - Tabs: Categories (active), Processes, Threads
+    - Tabs: Categories (active), Filters, Highlights
     - Search input with magnifying glass icon
     - Tree view with checkboxes
     - Hierarchical structure with expand/collapse
@@ -84,12 +84,12 @@ class CategoryPanel(QWidget):
         
         # Add tabs
         self._categories_tab = QWidget()
-        self._processes_tab = QWidget()
-        self._threads_tab = QWidget()
+        self._filters_tab = QWidget()
+        self._highlights_tab = QWidget()
         
         self._tab_widget.addTab(self._categories_tab, "Categories")
-        self._tab_widget.addTab(self._processes_tab, "Processes")
-        self._tab_widget.addTab(self._threads_tab, "Threads")
+        self._tab_widget.addTab(self._filters_tab, "Filters")
+        self._tab_widget.addTab(self._highlights_tab, "Highlights")
         
         # Set up categories tab content
         categories_layout = QVBoxLayout(self._categories_tab)
@@ -153,17 +153,17 @@ class CategoryPanel(QWidget):
         categories_layout.addWidget(button_bar)
         
         # Placeholder content for other tabs
-        processes_layout = QVBoxLayout(self._processes_tab)
-        processes_label = QLabel("Processes filtering\n(Coming soon)")
-        processes_label.setAlignment(Qt.AlignCenter)
-        processes_label.setStyleSheet("color: #999; font-style: italic;")
-        processes_layout.addWidget(processes_label)
+        filters_layout = QVBoxLayout(self._filters_tab)
+        filters_label = QLabel("Filters\n(Coming soon)")
+        filters_label.setAlignment(Qt.AlignCenter)
+        filters_label.setStyleSheet("color: #999; font-style: italic;")
+        filters_layout.addWidget(filters_label)
         
-        threads_layout = QVBoxLayout(self._threads_tab)
-        threads_label = QLabel("Threads filtering\n(Coming soon)")
-        threads_label.setAlignment(Qt.AlignCenter)
-        threads_label.setStyleSheet("color: #999; font-style: italic;")
-        threads_layout.addWidget(threads_label)
+        highlights_layout = QVBoxLayout(self._highlights_tab)
+        highlights_label = QLabel("Highlights\n(Coming soon)")
+        highlights_label.setAlignment(Qt.AlignCenter)
+        highlights_label.setStyleSheet("color: #999; font-style: italic;")
+        highlights_layout.addWidget(highlights_label)
         
         # Connect tab change
         self._tab_widget.currentChanged.connect(self._on_tab_changed)
@@ -447,7 +447,7 @@ class CategoryPanel(QWidget):
         """Set the current tab by index.
         
         Args:
-            index: Tab index (0=Categories, 1=Processes, 2=Threads).
+            index: Tab index (0=Categories, 1=Filters, 2=Highlights).
         """
         self._tab_widget.setCurrentIndex(index)
     
