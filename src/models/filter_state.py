@@ -3,9 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Set, List
-
-from src.utils.settings_manager import CustomCategory
+from typing import Set
 
 
 class FilterMode(Enum):
@@ -21,7 +19,6 @@ class FilterState:
     enabled_categories: Set[str] = field(default_factory=set)
     filter_text: str = ""
     filter_mode: FilterMode = FilterMode.PLAIN
-    custom_categories: List[CustomCategory] = field(default_factory=list)
     all_categories: Set[str] = field(default_factory=set)  # All known categories
     # Default: all log levels enabled (using LogLevel.value strings)
     enabled_levels: Set[str] = field(default_factory=lambda: {

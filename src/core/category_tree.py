@@ -16,8 +16,6 @@ class CategoryNode:
     parent: CategoryNode | None = None
     children: dict[str, CategoryNode] = field(default_factory=dict)
     is_enabled: bool = True
-    is_custom: bool = False
-    pattern: str | None = None  # For custom categories
 
 
 class CategoryTree:
@@ -178,44 +176,6 @@ class CategoryTree:
         """
         return set(self._nodes.keys())
     
-    @beartype
-    def add_custom_category(
-        self,
-        name: str,
-        pattern: str,
-        parent: str | None = None
-    ) -> None:
-        """
-        Add a custom category with pattern matching.
-        
-        Args:
-            name: Category name
-            pattern: Regex pattern for matching
-            parent: Optional parent category path
-        """
-        # Determine full path
-        if parent:
-            full_path = f"{parent}/{name}"
-        else:
-            full_path = name
-        
-        # Find parent node
-        parent_node = self._root
-        if parent:
-            parent_node = self._nodes.get(parent, self._root)
-        
-        # Create custom node
-        node = CategoryNode(
-            name=name,
-            full_path=full_path,
-            parent=parent_node,
-            is_custom=True,
-            pattern=pattern
-        )
-        
-        parent_node.children[name] = node
-        self._nodes[full_path] = node
-    
     def clear(self) -> None:
         """Clear all categories."""
         self._root = CategoryNode(name="", full_path="")
@@ -276,16 +236,6 @@ class CategoryTree:
             True if category exists
         """
         return path in self._nodes
-    
-    @beartype
-    def get_custom_categories(self) -> list[CategoryNode]:
-        """
-        Get all custom categories.
-        
-        Returns:
-            List of custom category nodes
-        """
-        return [node for node in self._nodes.values() if node.is_custom]
     
     @beartype
     def enable_all(self) -> None:

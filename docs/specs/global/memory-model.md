@@ -1,7 +1,7 @@
 # Memory Model Specification
 
-**Version:** 1.0  
-**Last Updated:** 2026-03-13  
+**Version:** 1.1
+**Last Updated:** 2026-03-14
 **Project Context:** Python Tooling (Desktop Application)
 
 ---
@@ -203,7 +203,6 @@ class CategoryPanel(QWidget):
     def __init__(self, parent: Optional[QWidget] = None):
         self._model: Optional[QStandardItemModel] = None  # Owned
         self._category_items: dict[str, QStandardItem] = {}  # Owned references
-        self._custom_categories: list[CustomCategory] = []  # Owned
 ```
 
 ---
@@ -323,4 +322,5 @@ class IndexWorker(QThread):
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-14 | Removed custom categories from CategoryPanel |
 | 1.0 | 2026-03-13 | Initial memory model specification |

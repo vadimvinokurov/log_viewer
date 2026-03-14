@@ -1,7 +1,7 @@
 # Filter Engine Specification
 
-**Version:** 1.0  
-**Last Updated:** 2026-03-13  
+**Version:** 1.1  
+**Last Updated:** 2026-03-14  
 **Project Context:** Python Tooling (Desktop Application)  
 **Related:** [category-checkbox-behavior.md](category-checkbox-behavior.md)
 
@@ -38,7 +38,7 @@ The Filter Engine provides high-performance filtering of log entries based on ca
 │                   Compiled Filter                             │
 │  Callable[[LogEntry], bool]                                   │
 │  - Fast evaluation (no re-compilation)                        │
-│  - Combined AND/OR logic                                      │
+│  - Combined AND logic                                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -49,7 +49,6 @@ from src.models.filter_state import FilterState, FilterMode
 from src.models.log_entry import LogEntry, LogLevel
 from src.core.category_tree import CategoryTree
 from src.core.simple_query_parser import SimpleQueryParser
-from src.utils.settings_manager import CustomCategory
 ```
 
 ---
@@ -83,25 +82,7 @@ def _compile_category_filter(
     """
 ```
 
-### §3.2 Custom Category Filter
-
-Filters by message content (substring match), not by log category path.
-
-```python
-def _compile_custom_category_filter(
-    self,
-    custom_categories: list[CustomCategory],
-    enabled_categories: set[str]
-) -> Callable[[LogEntry], bool] | None:
-    """
-    Compile custom category filter.
-    
-    Custom categories filter by message content (substring match).
-    Parent inheritance: custom category is active only if parent is enabled.
-    """
-```
-
-### §3.3 Text Filter
+### §3.2 Text Filter
 
 Three modes supported:
 
@@ -120,7 +101,7 @@ def _compile_text_filter(
     """Compile text filter based on mode."""
 ```
 
-### §3.4 Level Filter
+### §3.3 Level Filter
 
 Filters by log level (CRITICAL, ERROR, WARNING, MSG, DEBUG, TRACE).
 
@@ -144,25 +125,22 @@ def _compile_level_filter(
 ### §4.1 Combination Rules
 
 ```
-Final Filter = (Category OR Custom) AND Text AND Level
+Final Filter = Category AND Text AND Level
 
 Where:
 - Category filter: enabled categories with ancestor visibility
-- Custom filter: substring match on message content
 - Text filter: plain/regex/simple search
 - Level filter: enabled log levels
 ```
 
 ### §4.2 Special Cases
 
-| Category | Custom | Text | Level | Result |
-|----------|--------|------|-------|--------|
-| All enabled | None | None | All | Match all (no filter) |
-| None enabled | None | None | All | Match none |
-| None enabled | Active | None | All | Match custom only |
-| All enabled | Active | None | All | Match all (category OR custom) |
-| Partial | None | Active | All | (Category) AND (Text) |
-| Partial | Active | Active | Partial | (Category OR Custom) AND (Text) AND (Level) |
+| Category | Text | Level | Result |
+|----------|------|-------|--------|
+| All enabled | None | All | Match all (no filter) |
+| None enabled | None | All | Match none |
+| Partial | Active | All | (Category) AND (Text) |
+| Partial | Active | Partial | (Category) AND (Text) AND (Level) |
 
 ### §4.3 Implementation
 
@@ -177,18 +155,15 @@ def compile_filter(
     
     Combines:
     1. Category filter (with visibility-based logic)
-    2. Custom category filter (OR with category)
-    3. Text filter (AND with category/custom)
-    4. Level filter (AND with others)
+    2. Text filter (AND with category)
+    3. Level filter (AND with others)
     """
     # Build individual filters
     category_filter = self._compile_category_filter(...)
-    custom_filter = self._compile_custom_category_filter(...)
     text_filter = self._compile_text_filter(...)
     level_filter = self._compile_level_filter(...)
     
-    # Combine with OR for category/custom
-    # Combine with AND for text/level
+    # Combine with AND
     # ...
 ```
 
@@ -246,7 +221,7 @@ for entry in entries:
 |-----------|--------|-------|
 | Regex cache | ~1KB per pattern | Clear on file close |
 | Compiled filter | ~1KB | Lambda closure |
-| Category tree | ~100 bytes per category | Owned by controller |
+| Category tree | ~80 bytes per category | Owned by controller |
 
 ---
 
@@ -309,7 +284,6 @@ class FilterState:
     enabled_categories: Set[str] = field(default_factory=set)
     filter_text: str = ""
     filter_mode: FilterMode = FilterMode.PLAIN
-    custom_categories: List[CustomCategory] = field(default_factory=list)
     all_categories: Set[str] = field(default_factory=set)
     enabled_levels: Set[str] = field(default_factory=lambda: {
         "LOG_CRITICAL", "LOG_ERROR", "LOG_WARNING", "LOG_MSG", "LOG_DEBUG", "LOG_TRACE"
@@ -449,7 +423,7 @@ def test_text_filter_plain():
 
 def test_filter_combination():
     """Test combined filters."""
-    # Category OR Custom AND Text AND Level
+    # Category AND Text AND Level
     pass
 ```
 
@@ -472,4 +446,5 @@ See [test_filter_engine.py](../../tests/test_filter_engine.py)
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-14 | Removed custom categories feature |
 | 1.0 | 2026-03-13 | Initial filter engine specification |

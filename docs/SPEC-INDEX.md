@@ -8,7 +8,7 @@ Quick navigation to all specification documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [memory-model.md](specs/global/memory-model.md) | Memory management, ownership semantics, resource cleanup | v1.0 |
+| [memory-model.md](specs/global/memory-model.md) | Memory management, ownership semantics, resource cleanup | v1.1 |
 | [threading.md](specs/global/threading.md) | Thread architecture, signal/slot connections, thread safety | v1.0 |
 | [error-handling.md](specs/global/error-handling.md) | Error categories, logging, recovery strategies | v1.0 |
 
@@ -18,12 +18,13 @@ Quick navigation to all specification documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [category-checkbox-behavior.md](specs/features/category-checkbox-behavior.md) | Category panel checkbox cascade rules and visibility logic | v1.0 |
-| [filter-engine.md](specs/features/filter-engine.md) | Filter compilation, types, combination logic | v1.0 |
-| [category-tree.md](specs/features/category-tree.md) | Tree structure, operations, custom categories | v1.0 |
+| [category-checkbox-behavior.md](specs/features/category-checkbox-behavior.md) | Category panel checkbox cascade rules and visibility logic | v1.1 |
+| [filter-engine.md](specs/features/filter-engine.md) | Filter compilation, types, combination logic | v1.1 |
+| [category-tree.md](specs/features/category-tree.md) | Tree structure, operations | v1.1 |
 | [file-management.md](specs/features/file-management.md) | LogDocument, FileController, IndexWorker | v1.0 |
 | [main-controller.md](specs/features/main-controller.md) | Central coordinator, responsibilities, signal flow | v1.0 |
-| [ui-components.md](specs/features/ui-components.md) | MainWindow, LogTableView, CategoryPanel, widgets | v1.0 |
+| [ui-components.md](specs/features/ui-components.md) | MainWindow, LogTableView, CategoryPanel, widgets | v1.1 |
+| [ui-design-system.md](specs/features/ui-design-system.md) | Visual style, colors, typography, components, accessibility, animations | v1.0 |
 | [filter-controller.md](specs/features/filter-controller.md) | Filter state management, coordination, signals | v1.0 |
 | [settings-manager.md](specs/features/settings-manager.md) | Persistent settings, QSettings wrapper | v1.0 |
 | [highlight-service.md](specs/features/highlight-service.md) | Highlight patterns, engine coordination | v1.0 |
@@ -96,6 +97,7 @@ Quick navigation to all specification documents.
 - **Category System**: [category-tree.md](specs/features/category-tree.md), [category-checkbox-behavior.md](specs/features/category-checkbox-behavior.md)
 - **File Handling**: [file-management.md](specs/features/file-management.md)
 - **UI Components**: [ui-components.md](specs/features/ui-components.md)
+- **UI Design System**: [ui-design-system.md](specs/features/ui-design-system.md)
 - **Settings**: [settings-manager.md](specs/features/settings-manager.md)
 - **Highlighting**: [highlight-service.md](specs/features/highlight-service.md)
 

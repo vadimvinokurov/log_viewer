@@ -1,7 +1,7 @@
 # Log Viewer - Master Specification
 
-**Version:** 1.0  
-**Last Updated:** 2026-03-13  
+**Version:** 1.1
+**Last Updated:** 2026-03-14
 **Project Type:** Python Tooling (Desktop Application)
 
 ---
@@ -75,7 +75,6 @@ src/
     │   └── search_input.py
     └── widgets/              # Custom widgets
         ├── collapsible_panel.py
-        ├── custom_category_dialog.py
         ├── error_dialog.py
         ├── file_tabs.py
         ├── highlight_dialog.py
@@ -338,4 +337,5 @@ User → CategoryPanel.category_toggled
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-14 | Removed custom categories feature |
 | 1.0 | 2026-03-13 | Initial master spec with complete documentation |

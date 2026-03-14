@@ -10,7 +10,6 @@ from src.models.filter_state import FilterMode, FilterState
 from src.core.filter_engine import FilterEngine
 from src.core.category_tree import CategoryTree
 from src.models.log_entry import LogEntry
-from src.utils.settings_manager import CustomCategory
 
 
 class FilterController(QObject):
@@ -29,7 +28,6 @@ class FilterController(QObject):
         self._category_tree = CategoryTree()
         self._compiled_filter: Callable[[LogEntry], bool] | None = None
         self._all_categories_enabled = True
-        self._custom_categories: list[CustomCategory] = []
     
     @beartype
     def set_filter_text(self, text: str) -> None:
@@ -311,64 +309,6 @@ class FilterController(QObject):
         """
         self._state = state
         self._compiled_filter = None  # Will be recompiled on apply
-    
-    @beartype
-    def set_custom_categories(self, categories: list[CustomCategory]) -> None:
-        """
-        Set custom categories.
-        
-        Args:
-            categories: List of custom categories
-        """
-        self._custom_categories = categories.copy()
-        self._state.custom_categories = self._custom_categories
-    
-    @beartype
-    def get_custom_categories(self) -> list[CustomCategory]:
-        """
-        Get custom categories.
-        
-        Returns:
-            List of custom categories
-        """
-        return self._custom_categories.copy()
-    
-    @beartype
-    def set_custom_category_enabled(self, name: str, enabled: bool) -> None:
-        """
-        Set custom category enabled state.
-        
-        Args:
-            name: Custom category name
-            enabled: New enabled state
-        """
-        for custom in self._custom_categories:
-            if custom.name == name:
-                custom.enabled = enabled
-                break
-        self._state.custom_categories = self._custom_categories
-    
-    @beartype
-    def is_custom_category_active(self, name: str) -> bool:
-        """
-        Check if a custom category is active (enabled and parent is enabled).
-        
-        Args:
-            name: Custom category name
-            
-        Returns:
-            True if custom category is active
-        """
-        for custom in self._custom_categories:
-            if custom.name == name:
-                if not custom.enabled:
-                    return False
-                # Check parent inheritance
-                if custom.parent is not None:
-                    if not self._category_tree.is_enabled(custom.parent):
-                        return False
-                return True
-        return False
     
     @beartype
     def toggle_level(self, level: str, enabled: bool) -> None:

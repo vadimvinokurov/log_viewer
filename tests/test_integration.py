@@ -506,24 +506,6 @@ class TestEndToEndWorkflow:
             assert total_stats.total_lines == 5
             assert len(filtered) == 5
     
-    def test_workflow_with_custom_category(self, temp_log_file: str) -> None:
-        """Test workflow with custom category."""
-        with LogDocument(temp_log_file) as doc:
-            doc.build_index()
-            
-            # Build category tree
-            tree = CategoryTree()
-            for category in doc.get_categories():
-                tree.add_category(category)
-            
-            # Add custom category
-            tree.add_custom_category("errors", pattern=r"LOG_ERROR")
-            
-            # Verify custom category
-            custom = tree.get_custom_categories()
-            assert len(custom) == 1
-            assert custom[0].name == "errors"
-    
     def test_workflow_with_disabled_categories(self, temp_log_file: str) -> None:
         """Test workflow with disabled categories."""
         with LogDocument(temp_log_file) as doc:

@@ -1,7 +1,7 @@
 # UI Components Specification
 
-**Version:** 1.0  
-**Last Updated:** 2026-03-13  
+**Version:** 1.1  
+**Last Updated:** 2026-03-14  
 **Project Context:** Python Tooling (Desktop Application)
 
 ---
@@ -228,7 +228,7 @@ class LogEntryDisplay:
 
 ### §5.1 Purpose
 
-Panel for category filtering with tabs, tree view, search, and custom categories.
+Panel for category filtering with tabs, tree view, and search.
 
 ### §5.2 API Reference
 
@@ -240,7 +240,6 @@ class CategoryPanel(QWidget):
     category_toggled = Signal(str, bool)  # category_path, checked
     search_changed = Signal(str)
     current_tab_changed = Signal(int)
-    custom_categories_changed = Signal(list)  # List[CustomCategory]
     
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the category panel."""
@@ -289,14 +288,6 @@ class CategoryPanel(QWidget):
     
     def clear_search(self) -> None:
         """Clear the search input."""
-    
-    # === Custom Categories ===
-    
-    def set_custom_categories(self, categories: list[CustomCategory]) -> None:
-        """Set custom categories."""
-    
-    def get_custom_categories(self) -> list[CustomCategory]:
-        """Get custom categories."""
 ```
 
 ### §5.3 Checkbox Behavior
@@ -307,10 +298,6 @@ Per [category-checkbox-behavior.md](category-checkbox-behavior.md):
 - Parent unchecked → All children unchecked
 - Child checked/uncheck → Parent unchanged (partial state)
 - Visibility: Log visible if self OR any ancestor is checked
-
-### §5.4 Custom Categories
-
-Custom categories are displayed with 🔍 prefix and filter by message content (substring match).
 
 ---
 
@@ -571,4 +558,5 @@ def test_category_panel_check_all(category_panel):
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-14 | Removed custom categories from CategoryPanel |
 | 1.0 | 2026-03-13 | Initial UI components specification |

@@ -1,8 +1,9 @@
 # Category Panel Checkbox Behavior Specification
 
-**Version:** v1.0  
+**Version:** v1.1  
 **Status:** [DRAFT]  
 **Created:** 2026-03-13  
+**Last Updated:** 2026-03-14  
 **Project Context:** Python Tooling (Log Viewer Application)
 
 ---
@@ -39,7 +40,6 @@ This specification defines the checkbox behavior for the category tree panel in 
 | **Root Category** | Top-level category with no parent |
 | **Checked State** | Checkbox is marked (✓), category logs are visible |
 | **Unchecked State** | Checkbox is unmarked, category logs are hidden |
-| **Custom Category** | User-defined category with pattern matching (marked with 🔍) |
 
 ---
 
@@ -159,12 +159,6 @@ log_visible(category) = category.checked OR any_ancestor(category).checked
 | Checked | Unchecked | ✓ Yes | Parent checked (child state ignored) |
 | Unchecked | Checked | ✓ Yes | Child checked |
 | Unchecked | Unchecked | ✗ No | Neither checked |
-
-### §4.3 Custom Categories
-
-**Rule:** Custom categories follow the same rules as regular categories.
-
-Custom categories can have parent categories and follow all cascade rules defined in §3.
 
 ---
 
@@ -349,9 +343,6 @@ Required test cases in [`tests/test_category_tree.py`](../../tests/test_category
 8. **Test Deep Nesting**
    - 5+ level hierarchy → cascade works correctly
 
-9. **Test Custom Categories**
-   - Custom category follows same rules
-
 ### §9.2 Integration Tests
 
 Required test cases in [`tests/test_integration.py`](../../tests/test_integration.py:1):
@@ -422,9 +413,8 @@ self._update_children_recursive(item, checked)
 | 5 | Child checkbox displays normally when parent disabled | Visual inspection |
 | 6 | Logs visible when child OR ancestor enabled | Integration test |
 | 7 | State persists across sessions | Integration test |
-| 8 | Custom categories follow same rules | Unit test |
-| 9 | Performance within 16ms budget | Benchmark |
-| 10 | No crashes on invalid paths | Error test |
+| 8 | Performance within 16ms budget | Benchmark |
+| 9 | No crashes on invalid paths | Error test |
 
 ---
 
@@ -432,4 +422,5 @@ self._update_children_recursive(item, checked)
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| v1.1 | 2026-03-14 | Spec Architect | Removed custom categories |
 | v1.0 | 2026-03-13 | Spec Architect | Initial draft |

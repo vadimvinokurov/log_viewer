@@ -21,20 +21,6 @@ class TestCategoryNode:
         assert node.parent is None
         assert node.children == {}
         assert node.is_enabled is True
-        assert node.is_custom is False
-        assert node.pattern is None
-    
-    def test_custom_node(self) -> None:
-        """Test creating a custom category node."""
-        node = CategoryNode(
-            name="custom",
-            full_path="custom",
-            is_custom=True,
-            pattern=r"\[ERROR\]"
-        )
-        
-        assert node.is_custom is True
-        assert node.pattern == r"\[ERROR\]"
     
     def test_node_with_parent(self) -> None:
         """Test creating a node with parent."""
@@ -182,35 +168,6 @@ class TestCategoryTree:
         assert "lib" in all_cats
         assert "lib/utils" in all_cats
     
-    def test_custom_category(self) -> None:
-        """Test adding custom category."""
-        self.tree.add_category("app")
-        self.tree.add_custom_category("errors", pattern=r"\[ERROR\]", parent="app")
-        
-        node = self.tree.get_node("app/errors")
-        assert node is not None
-        assert node.is_custom is True
-        assert node.pattern == r"\[ERROR\]"
-        assert node.parent == self.tree.get_node("app")
-    
-    def test_custom_category_no_parent(self) -> None:
-        """Test adding custom category without parent."""
-        self.tree.add_custom_category("custom", pattern=r"\[CUSTOM\]")
-        
-        node = self.tree.get_node("custom")
-        assert node is not None
-        assert node.is_custom is True
-        assert node.parent == self.tree._root
-    
-    def test_custom_category_nonexistent_parent(self) -> None:
-        """Test adding custom category with nonexistent parent."""
-        self.tree.add_custom_category("errors", pattern=r"\[ERROR\]", parent="nonexistent")
-        
-        # Should still be added under root with full path "nonexistent/errors"
-        node = self.tree.get_node("nonexistent/errors")
-        assert node is not None
-        assert node.parent == self.tree._root
-    
     def test_clear(self) -> None:
         """Test clearing all categories."""
         self.tree.add_category("app/controllers")
@@ -274,18 +231,6 @@ class TestCategoryTree:
         assert self.tree.has_category("app") is True
         assert self.tree.has_category("app/controllers") is True
         assert self.tree.has_category("nonexistent") is False
-    
-    def test_get_custom_categories(self) -> None:
-        """Test getting all custom categories."""
-        self.tree.add_category("app")
-        self.tree.add_custom_category("errors", pattern=r"\[ERROR\]", parent="app")
-        self.tree.add_custom_category("warnings", pattern=r"\[WARN\]")
-        
-        custom = self.tree.get_custom_categories()
-        assert len(custom) == 2
-        names = {c.name for c in custom}
-        assert "errors" in names
-        assert "warnings" in names
     
     def test_enable_all(self) -> None:
         """Test enabling all categories."""

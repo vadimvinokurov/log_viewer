@@ -10,7 +10,6 @@ from src.models.log_entry import LogEntry, LogLevel
 from src.models.filter_state import FilterMode, FilterState
 from src.core.simple_query_parser import SimpleQueryParser
 from src.core.category_tree import CategoryTree
-from src.utils.settings_manager import CustomCategory
 
 
 class FilterEngine:
@@ -32,6 +31,8 @@ class FilterEngine:
         
         // Ref: docs/specs/features/category-checkbox-behavior.md §6.3
         // Uses is_category_visible() when category_tree is provided
+        // Ref: docs/specs/features/custom-categories-removal.md §3.3, §4
+        // Filter combination: Category AND Text AND Level
         
         Args:
             state: Filter state with enabled categories, filter text, mode, and enabled levels
@@ -48,54 +49,18 @@ class FilterEngine:
             category_tree
         )
         
-        # Build custom category filter (filters by message content)
-        custom_filter = self._compile_custom_category_filter(
-            state.custom_categories,
-            state.enabled_categories
-        )
-        
         # Build text filter based on mode
         text_filter = self._compile_text_filter(state.filter_text, state.filter_mode)
         
         # Build level filter
         level_filter = self._compile_level_filter(state.enabled_levels)
         
-        # Combine filters:
-        # - category_filter: filters by log category path
-        # - custom_filter: filters by message content (OR with category)
-        # - text_filter: additional text filter (AND with category/custom)
-        # - level_filter: filters by log level (AND with others)
-        
-        # Combine category and custom filters with OR logic
-        # Special case: if enabled_categories is empty but custom categories exist,
-        # we need to use custom filter only
-        if category_filter is None and custom_filter is None:
-            # No category filtering and no custom categories - match all
-            category_or_custom: Callable[[LogEntry], bool] | None = None
-        elif category_filter is None:
-            # No category filter (all enabled or all disabled)
-            # Check if we have any enabled categories at all
-            if not state.enabled_categories and state.all_categories:
-                # No categories enabled - only custom categories can match
-                category_or_custom = custom_filter
-            else:
-                # All categories enabled - custom categories add more matches (OR)
-                # But since all categories pass, we don't need to filter
-                category_or_custom = None
-        elif custom_filter is None:
-            # Only category filter, no custom categories
-            category_or_custom = category_filter
-        else:
-            # Both filters - OR logic: entry passes if category OR custom matches
-            def combined_category(entry: LogEntry) -> bool:
-                return category_filter(entry) or custom_filter(entry)
-            category_or_custom = combined_category
-        
-        # Combine all filters using AND logic
+        # Combine filters: Category AND Text AND Level
+        # Ref: docs/specs/features/custom-categories-removal.md §4.2
         filters: list[Callable[[LogEntry], bool]] = []
         
-        if category_or_custom is not None:
-            filters.append(category_or_custom)
+        if category_filter is not None:
+            filters.append(category_filter)
         
         if text_filter is not None:
             filters.append(text_filter)
@@ -154,11 +119,8 @@ class FilterEngine:
         
         # Fallback: set-based filtering (backward compatibility)
         # If no categories are enabled, return a filter that rejects all
-        # (unless custom categories are active)
         if not enabled_categories:
-            # Return None here - the caller will handle combining with custom categories
-            # If there are no custom categories, nothing will pass
-            # If there are custom categories, they will provide the filter
+            # No categories enabled - nothing will pass the category filter
             return None
         
         # Make copies to avoid mutation issues
@@ -198,57 +160,6 @@ class FilterEngine:
             return False
         
         return category_filter
-    
-    @beartype
-    def _compile_custom_category_filter(
-        self,
-        custom_categories: list[CustomCategory],
-        enabled_categories: set[str]
-    ) -> Callable[[LogEntry], bool] | None:
-        """
-        Compile custom category filter.
-        
-        Custom categories filter by message content (substring match),
-        not by log category path. They can be attached to a parent
-        category for hierarchical filtering.
-        
-        Args:
-            custom_categories: List of custom categories
-            enabled_categories: Set of enabled category paths (for parent check)
-            
-        Returns:
-            Callable that returns True if entry's message matches any enabled
-            custom category pattern, or None if no custom categories are active
-        """
-        # Filter to only enabled custom categories
-        active_customs = []
-        for custom in custom_categories:
-            if not custom.enabled:
-                continue
-            
-            # Check parent inheritance
-            if custom.parent is not None:
-                # Parent must be enabled for custom category to be active
-                if custom.parent not in enabled_categories:
-                    continue
-            
-            active_customs.append(custom)
-        
-        if not active_customs:
-            return None
-        
-        # Pre-compile patterns to lowercase for case-insensitive matching
-        patterns = [(custom.name, custom.pattern.lower()) for custom in active_customs]
-        
-        def custom_filter(entry: LogEntry) -> bool:
-            # Check if message contains any custom pattern (case-insensitive)
-            message_lower = entry.raw_line.lower()
-            for name, pattern in patterns:
-                if pattern in message_lower:
-                    return True
-            return False
-        
-        return custom_filter
     
     @beartype
     def _compile_text_filter(

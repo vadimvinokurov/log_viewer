@@ -1,4 +1,4 @@
-"""Category panel with tabs, tree view, search, and custom categories.
+"""Category panel with tabs, tree view, and search.
 
 This module provides a panel with tabs (Categories/Processes/Threads)
 and a tree view with checkboxes for filtering log entries.
@@ -33,15 +33,13 @@ from __future__ import annotations
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTreeView,
-    QLineEdit, QLabel, QAbstractItemView, QPushButton,
-    QMessageBox
+    QLineEdit, QLabel, QAbstractItemView, QPushButton
 )
 from PySide6.QtCore import Qt, Signal, QModelIndex
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 
 from src.styles.stylesheet import get_tree_stylesheet, get_tab_stylesheet
 from src.models import SystemNode
-from src.utils.settings_manager import CustomCategory
 
 
 class CategoryPanel(QWidget):
@@ -52,14 +50,12 @@ class CategoryPanel(QWidget):
     - Search input with magnifying glass icon
     - Tree view with checkboxes
     - Hierarchical structure with expand/collapse
-    - Custom categories support
     """
     
     # Signals
     category_toggled = Signal(str, bool)  # category_path, checked
     search_changed = Signal(str)
     current_tab_changed = Signal(int)
-    custom_categories_changed = Signal(list)  # List of CustomCategory
     
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Initialize the category panel.
@@ -71,7 +67,6 @@ class CategoryPanel(QWidget):
         self._model: Optional[QStandardItemModel] = None
         self._category_items: dict[str, QStandardItem] = {}
         self._all_categories: set[str] = set()
-        self._custom_categories: list[CustomCategory] = []
         
         self._setup_ui()
     
@@ -154,21 +149,6 @@ class CategoryPanel(QWidget):
         uncheck_all_btn = QPushButton("Uncheck All")
         uncheck_all_btn.clicked.connect(lambda: self.check_all(False))
         button_layout.addWidget(uncheck_all_btn)
-        
-        # Add custom category button
-        add_custom_btn = QPushButton("Add Custom")
-        add_custom_btn.clicked.connect(self._add_custom_category)
-        button_layout.addWidget(add_custom_btn)
-        
-        # Edit custom category button
-        edit_custom_btn = QPushButton("Edit Custom")
-        edit_custom_btn.clicked.connect(self._edit_custom_category)
-        button_layout.addWidget(edit_custom_btn)
-        
-        # Remove custom category button
-        remove_custom_btn = QPushButton("Remove Custom")
-        remove_custom_btn.clicked.connect(self._remove_custom_category)
-        button_layout.addWidget(remove_custom_btn)
         
         categories_layout.addWidget(button_bar)
         
@@ -280,23 +260,6 @@ class CategoryPanel(QWidget):
         
         checked = item.checkState() == Qt.Checked
         
-        # Check if this is a custom category
-        custom_name = item.data(Qt.UserRole + 1)
-        if custom_name:
-            # Update custom category enabled state
-            for custom in self._custom_categories:
-                if custom.name == custom_name:
-                    custom.enabled = checked
-                    break
-            # Unblock signals
-            self._model.blockSignals(False)
-            # Emit signals
-            self.custom_categories_changed.emit(self._custom_categories)
-            path = item.data(Qt.UserRole)
-            if path:
-                self.category_toggled.emit(path, checked)
-            return
-        
         # Update all children recursively
         self._update_children_recursive(item, checked)
         
@@ -350,10 +313,6 @@ class CategoryPanel(QWidget):
         # Build tree structure
         for category in categories:
             self._add_category_node(category, self._model.invisibleRootItem())
-        
-        # Add custom categories back to tree
-        for custom in self._custom_categories:
-            self._add_custom_category_to_tree(custom)
         
         # Unblock signals
         self._model.blockSignals(False)
@@ -522,204 +481,3 @@ class CategoryPanel(QWidget):
         """Clear the search input."""
         self._search_input.clear()
     
-    # === Custom Categories ===
-    
-    def set_custom_categories(self, categories: list[CustomCategory]) -> None:
-        """Set custom categories and add them to the tree.
-
-        Args:
-            categories: List of custom categories.
-        """
-        self._custom_categories = categories.copy()
-        self._update_custom_categories_in_tree()
-
-    def get_custom_categories(self) -> list[CustomCategory]:
-        """Get custom categories.
-
-        Returns:
-            List of custom categories.
-        """
-        return self._custom_categories.copy()
-
-    def _update_custom_categories_in_tree(self) -> None:
-        """Update custom categories in the main tree."""
-        # Block signals while updating
-        self._model.blockSignals(True)
-        
-        # Remove existing custom category items from tree
-        items_to_remove = []
-        root = self._model.invisibleRootItem()
-        for row in range(root.rowCount()):
-            item = root.child(row)
-            if item is None:
-                continue
-            custom_name = item.data(Qt.UserRole + 1)
-            if custom_name:
-                items_to_remove.append(item)
-        
-        for item in items_to_remove:
-            root.removeRow(item.row())
-        
-        # Add custom categories to tree
-        for custom in self._custom_categories:
-            self._add_custom_category_to_tree(custom)
-        
-        # Unblock signals
-        self._model.blockSignals(False)
-
-    def _add_custom_category_to_tree(self, custom: CustomCategory) -> None:
-        """Add a custom category to the tree.
-        
-        Args:
-            custom: The custom category to add
-        """
-        # Find parent item
-        parent_item: QStandardItem = self._model.invisibleRootItem()
-        if custom.parent:
-            parent_item = self._category_items.get(custom.parent, self._model.invisibleRootItem())
-        
-        # Create custom category item with visual distinction
-        display_name = f"🔍 {custom.name}"  # Icon to distinguish custom categories
-        item = QStandardItem(display_name)
-        
-        # Configure item
-        item.setCheckable(True)
-        item.setCheckState(Qt.Checked if custom.enabled else Qt.Unchecked)
-        item.setData(f"__custom__:{custom.name}", Qt.UserRole)  # Special marker for custom
-        item.setData(custom.name, Qt.UserRole + 1)  # Store custom category name
-        
-        # Set tooltip to show pattern
-        item.setToolTip(f"Pattern: {custom.pattern}")
-        
-        # Add to parent
-        parent_item.appendRow(item)
-
-    def _add_custom_category(self) -> None:
-        """Add a new custom category."""
-        from src.views.widgets.custom_category_dialog import CustomCategoryDialog
-        
-        # Get available parent categories
-        categories = sorted(self._all_categories)
-
-        dialog = CustomCategoryDialog(self, categories)
-        if dialog.exec():
-            name = dialog.get_name()
-            pattern = dialog.get_pattern()
-            parent = dialog.get_parent()
-
-            if name and pattern:
-                # Check for duplicate name
-                if any(c.name == name for c in self._custom_categories):
-                    QMessageBox.warning(
-                        self,
-                        "Duplicate Name",
-                        f"A custom category named '{name}' already exists."
-                    )
-                    return
-
-                category = CustomCategory(name=name, pattern=pattern, parent=parent, enabled=True)
-                self._custom_categories.append(category)
-                self._add_custom_category_to_tree(category)
-                self.custom_categories_changed.emit(self._custom_categories)
-
-    def _edit_custom_category(self) -> None:
-        """Edit selected custom category."""
-        from src.views.widgets.custom_category_dialog import CustomCategoryDialog
-        
-        # Get selected item from tree
-        selected_indexes = self._tree_view.selectedIndexes()
-        if not selected_indexes:
-            QMessageBox.information(self, "Edit Custom", "Please select a custom category to edit.")
-            return
-        
-        item = self._model.itemFromIndex(selected_indexes[0])
-        # Check if it's a custom category
-        custom_name = item.data(Qt.UserRole + 1)
-        if not custom_name:
-            QMessageBox.information(self, "Edit Custom", "Please select a custom category (marked with 🔍).")
-            return
-        
-        category = next((c for c in self._custom_categories if c.name == custom_name), None)
-        if not category:
-            return
-
-        # Get available parent categories
-        categories = sorted(self._all_categories)
-
-        dialog = CustomCategoryDialog(
-            self,
-            categories,
-            name=category.name,
-            pattern=category.pattern,
-            parent_category=category.parent
-        )
-        if dialog.exec():
-            new_name = dialog.get_name()
-            new_pattern = dialog.get_pattern()
-            new_parent = dialog.get_parent()
-
-            if new_name and new_pattern:
-                # Check for duplicate name (excluding current)
-                if new_name != custom_name and any(c.name == new_name for c in self._custom_categories):
-                    QMessageBox.warning(
-                        self,
-                        "Duplicate Name",
-                        f"A custom category named '{new_name}' already exists."
-                    )
-                    return
-
-                # Update category
-                old_name = category.name
-                category.name = new_name
-                category.pattern = new_pattern
-                category.parent = new_parent
-                
-                # Update tree item
-                self._model.blockSignals(True)
-                
-                # Update display
-                display_name = f"🔍 {new_name}"
-                item.setText(display_name)
-                item.setData(f"__custom__:{new_name}", Qt.UserRole)
-                item.setData(new_name, Qt.UserRole + 1)
-                item.setToolTip(f"Pattern: {new_pattern}")
-                
-                self._model.blockSignals(False)
-                
-                self.custom_categories_changed.emit(self._custom_categories)
-
-    def _remove_custom_category(self) -> None:
-        """Remove selected custom category."""
-        # Get selected item from tree
-        selected_indexes = self._tree_view.selectedIndexes()
-        if not selected_indexes:
-            QMessageBox.information(self, "Remove Custom", "Please select a custom category to remove.")
-            return
-        
-        item = self._model.itemFromIndex(selected_indexes[0])
-        # Check if it's a custom category
-        custom_name = item.data(Qt.UserRole + 1)
-        if not custom_name:
-            QMessageBox.information(self, "Remove Custom", "Please select a custom category (marked with 🔍).")
-            return
-
-        result = QMessageBox.question(
-            self,
-            "Confirm Remove",
-            f"Remove custom category '{custom_name}'?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-
-        if result == QMessageBox.Yes:
-            # Remove from tree
-            self._model.blockSignals(True)
-            parent = item.parent()
-            if parent:
-                parent.removeRow(item.row())
-            else:
-                self._model.invisibleRootItem().removeRow(item.row())
-            self._model.blockSignals(False)
-            
-            # Remove from list
-            self._custom_categories = [c for c in self._custom_categories if c.name != custom_name]
-            self.custom_categories_changed.emit(self._custom_categories)

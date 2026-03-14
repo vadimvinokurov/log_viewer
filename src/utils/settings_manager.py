@@ -12,38 +12,8 @@ from PySide6.QtCore import QByteArray
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class CustomCategory:
-    """Custom category definition.
-    
-    Custom categories filter by message content (substring match),
-    not by log category path. They can be attached to a parent
-    category for hierarchical filtering.
-    """
-    name: str
-    pattern: str
-    parent: Optional[str] = None
-    enabled: bool = True  # Checkbox state
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "name": self.name,
-            "pattern": self.pattern,
-            "parent": self.parent,
-            "enabled": self.enabled
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> CustomCategory:
-        """Create from dictionary."""
-        return cls(
-            name=data.get("name", ""),
-            pattern=data.get("pattern", ""),
-            parent=data.get("parent"),
-            enabled=data.get("enabled", True)
-        )
-
+# Ref: docs/specs/features/custom-categories-removal.md §3.5
+# CustomCategory dataclass removed - feature deprecated
 
 @dataclass
 class HighlightPatternData:
@@ -76,7 +46,8 @@ class HighlightPatternData:
 @dataclass
 class AppSettings:
     """Application settings."""
-    custom_categories: List[CustomCategory] = field(default_factory=list)
+    # Ref: docs/specs/features/custom-categories-removal.md §3.5
+    # custom_categories field removed - feature deprecated
     highlight_patterns: List[HighlightPatternData] = field(default_factory=list)
     last_file: Optional[str] = None
     window_geometry: Optional[bytes] = None
@@ -86,7 +57,6 @@ class AppSettings:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            "custom_categories": [cat.to_dict() for cat in self.custom_categories],
             "highlight_patterns": [pat.to_dict() for pat in self.highlight_patterns],
             "last_file": self.last_file,
             "window_geometry": self.window_geometry.hex() if self.window_geometry else None,
@@ -96,11 +66,15 @@ class AppSettings:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> AppSettings:
-        """Create from dictionary."""
-        custom_categories = [
-            CustomCategory.from_dict(cat)
-            for cat in data.get("custom_categories", [])
-        ]
+        """Create from dictionary.
+        
+        Backward compatibility: ignores unknown 'custom_categories' field
+        if present in older settings files.
+        """
+        # Ref: docs/specs/features/custom-categories-removal.md §6.1
+        # Ignore custom_categories field for backward compatibility
+        # (older settings files may contain this field)
+        
         highlight_patterns = [
             HighlightPatternData.from_dict(pat)
             for pat in data.get("highlight_patterns", [])
@@ -116,7 +90,6 @@ class AppSettings:
                 logger.warning("Failed to parse window geometry from settings")
 
         return cls(
-            custom_categories=custom_categories,
             highlight_patterns=highlight_patterns,
             last_file=data.get("last_file"),
             window_geometry=window_geometry,
@@ -180,37 +153,11 @@ class SettingsManager:
         """Get current settings."""
         return self._settings
 
-    def add_custom_category(self, category: CustomCategory) -> None:
-        """Add a custom category.
-
-        Args:
-            category: The custom category to add.
-        """
-        self._settings.custom_categories.append(category)
-
-    def remove_custom_category(self, name: str) -> bool:
-        """Remove a custom category by name.
-
-        Args:
-            name: Name of the category to remove.
-
-        Returns:
-            True if category was removed, False if not found.
-        """
-        original_count = len(self._settings.custom_categories)
-        self._settings.custom_categories = [
-            cat for cat in self._settings.custom_categories
-            if cat.name != name
-        ]
-        return len(self._settings.custom_categories) < original_count
-
-    def get_custom_categories(self) -> List[CustomCategory]:
-        """Get all custom categories.
-
-        Returns:
-            Copy of the custom categories list.
-        """
-        return self._settings.custom_categories.copy()
+    # Ref: docs/specs/features/custom-categories-removal.md §3.5
+    # Custom category methods removed:
+    # - add_custom_category()
+    # - remove_custom_category()
+    # - get_custom_categories()
 
     def add_highlight_pattern(self, pattern: HighlightPatternData) -> None:
         """Add a highlight pattern.

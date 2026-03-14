@@ -1,7 +1,7 @@
 # Category Tree Specification
 
-**Version:** 1.0  
-**Last Updated:** 2026-03-13  
+**Version:** 1.1  
+**Last Updated:** 2026-03-14  
 **Project Context:** Python Tooling (Desktop Application)  
 **Related:** [category-checkbox-behavior.md](category-checkbox-behavior.md)
 
@@ -9,7 +9,7 @@
 
 ## §1 Overview
 
-The Category Tree provides hierarchical category management with efficient lookup and visibility-based filtering. It supports both regular categories (from log parsing) and custom categories (user-defined patterns).
+The Category Tree provides hierarchical category management with efficient lookup and visibility-based filtering. Categories are derived from log file parsing.
 
 ---
 
@@ -27,9 +27,7 @@ CategoryNode
 ├── full_path: str         # Full path (e.g., "HordeMode/scripts/app")
 ├── parent: CategoryNode | None
 ├── children: dict[str, CategoryNode]
-├── is_enabled: bool
-├── is_custom: bool
-└── pattern: str | None    # For custom categories
+└── is_enabled: bool
 ```
 
 ### §2.2 Example Tree
@@ -41,7 +39,8 @@ _root
 │   │   ├── app (enabled=True)
 │   │   └── core (enabled=True)
 │   └── config (enabled=False)
-└── 🔍 CustomCategory (is_custom=True, pattern="error")
+└── Game/
+    └── network (enabled=True)
 ```
 
 ---
@@ -126,53 +125,9 @@ def is_category_visible(self, path: str) -> bool:
 
 ---
 
-## §4 Custom Categories
+## §4 API Reference
 
-### §4.1 Definition
-
-```python
-@dataclass
-class CustomCategory:
-    """Custom category definition."""
-    name: str              # Display name
-    pattern: str           # Regex or substring pattern
-    parent: str | None     # Optional parent category path
-    enabled: bool = True   # Checkbox state
-```
-
-### §4.2 Adding Custom Categories
-
-```python
-def add_custom_category(
-    self,
-    name: str,
-    pattern: str,
-    parent: str | None = None
-) -> None:
-    """
-    Add a custom category with pattern matching.
-    
-    Custom categories:
-    - Filter by message content (substring match)
-    - Can be attached to a parent category
-    - Are marked with is_custom=True
-    """
-```
-
-### §4.3 Custom Category Behavior
-
-| Property | Regular Category | Custom Category |
-|----------|------------------|-----------------|
-| Source | Log file parsing | User-defined |
-| Filter by | Category path | Message content |
-| Display | Plain name | 🔍 prefix |
-| Parent | From path | Optional assignment |
-
----
-
-## §5 API Reference
-
-### §5.1 CategoryTree
+### §4.1 CategoryTree
 
 ```python
 class CategoryTree:
@@ -207,15 +162,6 @@ class CategoryTree:
     def get_all_categories(self) -> set[str]:
         """Get all category paths."""
     
-    @beartype
-    def add_custom_category(
-        self,
-        name: str,
-        pattern: str,
-        parent: str | None = None
-    ) -> None:
-        """Add a custom category."""
-    
     def clear(self) -> None:
         """Clear all categories."""
     
@@ -236,10 +182,6 @@ class CategoryTree:
         """Check if category exists."""
     
     @beartype
-    def get_custom_categories(self) -> list[CategoryNode]:
-        """Get all custom categories."""
-    
-    @beartype
     def enable_all(self) -> None:
         """Enable all categories."""
     
@@ -254,7 +196,7 @@ class CategoryTree:
         """Check if category path exists."""
 ```
 
-### §5.2 CategoryNode
+### §4.2 CategoryNode
 
 ```python
 @dataclass
@@ -265,11 +207,9 @@ class CategoryNode:
     parent: CategoryNode | None = None
     children: dict[str, CategoryNode] = field(default_factory=dict)
     is_enabled: bool = True
-    is_custom: bool = False
-    pattern: str | None = None  # For custom categories
 ```
 
-### §5.3 Helper Functions
+### §4.3 Helper Functions
 
 ```python
 @beartype
@@ -290,9 +230,9 @@ def build_system_nodes(tree: CategoryTree) -> list[SystemNode]:
 
 ---
 
-## §6 Performance
+## §5 Performance
 
-### §6.1 Time Complexity
+### §5.1 Time Complexity
 
 | Operation | Complexity | Notes |
 |-----------|------------|-------|
@@ -304,25 +244,25 @@ def build_system_nodes(tree: CategoryTree) -> list[SystemNode]:
 | `get_enabled_categories` | O(n) | n = total nodes |
 | `get_node` | O(1) | Dict lookup |
 
-### §6.2 Memory
+### §5.2 Memory
 
 | Component | Size | Notes |
 |-----------|------|-------|
-| CategoryNode | ~100 bytes | Name + path + pointers |
-| Tree (1000 categories) | ~100 KB | Nodes + dict overhead |
-| Tree (10000 categories) | ~1 MB | Linear scaling |
+| CategoryNode | ~80 bytes | Name + path + pointers |
+| Tree (1000 categories) | ~80 KB | Nodes + dict overhead |
+| Tree (10000 categories) | ~800 KB | Linear scaling |
 
 ---
 
-## §7 Thread Safety
+## §6 Thread Safety
 
-### §7.1 Guarantees
+### §6.1 Guarantees
 
 - **Not thread-safe** - Owned by single thread (FilterController)
 - **Read-only after compilation** - Compiled filter is thread-safe
 - **No concurrent modification** - Modify only on main thread
 
-### §7.2 Usage Pattern
+### §6.2 Usage Pattern
 
 ```python
 # Main thread: Modify tree
@@ -337,9 +277,9 @@ filtered = [e for e in entries if filter_func(e)]
 
 ---
 
-## §8 State Persistence
+## §7 State Persistence
 
-### §8.1 Saving State
+### §7.1 Saving State
 
 ```python
 # Get checkbox states
@@ -348,7 +288,7 @@ settings_manager.set_category_states(states)
 settings_manager.save()
 ```
 
-### §8.2 Restoring State
+### §7.2 Restoring State
 
 ```python
 # Load saved states
@@ -361,9 +301,9 @@ for path, checked in saved_states.items():
 
 ---
 
-## §9 Testing
+## §8 Testing
 
-### §9.1 Unit Tests
+### §8.1 Unit Tests
 
 ```python
 def test_add_category():
@@ -396,13 +336,13 @@ def test_visibility():
     assert tree.is_category_visible("HordeMode/scripts/app") == True
 ```
 
-### §9.2 Integration Tests
+### §8.2 Integration Tests
 
 See [test_category_tree.py](../../tests/test_category_tree.py)
 
 ---
 
-## §10 Cross-References
+## §9 Cross-References
 
 - **Checkbox Behavior:** [category-checkbox-behavior.md](category-checkbox-behavior.md)
 - **Filter Engine:** [filter-engine.md](filter-engine.md)
@@ -411,8 +351,9 @@ See [test_category_tree.py](../../tests/test_category_tree.py)
 
 ---
 
-## §11 Revision History
+## §10 Revision History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-14 | Removed custom categories feature |
 | 1.0 | 2026-03-13 | Initial category tree specification |

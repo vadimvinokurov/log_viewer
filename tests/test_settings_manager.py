@@ -13,73 +13,8 @@ from PySide6.QtCore import QByteArray
 from src.utils.settings_manager import (
     SettingsManager,
     AppSettings,
-    CustomCategory,
     HighlightPatternData,
 )
-
-
-class TestCustomCategory:
-    """Tests for CustomCategory class."""
-    
-    def test_custom_category_creation(self) -> None:
-        """Test creating a custom category."""
-        category = CustomCategory(
-            name="errors",
-            pattern=r"\[ERROR\]",
-            parent="app"
-        )
-        
-        assert category.name == "errors"
-        assert category.pattern == r"\[ERROR\]"
-        assert category.parent == "app"
-    
-    def test_custom_category_no_parent(self) -> None:
-        """Test creating a custom category without parent."""
-        category = CustomCategory(
-            name="errors",
-            pattern=r"\[ERROR\]"
-        )
-        
-        assert category.name == "errors"
-        assert category.parent is None
-    
-    def test_custom_category_to_dict(self) -> None:
-        """Test converting custom category to dictionary."""
-        category = CustomCategory(
-            name="errors",
-            pattern=r"\[ERROR\]",
-            parent="app"
-        )
-        
-        data = category.to_dict()
-        
-        assert data["name"] == "errors"
-        assert data["pattern"] == r"\[ERROR\]"
-        assert data["parent"] == "app"
-    
-    def test_custom_category_from_dict(self) -> None:
-        """Test creating custom category from dictionary."""
-        data = {
-            "name": "errors",
-            "pattern": r"\[ERROR\]",
-            "parent": "app"
-        }
-        
-        category = CustomCategory.from_dict(data)
-        
-        assert category.name == "errors"
-        assert category.pattern == r"\[ERROR\]"
-        assert category.parent == "app"
-    
-    def test_custom_category_from_dict_missing_fields(self) -> None:
-        """Test creating custom category from dictionary with missing fields."""
-        data = {}
-        
-        category = CustomCategory.from_dict(data)
-        
-        assert category.name == ""
-        assert category.pattern == ""
-        assert category.parent is None
 
 
 class TestHighlightPatternData:
@@ -160,7 +95,6 @@ class TestAppSettings:
         """Test default settings."""
         settings = AppSettings()
         
-        assert settings.custom_categories == []
         assert settings.highlight_patterns == []
         assert settings.last_file is None
         assert settings.window_geometry is None
@@ -170,7 +104,6 @@ class TestAppSettings:
     def test_settings_to_dict(self) -> None:
         """Test converting settings to dictionary."""
         settings = AppSettings(
-            custom_categories=[CustomCategory("errors", r"\[ERROR\]")],
             highlight_patterns=[HighlightPatternData("error", "#FF0000")],
             last_file="/path/to/file.log",
             column_widths={"timestamp": 150, "message": 500}
@@ -178,7 +111,6 @@ class TestAppSettings:
         
         data = settings.to_dict()
         
-        assert len(data["custom_categories"]) == 1
         assert len(data["highlight_patterns"]) == 1
         assert data["last_file"] == "/path/to/file.log"
         assert data["column_widths"] == {"timestamp": 150, "message": 500}
@@ -186,9 +118,6 @@ class TestAppSettings:
     def test_settings_from_dict(self) -> None:
         """Test creating settings from dictionary."""
         data = {
-            "custom_categories": [
-                {"name": "errors", "pattern": r"\[ERROR\]", "parent": None}
-            ],
             "highlight_patterns": [
                 {"text": "error", "color_hex": "#FF0000", "is_regex": False, "enabled": True}
             ],
@@ -198,8 +127,6 @@ class TestAppSettings:
         
         settings = AppSettings.from_dict(data)
         
-        assert len(settings.custom_categories) == 1
-        assert settings.custom_categories[0].name == "errors"
         assert len(settings.highlight_patterns) == 1
         assert settings.highlight_patterns[0].text == "error"
         assert settings.last_file == "/path/to/file.log"
@@ -209,7 +136,6 @@ class TestAppSettings:
         """Test creating settings from empty dictionary."""
         settings = AppSettings.from_dict({})
         
-        assert settings.custom_categories == []
         assert settings.highlight_patterns == []
         assert settings.last_file is None
         assert settings.window_geometry is None
@@ -227,7 +153,6 @@ class TestAppSettings:
     def test_settings_category_states_to_dict(self) -> None:
         """Test converting settings with category states to dictionary."""
         settings = AppSettings(
-            custom_categories=[CustomCategory("errors", r"\[ERROR\]")],
             category_states={"app": True, "system": False}
         )
         
@@ -239,7 +164,6 @@ class TestAppSettings:
     def test_settings_category_states_from_dict(self) -> None:
         """Test creating settings from dictionary with category states."""
         data = {
-            "custom_categories": [],
             "highlight_patterns": [],
             "category_states": {"app": True, "app.network": False, "system": True}
         }
@@ -274,7 +198,6 @@ class TestSettingsManager:
         
         settings = manager.load()
         
-        assert settings.custom_categories == []
         assert settings.highlight_patterns == []
         assert settings.last_file is None
     
@@ -283,7 +206,6 @@ class TestSettingsManager:
         manager = SettingsManager(temp_settings_file)
         
         # Add some settings
-        manager.add_custom_category(CustomCategory("errors", r"\[ERROR\]"))
         manager.add_highlight_pattern(HighlightPatternData("error", "#FF0000"))
         manager.set_last_file("/path/to/file.log")
         
@@ -294,8 +216,6 @@ class TestSettingsManager:
         manager2 = SettingsManager(temp_settings_file)
         settings = manager2.load()
         
-        assert len(settings.custom_categories) == 1
-        assert settings.custom_categories[0].name == "errors"
         assert len(settings.highlight_patterns) == 1
         assert settings.last_file == "/path/to/file.log"
     
@@ -309,44 +229,7 @@ class TestSettingsManager:
         settings = manager.load()
         
         # Should return default settings
-        assert settings.custom_categories == []
         assert settings.highlight_patterns == []
-    
-    def test_add_custom_category(self, temp_settings_file: str) -> None:
-        """Test adding custom category."""
-        manager = SettingsManager(temp_settings_file)
-        
-        category = CustomCategory("errors", r"\[ERROR\]", parent="app")
-        manager.add_custom_category(category)
-        
-        categories = manager.get_custom_categories()
-        
-        assert len(categories) == 1
-        assert categories[0].name == "errors"
-        assert categories[0].pattern == r"\[ERROR\]"
-        assert categories[0].parent == "app"
-    
-    def test_remove_custom_category(self, temp_settings_file: str) -> None:
-        """Test removing custom category."""
-        manager = SettingsManager(temp_settings_file)
-        
-        manager.add_custom_category(CustomCategory("errors", r"\[ERROR\]"))
-        manager.add_custom_category(CustomCategory("warnings", r"\[WARN\]"))
-        
-        result = manager.remove_custom_category("errors")
-        
-        assert result is True
-        categories = manager.get_custom_categories()
-        assert len(categories) == 1
-        assert categories[0].name == "warnings"
-    
-    def test_remove_custom_category_not_found(self, temp_settings_file: str) -> None:
-        """Test removing non-existent custom category."""
-        manager = SettingsManager(temp_settings_file)
-        
-        result = manager.remove_custom_category("nonexistent")
-        
-        assert result is False
     
     def test_add_highlight_pattern(self, temp_settings_file: str) -> None:
         """Test adding highlight pattern."""
@@ -451,26 +334,10 @@ class TestSettingsManager:
             filepath = os.path.join(tmpdir, "subdir", "settings.json")
             manager = SettingsManager(filepath)
             
-            manager.add_custom_category(CustomCategory("test", "pattern"))
+            manager.add_highlight_pattern(HighlightPatternData("error", "#FF0000"))
             manager.save()
             
             assert os.path.exists(filepath)
-    
-    def test_multiple_custom_categories(self, temp_settings_file: str) -> None:
-        """Test multiple custom categories."""
-        manager = SettingsManager(temp_settings_file)
-        
-        manager.add_custom_category(CustomCategory("errors", r"\[ERROR\]"))
-        manager.add_custom_category(CustomCategory("warnings", r"\[WARN\]"))
-        manager.add_custom_category(CustomCategory("info", r"\[INFO\]"))
-        
-        categories = manager.get_custom_categories()
-        
-        assert len(categories) == 3
-        names = [c.name for c in categories]
-        assert "errors" in names
-        assert "warnings" in names
-        assert "info" in names
     
     def test_multiple_highlight_patterns(self, temp_settings_file: str) -> None:
         """Test multiple highlight patterns."""
@@ -516,21 +383,6 @@ class TestSettingsManager:
 
 class TestSettingsManagerPersistence:
     """Tests for settings persistence."""
-    
-    def test_persist_custom_categories(self, temp_settings_file: str) -> None:
-        """Test persisting custom categories."""
-        manager = SettingsManager(temp_settings_file)
-        
-        manager.add_custom_category(CustomCategory("errors", r"\[ERROR\]", "app"))
-        manager.add_custom_category(CustomCategory("warnings", r"\[WARN\]"))
-        manager.save()
-        
-        # Load in new manager
-        manager2 = SettingsManager(temp_settings_file)
-        manager2.load()
-        
-        categories = manager2.get_custom_categories()
-        assert len(categories) == 2
     
     def test_persist_highlight_patterns(self, temp_settings_file: str) -> None:
         """Test persisting highlight patterns."""
@@ -645,41 +497,12 @@ class TestSettingsManagerEdgeCases:
         
         assert manager2.settings.last_file == special_path
     
-    def test_unicode_in_settings(self, temp_settings_file: str) -> None:
-        """Test with unicode characters in settings."""
-        manager = SettingsManager(temp_settings_file)
-        
-        # Unicode category name
-        manager.add_custom_category(CustomCategory("ошибки", r"\[ОШИБКА\]"))
-        manager.save()
-        
-        manager2 = SettingsManager(temp_settings_file)
-        manager2.load()
-        
-        categories = manager2.get_custom_categories()
-        assert categories[0].name == "ошибки"
-    
-    def test_concurrent_modifications(self, temp_settings_file: str) -> None:
-        """Test concurrent modifications to settings."""
-        manager = SettingsManager(temp_settings_file)
-        
-        # Add category
-        manager.add_custom_category(CustomCategory("errors", r"\[ERROR\]"))
-        
-        # Get categories and modify returned list
-        categories = manager.get_custom_categories()
-        categories.append(CustomCategory("new", "pattern"))
-        
-        # Original should be unchanged
-        assert len(manager.get_custom_categories()) == 1
-    
     def test_large_settings(self, temp_settings_file: str) -> None:
         """Test with large settings."""
         manager = SettingsManager(temp_settings_file)
         
-        # Add many categories and patterns
+        # Add many patterns
         for i in range(100):
-            manager.add_custom_category(CustomCategory(f"category{i}", f"pattern{i}"))
             manager.add_highlight_pattern(HighlightPatternData(f"text{i}", "#FF0000"))
         
         manager.save()
@@ -688,7 +511,6 @@ class TestSettingsManagerEdgeCases:
         manager2 = SettingsManager(temp_settings_file)
         manager2.load()
         
-        assert len(manager2.get_custom_categories()) == 100
         assert len(manager2.get_highlight_patterns()) == 100
 
 
