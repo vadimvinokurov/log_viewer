@@ -88,6 +88,7 @@ class MainController(QObject):
 
         # Category filtering
         self._window.category_toggled.connect(self._on_category_toggled)
+        self._window.categories_batch_changed.connect(self._on_categories_batch_changed)
 
         # Counter filtering (log levels)
         self._window.counter_toggled.connect(self._on_counter_toggled)
@@ -373,6 +374,34 @@ class MainController(QObject):
         # This matches the UI behavior where checkboxes cascade to children
         # Ref: docs/specs/features/category-checkbox-behavior.md §3.1, §3.2
         self._filter_controller.toggle_category(category_path, checked)
+        self._filter_controller.apply_filter()
+        
+        # Save category states to settings
+        self._save_category_states()
+    
+    def _on_categories_batch_changed(self) -> None:
+        """Handle batch category change (Check All/Uncheck All).
+        
+        This is called when all categories are toggled at once via the
+        Check All/Uncheck All buttons. Instead of processing each category
+        individually, we perform a single batch update for better performance.
+        """
+        # Get all current checkbox states from UI
+        # These have already been updated by CategoryPanel.check_all()
+        category_states = self._window.get_category_panel().get_category_states()
+        
+        if not category_states:
+            return
+        
+        # All states should be the same after Check All/Uncheck All
+        # Check the first one to determine the action
+        first_state = next(iter(category_states.values()))
+        
+        # Use toggle_all_categories for efficient batch update
+        # This properly updates the CategoryTree and enabled_categories set
+        self._filter_controller.toggle_all_categories(first_state)
+        
+        # Apply filter once
         self._filter_controller.apply_filter()
         
         # Save category states to settings

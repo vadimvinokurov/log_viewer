@@ -54,6 +54,7 @@ class CategoryPanel(QWidget):
     
     # Signals
     category_toggled = Signal(str, bool)  # category_path, checked
+    categories_batch_changed = Signal()  # Emitted when all categories changed at once
     search_changed = Signal(str)
     current_tab_changed = Signal(int)
     
@@ -67,6 +68,7 @@ class CategoryPanel(QWidget):
         self._model: Optional[QStandardItemModel] = None
         self._category_items: dict[str, QStandardItem] = {}
         self._all_categories: set[str] = set()
+        self._batch_updating: bool = False  # Flag to prevent per-item signals during batch updates
         
         self._setup_ui()
     
@@ -255,6 +257,10 @@ class CategoryPanel(QWidget):
         Args:
             item: The changed item.
         """
+        # Skip signal during batch updates
+        if self._batch_updating:
+            return
+        
         # Block signals to prevent recursion
         self._model.blockSignals(True)
         
@@ -265,6 +271,10 @@ class CategoryPanel(QWidget):
         
         # Unblock signals
         self._model.blockSignals(False)
+        
+        # Force viewport repaint to show updated checkbox states
+        # This is needed because setCheckState doesn't trigger immediate repaint
+        self._tree_view.viewport().update()
         
         # Emit changed signal
         path = item.data(Qt.UserRole)
@@ -322,6 +332,10 @@ class CategoryPanel(QWidget):
         self._search_input.blockSignals(True)
         self._search_input.clear()
         self._search_input.blockSignals(False)
+        
+        # Reset the model to ensure view is updated
+        # This is necessary after clear() to properly refresh the view
+        self._model.layoutChanged.emit()
         
         # Show all items (in case search filter was active)
         self._show_all_items(self._model.invisibleRootItem())
@@ -408,17 +422,30 @@ class CategoryPanel(QWidget):
         
         Args:
             checked: True to check all, False to uncheck all.
+        
+        Performance Note:
+            Uses batch update signal instead of per-category signals to avoid
+            O(n) filter recompilations. This ensures UI remains responsive
+            even with thousands of categories.
         """
-        # Block signals
-        self._model.blockSignals(True)
+        # Set batch updating flag to prevent per-item signals
+        self._batch_updating = True
         
         check_state = Qt.Checked if checked else Qt.Unchecked
         
         for item in self._category_items.values():
             item.setCheckState(check_state)
         
-        # Unblock signals
-        self._model.blockSignals(False)
+        # Clear batch updating flag
+        self._batch_updating = False
+        
+        # Force viewport repaint to show updated checkbox states
+        # This is needed because setCheckState doesn't trigger immediate repaint
+        self._tree_view.viewport().update()
+        
+        # Emit single batch signal instead of per-category signals
+        # This allows controller to perform a single filter update
+        self.categories_batch_changed.emit()
     
     def check_category(self, path: str, checked: bool) -> None:
         """Check or uncheck a specific category.

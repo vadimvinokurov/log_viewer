@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
     auto_reload_toggled = Signal(bool)  # enabled
     find_requested = Signal(str, bool)  # text, case_sensitive
     category_toggled = Signal(str, bool)  # category_path, checked
+    categories_batch_changed = Signal()  # all categories changed at once
     filter_applied = Signal(str, str)  # search_text, mode
     filter_cleared = Signal()
     counter_toggled = Signal(str, bool)  # counter_type, visible
@@ -173,6 +174,7 @@ class MainWindow(QMainWindow):
 
         # Category panel signals
         self._category_panel.category_toggled.connect(self.category_toggled)
+        self._category_panel.categories_batch_changed.connect(self.categories_batch_changed)
 
         # Log table signals
         self._log_table.find_requested.connect(self._on_find)
