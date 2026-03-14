@@ -23,11 +23,12 @@ Quick navigation to all specification documents.
 | [category-tree.md](specs/features/category-tree.md) | Tree structure, operations | v1.1 |
 | [file-management.md](specs/features/file-management.md) | LogDocument, FileController, IndexWorker | v1.0 |
 | [main-controller.md](specs/features/main-controller.md) | Central coordinator, responsibilities, signal flow | v1.0 |
-| [ui-components.md](specs/features/ui-components.md) | MainWindow, LogTableView, CategoryPanel, widgets | v1.1 |
-| [ui-design-system.md](specs/features/ui-design-system.md) | Visual style, colors, typography, components, accessibility, animations | v1.0 |
+| [ui-components.md](specs/features/ui-components.md) | MainWindow, LogTableView, CategoryPanel, widgets | v1.2 |
+| [ui-design-system.md](specs/features/ui-design-system.md) | Visual style, colors, typography, components, accessibility, animations | v1.1 |
 | [filter-controller.md](specs/features/filter-controller.md) | Filter state management, coordination, signals | v1.0 |
 | [settings-manager.md](specs/features/settings-manager.md) | Persistent settings, QSettings wrapper | v1.0 |
 | [highlight-service.md](specs/features/highlight-service.md) | Highlight patterns, engine coordination | v1.0 |
+| [terminology-cleanup-systemnode.md](specs/features/terminology-cleanup-systemnode.md) | Rename SystemNode → CategoryDisplayNode, terminology cleanup | DRAFT |
 
 ---
 
@@ -63,7 +64,7 @@ Quick navigation to all specification documents.
   - LogEntry: [engine-api.yaml](specs/api/engine-api.yaml) §2.1
   - LogLevel: [engine-api.yaml](specs/api/engine-api.yaml) §2.2
   - LogDocument: [engine-api.yaml](specs/api/engine-api.yaml) §2.3
-  - SystemNode: [engine-api.yaml](specs/api/engine-api.yaml) §2.4
+  - CategoryDisplayNode: [engine-api.yaml](specs/api/engine-api.yaml) §2.4
 
 - **Core**
   - FilterEngine: [filter-engine.md](specs/features/filter-engine.md), [engine-api.yaml](specs/api/engine-api.yaml) §3.1

@@ -18,7 +18,7 @@ from src.views.main_window import MainWindow
 from src.controllers.filter_controller import FilterController
 from src.controllers.file_controller import FileController
 from src.controllers.index_worker import IndexWorker
-from src.core.category_tree import CategoryTree, build_system_nodes
+from src.core.category_tree import CategoryTree, build_category_display_nodes
 from src.services.statistics_service import StatisticsService
 from src.services.highlight_service import HighlightService
 from src.utils.settings_manager import SettingsManager
@@ -272,7 +272,7 @@ class MainController(QObject):
         self._filter_controller.set_categories(categories)
 
         # Update category panel with category tree
-        category_nodes = build_system_nodes(self._category_tree)
+        category_nodes = build_category_display_nodes(self._category_tree)
         self._window.get_category_panel().set_categories(category_nodes)
         
         # Restore category checkbox states from settings

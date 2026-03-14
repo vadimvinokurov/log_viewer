@@ -246,7 +246,7 @@ class CategoryPanel(QWidget):
     
     # === Category Management ===
     
-    def set_categories(self, categories: list[SystemNode]) -> None:
+    def set_categories(self, categories: list[CategoryDisplayNode]) -> None:
         """Populate tree with categories."""
     
     def get_checked_categories(self) -> set[str]:
@@ -534,8 +534,8 @@ def test_log_table_set_entries(log_table):
 def test_category_panel_check_all(category_panel):
     """Test checking all categories."""
     category_panel.set_categories([
-        SystemNode(name="A", path="A", checked=False),
-        SystemNode(name="B", path="B", checked=False),
+        CategoryDisplayNode(name="A", path="A", checked=False),
+        CategoryDisplayNode(name="B", path="B", checked=False),
     ])
     
     category_panel.check_all(True)
@@ -558,6 +558,7 @@ def test_category_panel_check_all(category_panel):
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3 | 2026-03-14 | Renamed SystemNode → CategoryDisplayNode |
 | 1.2 | 2026-03-14 | Renamed CategoryPanel tabs: Processes→Filters, Threads→Highlights |
 | 1.1 | 2026-03-14 | Removed custom categories from CategoryPanel |
 | 1.0 | 2026-03-13 | Initial UI components specification |

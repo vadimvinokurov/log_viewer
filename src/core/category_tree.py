@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from beartype import beartype
 
-from src.models import SystemNode
+from src.models import CategoryDisplayNode
 
 
 @dataclass
@@ -259,25 +259,25 @@ class CategoryTree:
 
 
 @beartype
-def build_system_nodes(tree: CategoryTree) -> list[SystemNode]:
-    """Build system nodes from a category tree.
+def build_category_display_nodes(tree: CategoryTree) -> list[CategoryDisplayNode]:
+    """Build display nodes from a category tree for CategoryPanel.
 
-    Transforms a CategoryTree into a list of SystemNode instances
-    for display in the systems panel.
+    Transforms a CategoryTree into a list of CategoryDisplayNode instances
+    for display in the CategoryPanel's tree view.
 
     Args:
         tree: The CategoryTree to transform.
 
     Returns:
-        List of SystemNode instances representing the system tree.
+        List of CategoryDisplayNode instances representing the category tree.
     """
-    nodes: list[SystemNode] = []
+    nodes: list[CategoryDisplayNode] = []
 
     # Get root categories from the category tree
     root_categories = tree.get_root_categories()
 
     for root_cat in root_categories:
-        node = _build_system_node_from_category(tree, root_cat)
+        node = _build_category_display_node_from_category(tree, root_cat)
         if node:
             nodes.append(node)
 
@@ -285,18 +285,18 @@ def build_system_nodes(tree: CategoryTree) -> list[SystemNode]:
 
 
 @beartype
-def _build_system_node_from_category(
+def _build_category_display_node_from_category(
     tree: CategoryTree,
     category: CategoryNode | str
-) -> SystemNode | None:
-    """Build a system node from a category.
+) -> CategoryDisplayNode | None:
+    """Build a category display node from a category.
 
     Args:
         tree: The CategoryTree to use.
         category: CategoryNode or category path string.
 
     Returns:
-        SystemNode or None.
+        CategoryDisplayNode or None.
     """
     # Handle both CategoryNode and string path
     if isinstance(category, CategoryNode):
@@ -313,9 +313,9 @@ def _build_system_node_from_category(
     children = tree.get_children(category_path)
 
     # Build child nodes
-    child_nodes: list[SystemNode] = []
+    child_nodes: list[CategoryDisplayNode] = []
     for child in children:
-        child_node = _build_system_node_from_category(tree, child)
+        child_node = _build_category_display_node_from_category(tree, child)
         if child_node:
             child_nodes.append(child_node)
 
@@ -323,7 +323,7 @@ def _build_system_node_from_category(
     # Extract the last part of the category path for display
     display_name = category_path.split("/")[-1] if "/" in category_path else category_path
 
-    return SystemNode(
+    return CategoryDisplayNode(
         name=display_name,
         path=category_path,
         checked=True,

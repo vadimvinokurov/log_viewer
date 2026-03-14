@@ -55,7 +55,7 @@ from src.views.main_window import MainWindow
 from src.controllers.filter_controller import FilterController
 from src.controllers.file_controller import FileController
 from src.controllers.index_worker import IndexWorker
-from src.core.category_tree import CategoryTree, build_system_nodes
+from src.core.category_tree import CategoryTree, build_category_display_nodes
 from src.services.statistics_service import StatisticsService
 from src.services.highlight_service import HighlightService
 from src.utils.settings_manager import SettingsManager
@@ -479,4 +479,5 @@ def test_main_controller_filter(main_controller):
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-14 | Updated import: build_system_nodes → build_category_display_nodes |
 | 1.0 | 2026-03-13 | Initial main controller specification |

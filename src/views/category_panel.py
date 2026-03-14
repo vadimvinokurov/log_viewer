@@ -39,7 +39,7 @@ from PySide6.QtCore import Qt, Signal, QModelIndex
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 
 from src.styles.stylesheet import get_tree_stylesheet, get_tab_stylesheet
-from src.models import SystemNode
+from src.models import CategoryDisplayNode
 
 
 class CategoryPanel(QWidget):
@@ -296,7 +296,7 @@ class CategoryPanel(QWidget):
     
     # === Public API - Category Management ===
     
-    def set_categories(self, categories: list[SystemNode]) -> None:
+    def set_categories(self, categories: list[CategoryDisplayNode]) -> None:
         """Populate tree with categories.
         
         Args:
@@ -329,7 +329,7 @@ class CategoryPanel(QWidget):
         # Expand all items
         self._tree_view.expandAll()
     
-    def _add_category_node(self, node: SystemNode, parent: QStandardItem) -> None:
+    def _add_category_node(self, node: CategoryDisplayNode, parent: QStandardItem) -> None:
         """Add a category node to the tree.
         
         Args:

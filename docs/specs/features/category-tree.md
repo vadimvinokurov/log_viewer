@@ -213,18 +213,18 @@ class CategoryNode:
 
 ```python
 @beartype
-def build_system_nodes(tree: CategoryTree) -> list[SystemNode]:
+def build_category_display_nodes(tree: CategoryTree) -> list[CategoryDisplayNode]:
     """
-    Build system nodes from a category tree.
+    Build category display nodes from a category tree.
     
-    Transforms CategoryTree into list of SystemNode instances
-    for display in the systems panel.
+    Transforms CategoryTree into list of CategoryDisplayNode instances
+    for display in the CategoryPanel.
     
     Args:
         tree: The CategoryTree to transform.
     
     Returns:
-        List of SystemNode instances representing the system tree.
+        List of CategoryDisplayNode instances representing the category tree.
     """
 ```
 
@@ -355,5 +355,6 @@ See [test_category_tree.py](../../tests/test_category_tree.py)
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2 | 2026-03-14 | Renamed SystemNode → CategoryDisplayNode, build_system_nodes → build_category_display_nodes |
 | 1.1 | 2026-03-14 | Removed custom categories feature |
 | 1.0 | 2026-03-13 | Initial category tree specification |

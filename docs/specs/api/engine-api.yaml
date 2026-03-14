@@ -121,18 +121,18 @@ class LogDocument:
         """Context manager exit."""
 ```
 
-### §2.4 SystemNode
+### §2.4 CategoryDisplayNode
 
 ```python
 from dataclasses import dataclass, field
 
 @dataclass
-class SystemNode:
-    """System node for tree view display.
+class CategoryDisplayNode:
+    """Display node for category tree view.
     
     This is a display model used by the UI to show the category tree.
     It is transformed from CategoryNode (internal tree structure) by
-    build_system_nodes() function.
+    build_category_display_nodes() function.
     
     Note: This is separate from CategoryNode which is used internally
     by CategoryTree for filtering logic.
@@ -141,7 +141,7 @@ class SystemNode:
     name: str                           # Display name (last part of path)
     path: str                           # Full path (e.g., "HordeMode/scripts/app")
     checked: bool = True                # Checkbox state for UI
-    children: list[SystemNode] = field(default_factory=list)
+    children: list[CategoryDisplayNode] = field(default_factory=list)
 ```
 
 ### §2.5 CategoryNode
@@ -156,8 +156,8 @@ class CategoryNode:
     This is the internal tree structure used by CategoryTree for
     filtering and visibility logic. It is NOT used directly by the UI.
     
-    Use build_system_nodes() to transform CategoryNode tree to
-    SystemNode list for display.
+    Use build_category_display_nodes() to transform CategoryNode tree to
+    CategoryDisplayNode list for display.
     """
     
     name: str                           # Node name (e.g., "app")
@@ -231,7 +231,7 @@ class CompiledFilter:
 ### §3.2 CategoryTree
 
 ```python
-from src.models.system_node import SystemNode
+from src.models.category_display_node import CategoryDisplayNode
 
 class CategoryTree:
     """Tree structure for category filtering."""
@@ -240,13 +240,13 @@ class CategoryTree:
         """Initialize an empty tree."""
     
     @property
-    def root(self) -> SystemNode:
+    def root(self) -> CategoryDisplayNode:
         """Get the root node."""
         
     def add_category(self, path: str) -> None:
         """Add a category path to the tree."""
         
-    def get_node(self, path: str) -> SystemNode | None:
+    def get_node(self, path: str) -> CategoryDisplayNode | None:
         """Get a node by path."""
         
     def is_visible(self, path: str) -> bool:
@@ -580,7 +580,7 @@ class CategoryPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the category panel."""
     
-    def set_categories(self, categories: list[SystemNode]) -> None:
+    def set_categories(self, categories: list[CategoryDisplayNode]) -> None:
         """Populate tree with categories."""
         
     def get_checked_categories(self) -> set[str]:
@@ -810,4 +810,5 @@ LEVEL_ICONS = {
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-14 | Renamed SystemNode → CategoryDisplayNode, build_system_nodes → build_category_display_nodes |
 | 1.0 | 2026-03-13 | Initial API specification |

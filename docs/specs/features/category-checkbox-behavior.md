@@ -26,7 +26,7 @@ This specification defines the checkbox behavior for the category tree panel in 
 
 - Existing implementation: [`CategoryPanel`](../../src/views/category_panel.py:47)
 - Category tree model: [`CategoryTree`](../../src/core/category_tree.py:23)
-- System node model: [`SystemNode`](../../src/models/system_node.py:1)
+- Display node model: [`CategoryDisplayNode`](../../src/models/category_display_node.py:1)
 
 ---
 
@@ -422,5 +422,6 @@ self._update_children_recursive(item, checked)
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| v1.2 | 2026-03-14 | Spec Architect | Updated SystemNode → CategoryDisplayNode reference |
 | v1.1 | 2026-03-14 | Spec Architect | Removed custom categories |
 | v1.0 | 2026-03-13 | Spec Architect | Initial draft |

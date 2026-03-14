@@ -2,7 +2,7 @@
 
 This module provides the redesigned main window with:
 - Search toolbar with statistics bar at the top
-- Horizontal splitter (75% log table / 25% systems panel)
+- Horizontal splitter (75% log table / 25% CategoryPanel)
 """
 from __future__ import annotations
 
