@@ -40,6 +40,7 @@ from PySide6.QtGui import QStandardItemModel, QStandardItem
 
 from src.styles.stylesheet import get_tree_stylesheet, get_tab_stylesheet
 from src.models import CategoryDisplayNode
+from src.views.components.filters_tab import FiltersTabContent
 
 
 class CategoryPanel(QWidget):
@@ -50,6 +51,12 @@ class CategoryPanel(QWidget):
     - Search input with magnifying glass icon
     - Tree view with checkboxes
     - Hierarchical structure with expand/collapse
+    
+    // Ref: docs/specs/features/saved-filters.md §4.3
+    // Master: docs/SPEC.md §1 (Python 3.12+, PySide6, beartype)
+    // Thread: Main thread only (Qt UI component per docs/specs/global/threading.md §8.1)
+    // Memory: FiltersTabContent owned by CategoryPanel (Qt parent-child)
+    // Perf: O(1) for signal forwarding
     """
     
     # Signals
@@ -57,6 +64,12 @@ class CategoryPanel(QWidget):
     categories_batch_changed = Signal()  # Emitted when all categories changed at once
     search_changed = Signal(str)
     current_tab_changed = Signal(int)
+    
+    # New signals for saved filters
+    # Ref: docs/specs/features/saved-filters.md §4.3
+    saved_filter_enabled_changed = Signal(str, bool)  # filter_id, enabled
+    saved_filter_deleted = Signal(str)                 # filter_id
+    saved_filter_renamed = Signal(str, str)            # filter_id, new_name
     
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Initialize the category panel.
@@ -154,12 +167,24 @@ class CategoryPanel(QWidget):
         
         categories_layout.addWidget(button_bar)
         
-        # Placeholder content for other tabs
+        # Filters tab content
+        # Ref: docs/specs/features/saved-filters.md §4.3
+        self._filters_content = FiltersTabContent()
         filters_layout = QVBoxLayout(self._filters_tab)
-        filters_label = QLabel("Filters\n(Coming soon)")
-        filters_label.setAlignment(Qt.AlignCenter)
-        filters_label.setStyleSheet("color: #999; font-style: italic;")
-        filters_layout.addWidget(filters_label)
+        filters_layout.setContentsMargins(4, 4, 4, 4)
+        filters_layout.addWidget(self._filters_content)
+        
+        # Connect signals from FiltersTabContent
+        # Ref: docs/specs/features/saved-filters.md §4.3
+        self._filters_content.filter_enabled_changed.connect(
+            self.saved_filter_enabled_changed
+        )
+        self._filters_content.filter_deleted.connect(
+            self.saved_filter_deleted
+        )
+        self._filters_content.filter_renamed.connect(
+            self.saved_filter_renamed
+        )
         
         highlights_layout = QVBoxLayout(self._highlights_tab)
         highlights_label = QLabel("Highlights\n(Coming soon)")
@@ -507,4 +532,15 @@ class CategoryPanel(QWidget):
     def clear_search(self) -> None:
         """Clear the search input."""
         self._search_input.clear()
+    
+    # === Filters Tab Management ===
+    
+    # Ref: docs/specs/features/saved-filters.md §4.3
+    def get_filters_content(self) -> FiltersTabContent:
+        """Get the filters tab content widget.
+        
+        Returns:
+            The FiltersTabContent widget.
+        """
+        return self._filters_content
     

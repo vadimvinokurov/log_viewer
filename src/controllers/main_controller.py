@@ -2,6 +2,12 @@
 
 This module provides the controller for the redesigned MainWindow,
 integrating with the existing Model and Core layers.
+
+// Ref: docs/specs/features/saved-filters.md §5.2
+// Master: docs/SPEC.md §1 (Python 3.12+, PySide6, beartype)
+// Thread: Main thread only (per docs/specs/global/threading.md §8.1)
+// Memory: SavedFilterController owned by MainController (Qt parent-child)
+// Perf: Filter application < 50ms for 100K entries (per docs/SPEC.md §7)
 """
 from __future__ import annotations
 
@@ -14,10 +20,12 @@ from beartype import beartype
 
 from src.models.log_document import LogDocument
 from src.models.log_entry import LogEntry, LogLevel
+from src.models.filter_state import FilterMode
 from src.views.main_window import MainWindow
 from src.controllers.filter_controller import FilterController
 from src.controllers.file_controller import FileController
 from src.controllers.index_worker import IndexWorker
+from src.controllers.saved_filter_controller import SavedFilterController
 from src.core.category_tree import CategoryTree, build_category_display_nodes
 from src.services.statistics_service import StatisticsService
 from src.services.highlight_service import HighlightService
@@ -60,6 +68,13 @@ class MainController(QObject):
         # Initialize settings manager
         self._settings_manager = SettingsManager()
 
+        # Initialize saved filter controller
+        # Ref: docs/specs/features/saved-filters.md §5.2
+        self._saved_filter_controller = SavedFilterController(
+            self._settings_manager,
+            self
+        )
+
         # Initialize file controller
         self._file_controller = FileController(self)
         self._setup_file_controller()
@@ -96,6 +111,33 @@ class MainController(QObject):
         # Filter controller signals
         self._filter_controller.filter_applied.connect(self._on_filter_applied)
         self._filter_controller.filter_error.connect(self._on_filter_error)
+        
+        # Saved filter controller signals
+        # Ref: docs/specs/features/saved-filters.md §5.2
+        self._saved_filter_controller.filters_changed.connect(
+            self._on_saved_filters_changed
+        )
+        self._saved_filter_controller.filter_applied.connect(
+            self._on_saved_filters_applied
+        )
+        
+        # SearchToolbar save filter signal
+        # Ref: docs/specs/features/saved-filters.md §5.2
+        self._window.get_search_toolbar().save_filter_requested.connect(
+            self._on_save_filter_requested
+        )
+        
+        # CategoryPanel saved filter signals
+        # Ref: docs/specs/features/saved-filters.md §5.2
+        self._window.get_category_panel().saved_filter_enabled_changed.connect(
+            self._on_saved_filter_enabled_changed
+        )
+        self._window.get_category_panel().saved_filter_deleted.connect(
+            self._on_saved_filter_deleted
+        )
+        self._window.get_category_panel().saved_filter_renamed.connect(
+            self._on_saved_filter_renamed
+        )
 
     def _setup_file_controller(self) -> None:
         """Set up file controller connections."""
@@ -278,6 +320,11 @@ class MainController(QObject):
         
         # Restore category checkbox states from settings
         self._restore_category_states()
+
+        # Populate filters tab with saved filters
+        # Ref: docs/specs/features/saved-filters.md §5.2
+        filters = self._saved_filter_controller.get_all_filters()
+        self._window.get_category_panel().get_filters_content().set_filters(filters)
 
         # Start watching the file for changes
         self._file_controller.stop_watching()
@@ -470,20 +517,40 @@ class MainController(QObject):
         self._window.show_error("Filter Error", error_message)
 
     def _apply_filters(self) -> None:
-        """Apply current filters to entries."""
+        """Apply current filters to entries.
+        
+        // Ref: docs/specs/features/saved-filters.md §5.2
+        // Combines category/level filters with saved text filters using AND logic.
+        // Saved text filters combine with OR logic among themselves.
+        """
         if not self._all_entries:
             return
 
-        # Get the compiled filter from filter controller
-        filter_func = self._filter_controller.get_filter()
+        # Get category/level filter from filter controller
+        category_filter = self._filter_controller.get_filter()
+        
+        # Get saved text filter (combined OR) from saved filter controller
+        # Ref: docs/specs/features/saved-filters.md §3.1, §3.2
+        saved_text_filter = self._saved_filter_controller.get_combined_filter()
 
-        # Filter entries
-        if filter_func is None:
+        # Combine filters with AND logic
+        # Ref: docs/specs/features/saved-filters.md §3.2
+        if category_filter is None and saved_text_filter is None:
             self._filtered_entries = self._all_entries.copy()
+        elif category_filter is None:
+            self._filtered_entries = [
+                entry for entry in self._all_entries
+                if saved_text_filter(entry)
+            ]
+        elif saved_text_filter is None:
+            self._filtered_entries = [
+                entry for entry in self._all_entries
+                if category_filter(entry)
+            ]
         else:
             self._filtered_entries = [
                 entry for entry in self._all_entries
-                if filter_func(entry)
+                if category_filter(entry) and saved_text_filter(entry)
             ]
 
         # Convert to display format for the new UI
@@ -619,6 +686,101 @@ class MainController(QObject):
         if details:
             logger.debug(f"Details: {details}")
         self._window.show_error_with_details(title, message, details)
+
+    # === Saved Filter Signal Handlers ===
+    # Ref: docs/specs/features/saved-filters.md §5.2
+    
+    @beartype
+    def _on_save_filter_requested(self, text: str, mode: str) -> None:
+        """Handle save filter request from SearchToolbar.
+        
+        Args:
+            text: Filter text content
+            mode: Filter mode ('plain', 'regex', or 'simple')
+        
+        // Ref: docs/specs/features/saved-filters.md §5.2
+        // Ref: docs/specs/features/saved-filters.md §7.2 (status message)
+        """
+        mode_map = {
+            "plain": FilterMode.PLAIN,
+            "regex": FilterMode.REGEX,
+            "simple": FilterMode.SIMPLE,
+        }
+        filter_mode = mode_map.get(mode, FilterMode.PLAIN)
+        filter_id = self._saved_filter_controller.save_filter(text, filter_mode)
+        
+        # Get the saved filter to show its name in status message
+        filters = self._saved_filter_controller.get_all_filters()
+        for f in filters:
+            if f.id == filter_id:
+                self._window.show_status(f"Filter saved: {f.name}", 3000)
+                break
+    
+    def _on_saved_filters_changed(self) -> None:
+        """Handle saved filter list changes (add/delete/rename).
+        
+        Updates the Filters tab with the current list of saved filters.
+        
+        // Ref: docs/specs/features/saved-filters.md §5.2
+        """
+        filters = self._saved_filter_controller.get_all_filters()
+        self._window.get_category_panel().get_filters_content().set_filters(filters)
+    
+    def _on_saved_filters_applied(self) -> None:
+        """Re-apply filters when saved filters change.
+        
+        // Ref: docs/specs/features/saved-filters.md §5.2
+        """
+        self._apply_filters()
+    
+    @beartype
+    def _on_saved_filter_enabled_changed(self, filter_id: str, enabled: bool) -> None:
+        """Handle saved filter enabled/disabled.
+        
+        Args:
+            filter_id: ID of the filter
+            enabled: New enabled state
+        
+        // Ref: docs/specs/features/saved-filters.md §5.2
+        """
+        self._saved_filter_controller.set_filter_enabled(filter_id, enabled)
+    
+    @beartype
+    def _on_saved_filter_deleted(self, filter_id: str) -> None:
+        """Handle saved filter deletion.
+        
+        Args:
+            filter_id: ID of the filter to delete
+        
+        // Ref: docs/specs/features/saved-filters.md §5.2
+        // Ref: docs/specs/features/saved-filters.md §7.2 (status message)
+        """
+        # Get filter name before deletion for status message
+        filters = self._saved_filter_controller.get_all_filters()
+        filter_name = None
+        for f in filters:
+            if f.id == filter_id:
+                filter_name = f.name
+                break
+        
+        self._saved_filter_controller.delete_filter(filter_id)
+        
+        if filter_name:
+            self._window.show_status(f"Filter deleted: {filter_name}", 3000)
+    
+    @beartype
+    def _on_saved_filter_renamed(self, filter_id: str, new_name: str) -> None:
+        """Handle saved filter rename.
+        
+        Args:
+            filter_id: ID of the filter to rename
+            new_name: New name for the filter
+        
+        // Ref: docs/specs/features/saved-filters.md §5.2
+        // Ref: docs/specs/features/saved-filters.md §7.2 (status message)
+        """
+        self._saved_filter_controller.rename_filter(filter_id, new_name)
+        self._window.show_status(f"Filter renamed to: {new_name}", 3000)
 
     def close(self) -> None:
         """Clean up resources."""

@@ -53,6 +53,8 @@ class AppSettings:
     window_geometry: Optional[bytes] = None
     column_widths: Dict[str, int] = field(default_factory=dict)
     category_states: Dict[str, bool] = field(default_factory=dict)
+    # Ref: docs/specs/features/saved-filters.md §6.1
+    saved_filters: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -61,7 +63,8 @@ class AppSettings:
             "last_file": self.last_file,
             "window_geometry": self.window_geometry.hex() if self.window_geometry else None,
             "column_widths": self.column_widths,
-            "category_states": self.category_states
+            "category_states": self.category_states,
+            "saved_filters": self.saved_filters
         }
 
     @classmethod
@@ -94,7 +97,8 @@ class AppSettings:
             last_file=data.get("last_file"),
             window_geometry=window_geometry,
             column_widths=data.get("column_widths", {}),
-            category_states=data.get("category_states", {})
+            category_states=data.get("category_states", {}),
+            saved_filters=data.get("saved_filters", [])
         )
 
 
@@ -246,3 +250,29 @@ class SettingsManager:
             Copy of category states dictionary.
         """
         return self._settings.category_states.copy()
+    
+    def save_saved_filters(self, filters_data: List[Dict[str, Any]]) -> None:
+        """Save saved filters to settings.
+        
+        # Ref: docs/specs/features/saved-filters.md §6.1
+        
+        Args:
+            filters_data: List of filter dictionaries with keys:
+                - id: str
+                - name: str
+                - filter_text: str
+                - filter_mode: str
+                - created_at: float
+                - enabled: bool
+        """
+        self._settings.saved_filters = filters_data.copy()
+    
+    def load_saved_filters(self) -> List[Dict[str, Any]]:
+        """Load saved filters from settings.
+        
+        # Ref: docs/specs/features/saved-filters.md §6.1
+        
+        Returns:
+            List of filter dictionaries, empty list if not set.
+        """
+        return self._settings.saved_filters.copy()

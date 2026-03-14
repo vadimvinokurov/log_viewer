@@ -44,8 +44,12 @@ class SearchToolbar(QWidget):
     - Refresh button (refresh icon)
     - Search input (stretches to fill available space)
     - Filter mode dropdown (Plain/Regex/Simple)
+    - Save filter button (floppy disk icon)
     
     Filter is applied on Enter. Empty text clears the filter.
+    
+    // Ref: docs/specs/features/saved-filters.md §4.1
+    // Master: docs/SPEC.md §1 (Python 3.12+, PySide6, beartype)
     """
     
     # Signals
@@ -53,6 +57,7 @@ class SearchToolbar(QWidget):
     filter_cleared = Signal()  # emitted when Enter is pressed on empty text
     open_file_clicked = Signal()  # open file button clicked
     refresh_clicked = Signal()  # refresh button clicked
+    save_filter_requested = Signal(str, str)  # filter_text, mode - emitted when save button clicked
     
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Initialize the search toolbar.
@@ -109,12 +114,24 @@ class SearchToolbar(QWidget):
         )
         self._mode_combo.setFixedWidth(80)
         layout.addWidget(self._mode_combo)
+        
+        # Save filter button (floppy disk icon)
+        # Ref: docs/specs/features/saved-filters.md §4.1
+        self._save_button = QPushButton("💾")
+        self._save_button.setFixedSize(24, 24)
+        self._save_button.setToolTip("Save current filter")
+        self._save_button.setCursor(Qt.PointingHandCursor)
+        self._save_button.setStyleSheet(_ICON_BUTTON_STYLE)
+        self._save_button.setEnabled(False)  # Initially disabled (enabled when text present)
+        layout.addWidget(self._save_button)
     
     def _connect_signals(self) -> None:
         """Connect internal signals."""
         self._open_file_button.clicked.connect(self.open_file_clicked)
         self._refresh_button.clicked.connect(self.refresh_clicked)
         self._search_input.returnPressed.connect(self._on_return_pressed)
+        self._save_button.clicked.connect(self._on_save_clicked)
+        self._search_input.textChanged.connect(self._on_text_changed)
     
     def _on_return_pressed(self) -> None:
         """Handle Enter key press in search input.
@@ -128,6 +145,28 @@ class SearchToolbar(QWidget):
             self.filter_applied.emit(text, mode)
         else:
             self.filter_cleared.emit()
+    
+    def _on_save_clicked(self) -> None:
+        """Handle save button click.
+        
+        Emits save_filter_requested signal with current filter text and mode.
+        
+        // Ref: docs/specs/features/saved-filters.md §4.1
+        """
+        text = self._search_input.text().strip()
+        mode = self._mode_combo.currentData()
+        if text:
+            self.save_filter_requested.emit(text, mode)
+    
+    def _on_text_changed(self, text: str) -> None:
+        """Enable/disable save button based on text.
+        
+        Args:
+            text: Current text in search input.
+        
+        // Ref: docs/specs/features/saved-filters.md §4.1
+        """
+        self._save_button.setEnabled(bool(text.strip()))
     
     def set_search_text(self, text: str) -> None:
         """Set the search text.
@@ -188,6 +227,7 @@ class SearchToolbarWithStats(QWidget):
     filter_cleared = Signal()
     open_file_clicked = Signal()
     refresh_clicked = Signal()
+    save_filter_requested = Signal(str, str)  # filter_text, mode
     
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Initialize the toolbar wrapper.
@@ -215,6 +255,7 @@ class SearchToolbarWithStats(QWidget):
         self._search_toolbar.filter_cleared.connect(self.filter_cleared)
         self._search_toolbar.open_file_clicked.connect(self.open_file_clicked)
         self._search_toolbar.refresh_clicked.connect(self.refresh_clicked)
+        self._search_toolbar.save_filter_requested.connect(self.save_filter_requested)
     
     # Forward methods to search toolbar
     def set_search_text(self, text: str) -> None:

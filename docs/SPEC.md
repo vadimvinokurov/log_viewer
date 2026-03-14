@@ -98,6 +98,7 @@ src/
 | Filter Controller | [specs/features/filter-controller.md](specs/features/filter-controller.md) | v1.0 |
 | Settings Manager | [specs/features/settings-manager.md](specs/features/settings-manager.md) | v1.0 |
 | Highlight Service | [specs/features/highlight-service.md](specs/features/highlight-service.md) | v1.0 |
+| Saved Filters | [specs/features/saved-filters.md](specs/features/saved-filters.md) | DRAFT |
 
 ---
 
@@ -330,6 +331,7 @@ User → CategoryPanel.category_toggled
 - [Filter Controller](specs/features/filter-controller.md)
 - [Settings Manager](specs/features/settings-manager.md)
 - [Highlight Service](specs/features/highlight-service.md)
+- [Saved Filters](specs/features/saved-filters.md)
 
 ---
 

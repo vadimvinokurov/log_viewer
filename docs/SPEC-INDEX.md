@@ -28,6 +28,7 @@ Quick navigation to all specification documents.
 | [filter-controller.md](specs/features/filter-controller.md) | Filter state management, coordination, signals | v1.0 |
 | [settings-manager.md](specs/features/settings-manager.md) | Persistent settings, QSettings wrapper | v1.0 |
 | [highlight-service.md](specs/features/highlight-service.md) | Highlight patterns, engine coordination | v1.0 |
+| [saved-filters.md](specs/features/saved-filters.md) | Saved filter presets, enable/disable, OR combination | READY |
 | [terminology-cleanup-systemnode.md](specs/features/terminology-cleanup-systemnode.md) | Rename SystemNode → CategoryDisplayNode, terminology cleanup | DRAFT |
 
 ---
@@ -109,6 +110,7 @@ Quick navigation to all specification documents.
 | Status | Description |
 |--------|-------------|
 | DRAFT | Work in progress, subject to change |
+| READY | Approved for implementation, ready for spec-orchestrator |
 | v1.0 | Approved, implemented |
 | v1.1+ | Updated version with changes |
 
