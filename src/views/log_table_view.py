@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex, Signal
 from PySide6.QtGui import (
-    QColor, QGuiApplication, QKeyEvent, QShortcut
+    QColor, QGuiApplication, QKeyEvent, QMouseEvent, QShortcut, QWheelEvent
 )
 
 from src.styles.stylesheet import get_table_stylesheet
@@ -256,10 +256,70 @@ class LogTableView(QTableView):
         self.setAlternatingRowColors(False)
 
     def _setup_scrollbars(self) -> None:
-        """Setup scrollbar behavior."""
+        """Setup scrollbar behavior to completely block horizontal scrolling.
+        
+        Ref: docs/specs/features/ui-components.md §4
+        Master: docs/SPEC.md §1
+        
+        This method implements multiple layers of protection:
+        1. Policy: Always hide horizontal scrollbar
+        2. Disabled: Prevent any interaction
+        3. Range: Set to (0, 0) to prevent any scrolling
+        4. Signal: Connect to valueChanged to reset any changes
+        """
+        # Layer 1: Hide horizontal scrollbar
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+        # Layer 2: Disable the scrollbar widget
         self.horizontalScrollBar().setDisabled(True)
+        
+        # Layer 3: Set range to (0, 0) - no scrolling possible
+        self.horizontalScrollBar().setRange(0, 0)
+        
+        # Layer 4: Connect to valueChanged signal to reset any changes
+        # This catches any programmatic or internal scroll changes
+        self.horizontalScrollBar().valueChanged.connect(self._on_horizontal_scroll_changed)
+        
+        # Set scroll mode for vertical scrolling
         self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+
+    def _on_horizontal_scroll_changed(self, value: int) -> None:
+        """Reset horizontal scroll to 0 whenever it changes.
+        
+        This is connected to the horizontal scrollbar's valueChanged signal
+        to catch any programmatic or internal scroll changes.
+        
+        Ref: docs/specs/features/ui-components.md §4
+        Master: docs/SPEC.md §1
+        
+        Args:
+            value: The new scroll value (ignored).
+        """
+        if value != 0:
+            # Block signals to prevent infinite loop
+            self.horizontalScrollBar().blockSignals(True)
+            self.horizontalScrollBar().setValue(0)
+            self.horizontalScrollBar().blockSignals(False)
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        """Override to prevent horizontal scrolling.
+        
+        This is the core protection layer that intercepts scroll operations
+        at the viewport level. By passing dx=0 to parent, we ensure that
+        no horizontal scrolling ever occurs, even during auto-scroll.
+        
+        Ref: docs/specs/features/ui-components.md §4
+        Master: docs/SPEC.md §1
+        
+        Args:
+            dx: Horizontal scroll delta (ignored, always treated as 0).
+            dy: Vertical scroll delta (passed through).
+        """
+        # Only allow vertical scrolling - pass dx=0 to parent
+        super().scrollContentsBy(0, dy)
+        
+        # Ensure horizontal scroll bar stays at 0
+        self.horizontalScrollBar().setValue(0)
 
     def _setup_header(self) -> None:
         """Setup table header."""
@@ -480,6 +540,67 @@ class LogTableView(QTableView):
         match = self._find_service.find_previous()
         if match:
             self._navigate_to_match(match)
+
+    def scrollTo(self, index: QModelIndex, hint: QAbstractItemView.ScrollHint = QAbstractItemView.EnsureVisible) -> None:
+        """Scroll to index but only vertically.
+
+        Override to prevent horizontal scrolling. Always keeps first column visible.
+
+        Ref: docs/specs/features/ui-components.md §4
+        Master: docs/SPEC.md §1
+
+        Args:
+            index: Model index to scroll to.
+            hint: Scroll hint (ignored for horizontal).
+        """
+        # Call parent scrollTo for vertical positioning
+        super().scrollTo(index, hint)
+
+        # Reset horizontal scroll to show first column
+        self.horizontalScrollBar().setValue(0)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse press, ensuring horizontal scroll stays at 0.
+
+        Ref: docs/specs/features/ui-components.md §4
+        Master: docs/SPEC.md §1
+
+        Args:
+            event: Mouse event.
+        """
+        super().mousePressEvent(event)
+        # Reset horizontal scroll after selection
+        self.horizontalScrollBar().setValue(0)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse move, preventing horizontal scroll during drag.
+
+        Ref: docs/specs/features/ui-components.md §4
+        Master: docs/SPEC.md §1
+
+        Args:
+            event: Mouse event.
+        """
+        # Call parent implementation (allows vertical drag-to-scroll)
+        super().mouseMoveEvent(event)
+
+        # Reset horizontal scroll position
+        self.horizontalScrollBar().setValue(0)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """Handle wheel event, preventing horizontal scroll from trackpad.
+
+        Ref: docs/specs/features/ui-components.md §4
+        Master: docs/SPEC.md §1
+
+        Args:
+            event: Wheel event.
+        """
+        # Call parent implementation (allows vertical scrolling)
+        super().wheelEvent(event)
+
+        # Reset horizontal scroll
+        self.horizontalScrollBar().setValue(0)
 
     def _navigate_to_match(self, match) -> None:
         """Navigate to a specific match.
