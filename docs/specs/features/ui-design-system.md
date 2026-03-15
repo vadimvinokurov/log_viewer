@@ -1,7 +1,7 @@
 # UI Design System Specification
 
-**Version:** 1.1
-**Last Updated:** 2026-03-14
+**Version:** 1.3
+**Last Updated:** 2026-03-15
 **Project Context:** Python Tooling (Desktop Application - PySide6/Qt)
 
 ---
@@ -55,18 +55,38 @@ This document defines the comprehensive UI Design System for the Log Viewer appl
 | Text Disabled | `#999999` | 153, 153, 153 | Disabled text |
 | Text Inverted | `#FFFFFF` | 255, 255, 255 | Text on dark backgrounds |
 
-#### §2.1.3 Semantic Colors - Log Levels
+#### §2.1.3 Statistics Counter Colors
+
+Colors for the statistics counter widgets displayed in the status bar.
 
 | Level | Background | Text/Icon | Border | Usage |
 |-------|------------|-----------|--------|-------|
-| CRITICAL | `#FFE4E4` | `#FF4444` | `#FF4444` | Critical errors |
-| ERROR | `#FFE4E4` | `#CC0000` | `#CC0000` | Error messages |
-| WARNING | `#FFF4E0` | `#FFAA00` | `#FFAA00` | Warning messages |
-| MSG | `#E0F0FF` | `#0066CC` | `#0066CC` | Informational messages |
-| DEBUG | `#F0E8F4` | `#8844AA` | `#8844AA` | Debug messages |
-| TRACE | `#E4FFE4` | `#00AA00` | `#00AA00` | Trace messages |
+| CRITICAL | `#FFE4E4` | `#FF4444` | `#FF4444` | Critical error counter |
+| ERROR | `#FFE4E4` | `#CC0000` | `#CC0000` | Error counter |
+| WARNING | `#FFF4E0` | `#FFAA00` | `#FFAA00` | Warning counter |
+| MSG | `#E0F0FF` | `#0066CC` | `#0066CC` | Message counter |
+| DEBUG | `#F0E8F4` | `#8844AA` | `#8844AA` | Debug counter |
+| TRACE | `#E4FFE4` | `#00AA00` | `#00AA00` | Trace counter |
 
-#### §2.1.4 Log Entry Background Colors
+**Implementation:** [`StatsColors`](../../src/constants/colors.py) class
+
+#### §2.1.4 Log Icon Colors
+
+Colors for log level icons displayed in the Type column of the log table.
+These are muted colors designed for readability in table cells.
+
+| Level | Icon Color | Usage |
+|-------|------------|-------|
+| CRITICAL | `#CC0000` | Critical level icon |
+| ERROR | `#CC0000` | Error level icon |
+| WARNING | `#B8860B` | Warning level icon (dark goldenrod) |
+| MSG | `#CCCCCC` | Message level icon (gray) |
+| DEBUG | `#999999` | Debug level icon (gray) |
+| TRACE | `#AAAAAA` | Trace level icon (gray) |
+
+**Implementation:** [`LogIconColors`](../../src/constants/colors.py) class
+
+#### §2.1.5 Log Entry Background Colors
 
 | Level | Background | Usage |
 |-------|------------|-------|
@@ -77,7 +97,7 @@ This document defines the comprehensive UI Design System for the Log Viewer appl
 | DEBUG | `#E8E8E8` | Debug log row background |
 | TRACE | `#F5F5F5` | Trace log row background |
 
-#### §2.1.5 Special Colors
+#### §2.1.6 Special Colors
 
 | Name | Hex | Usage |
 |------|-----|-------|
@@ -117,7 +137,8 @@ font-family: "Consolas", "Courier New", monospace;
 | Header | 11pt | Bold (700) | 1.3 | Dialog titles |
 | Small | 8pt | Regular (400) | 1.3 | Tooltips, hints |
 | Table Header | 9pt | Regular (400) | 1.0 | Column headers |
-| Log Entry | 9pt | Regular (400) | 1.0 | Log table rows |
+| Log Entry (macOS) | 11pt | Regular (400) | 1.0 | Log table rows on macOS |
+| Log Entry (Windows) | 9pt | Regular (400) | 1.0 | Log table rows on Windows |
 
 #### §2.2.3 Text Colors
 
@@ -610,6 +631,8 @@ QScrollBar::handle:vertical:hover {
 | Default | `#F0F0F0` | Top: `#C0C0C0` | `#888888` |
 | Hover | `#E8E8E8` | Top: `#A0A0A0` | `#888888` |
 
+**Note:** Background is drawn via paintEvent, not stylesheet. The stylesheet defines `#E0E0E0` but paintEvent uses `#E8E8E8`.
+
 **Dimensions:**
 - Height: 6px
 - Arrow Font Size: 6pt
@@ -619,6 +642,8 @@ QScrollBar::handle:vertical:hover {
 - Duration: 150ms
 - Easing: OutCubic
 - Property: Arrow rotation (0° → 180°)
+
+**Implementation:** [`ToggleStrip`](../../src/views/widgets/collapsible_panel.py)
 
 ### §4.9 Status Bar
 
@@ -881,31 +906,52 @@ def get_statistics_counter_stylesheet(bg_color: str, text_color: str, border_col
 
 ### §7.2 Color Constants
 
-**File:** `src/constants/colors.py`
+**File:** [`src/constants/colors.py`](../../src/constants/colors.py)
 
 **Organization:**
 ```python
 class LogColors:
-    """Background colors for log entries."""
+    """Background colors for log entries in table view.
+    
+    Ref: §2.1.5 Log Entry Background Colors
+    """
     CRITICAL: str = "#FF6B6B"
     ERROR: str = "#FF8C8C"
-    # ...
+    WARNING: str = "#FFD93D"
+    MSG: str = "#FFFFFF"
+    DEBUG: str = "#E8E8E8"
+    TRACE: str = "#F5F5F5"
 
 class LogIconColors:
-    """Icon colors for log levels."""
+    """Icon colors for log level column in table view.
+    
+    Ref: §2.1.4 Log Icon Colors
+    Note: Uses muted colors for readability in table cells.
+    """
     CRITICAL: str = "#CC0000"
-    # ...
+    ERROR: str = "#CC0000"
+    WARNING: str = "#B8860B"  # Dark goldenrod
+    MSG: str = "#CCCCCC"
+    DEBUG: str = "#999999"
+    TRACE: str = "#AAAAAA"
 
 class StatsColors:
-    """Statistics counter colors."""
+    """Statistics counter colors for status bar widgets.
+    
+    Ref: §2.1.3 Statistics Counter Colors
+    """
     CRITICAL_BG: str = "#FFE4E4"
     CRITICAL_TEXT: str = "#FF4444"
-    # ...
+    CRITICAL_BORDER: str = "#FF4444"
+    # ... (similar for ERROR, WARNING, MSG, DEBUG, TRACE)
 
 # UI element colors
 SELECTION_HIGHLIGHT_COLOR: str = "#dcebf7"
 FIND_HIGHLIGHT_COLOR: str = "#FFFF00"
-# ...
+DEFAULT_TEXT_COLOR: str = "#000000"
+SECONDARY_TEXT_COLOR: str = "#666666"
+BORDER_COLOR: str = "#CCCCCC"
+HEADER_BACKGROUND: str = "#F0F0F0"
 ```
 
 ### §7.3 Dimension Constants
@@ -1001,5 +1047,7 @@ class CounterWidget(QWidget):
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3 | 2026-03-15 | Increased log table font size to 11pt on macOS for better readability (§2.2.2) |
+| 1.2 | 2026-03-15 | Added §2.1.4 Log Icon Colors (LogIconColors), renamed §2.1.3 to Statistics Counter Colors, corrected toggle strip hover color (#E8E8E8 via paintEvent), added implementation references, documented stylesheet/paintEvent discrepancy |
 | 1.1 | 2026-03-14 | Renamed CategoryPanel tabs: Processes→Filters, Threads→Highlights |
 | 1.0 | 2026-03-13 | Initial UI Design System specification |

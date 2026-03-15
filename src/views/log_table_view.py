@@ -16,7 +16,7 @@ from PySide6.QtGui import (
     QColor, QGuiApplication, QKeyEvent, QShortcut, QFont
 )
 
-from src.styles.stylesheet import get_table_stylesheet, get_monospace_font_family
+from src.styles.stylesheet import get_table_stylesheet, get_monospace_font_family, get_log_font_size
 from src.core.highlight_engine import HighlightEngine
 from src.services.find_service import FindService
 from src.services.highlight_service import HighlightService
@@ -135,7 +135,11 @@ class LogTableModel(QAbstractTableModel):
         super().__init__(parent)
         self._entries: List[LogEntry] = []
         self._headers = ["Time", "Category", "Type", "Message"]
-        self._monospace_font = QFont(get_monospace_font_family().replace('"', ''), 9)
+        # Ref: docs/specs/features/ui-design-system.md §2.2.2 - platform-specific font size
+        self._monospace_font = QFont(
+            get_monospace_font_family().replace('"', ''),
+            get_log_font_size()
+        )
 
     def set_entries(self, entries: List[LogEntry]) -> None:
         """Set entries and reset model."""

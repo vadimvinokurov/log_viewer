@@ -38,13 +38,35 @@ def get_monospace_font_family() -> str:
         return '"Consolas", "Courier New", monospace'
 
 
+def get_log_font_size() -> int:
+    """Get the appropriate font size for log table entries based on platform.
+    
+    Ref: docs/specs/features/ui-design-system.md §2.2.2 Type Scale
+    Returns 11pt for macOS (darwin) for better readability,
+    9pt for Windows/Linux as the default.
+    
+    Returns:
+        Font size in points (11 for macOS, 9 for others).
+    """
+    if sys.platform == "darwin":
+        # macOS - use 11pt for better readability
+        return 11
+    else:
+        # Windows/Linux - use 9pt
+        return 9
+
+
 def get_application_stylesheet() -> str:
     """Get the main application stylesheet.
+    
+    Ref: docs/specs/features/ui-design-system.md §2.2.2 Type Scale
+    Uses platform-specific font size for better readability on macOS.
     
     Returns:
         QSS stylesheet string for the entire application.
     """
     font_family = get_font_family()
+    font_size = get_log_font_size()
     
     return f"""
         /* Main Application */
@@ -55,7 +77,7 @@ def get_application_stylesheet() -> str:
         /* Global Widget Styling */
         QWidget {{
             font-family: {font_family};
-            font-size: 9pt;
+            font-size: {font_size}pt;
             color: #333333;
         }}
         
@@ -248,10 +270,14 @@ def get_application_stylesheet() -> str:
 def get_table_stylesheet() -> str:
     """Get the stylesheet for log table view.
     
+    Ref: docs/specs/features/ui-design-system.md §2.2.2
+    Uses platform-specific font size for message column.
+    
     Returns:
         QSS stylesheet string for QTableWidget.
     """
     monospace_font = get_monospace_font_family()
+    font_size = get_log_font_size()
     
     return f"""
         /* Table View */
@@ -285,12 +311,6 @@ def get_table_stylesheet() -> str:
         
         QHeaderView::section:hover {{
             background-color: #e8e8e8;
-        }}
-        
-        /* Message column uses monospace font */
-        QTableWidget::item:message-column {{
-            font-family: {monospace_font};
-            font-size: 9pt;
         }}
     """
 

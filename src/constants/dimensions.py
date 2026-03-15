@@ -4,10 +4,18 @@ This module defines all dimension-related constants including table dimensions,
 column widths, and layout ratios.
 """
 
+import sys
 
-# Table dimensions
-TABLE_ROW_HEIGHT: int = 16
-"""Height of each row in the log table in pixels."""
+
+# Table dimensions - platform-specific for better readability
+# Ref: docs/specs/features/ui-design-system.md §2.2.2 Type Scale
+# macOS uses 11pt font, needs taller rows; Windows/Linux uses 9pt
+if sys.platform == "darwin":
+    TABLE_ROW_HEIGHT: int = 18
+    """Height of each row in the log table in pixels (18px for macOS 11pt font)."""
+else:
+    TABLE_ROW_HEIGHT: int = 16
+    """Height of each row in the log table in pixels (16px for Windows/Linux 9pt font)."""
 
 TABLE_HEADER_HEIGHT: int = 20
 """Height of the table header in pixels."""
