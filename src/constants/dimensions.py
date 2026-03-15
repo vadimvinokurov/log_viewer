@@ -2,23 +2,24 @@
 
 This module defines all dimension-related constants including table dimensions,
 column widths, and layout ratios.
+
+Ref: docs/specs/features/typography-system.md §4.2
 """
 
-import sys
+from src.constants.typography import Typography
 
 
-# Table dimensions - platform-specific for better readability
-# Ref: docs/specs/features/ui-design-system.md §2.2.2 Type Scale
-# macOS uses 11pt font, needs taller rows; Windows/Linux uses 9pt
-if sys.platform == "darwin":
-    TABLE_ROW_HEIGHT: int = 18
-    """Height of each row in the log table in pixels (18px for macOS 11pt font)."""
-else:
-    TABLE_ROW_HEIGHT: int = 16
-    """Height of each row in the log table in pixels (16px for Windows/Linux 9pt font)."""
+# Table dimensions - derived from Typography system
+# Ref: docs/specs/features/typography-system.md §3.4
+TABLE_ROW_HEIGHT: int = Typography.TABLE_ROW_HEIGHT
+"""Height of each row in the log table in pixels (16px for Windows/Linux, 18px for macOS).
+Derived from Typography.TABLE_ROW_HEIGHT.
+"""
 
-TABLE_HEADER_HEIGHT: int = 20
-"""Height of the table header in pixels."""
+TABLE_HEADER_HEIGHT: int = Typography.TABLE_HEADER_HEIGHT
+"""Height of the table header in pixels (fixed at 20px).
+Derived from Typography.TABLE_HEADER_HEIGHT.
+"""
 
 
 # Column widths

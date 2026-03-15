@@ -2,44 +2,62 @@
 
 This module provides cross-platform compatible styles for all UI components.
 Fonts are selected based on platform availability.
+
+Ref: docs/specs/features/typography-system.md §4.1
+Ref: docs/specs/features/ui-design-system.md §2.2
 """
 from __future__ import annotations
 
 import sys
+import warnings
 
 from src.constants.colors import StatsColors
+from src.constants.typography import Typography
 
 
 def get_font_family() -> str:
     """Get the appropriate font family for the current platform.
     
+    .. deprecated:: 1.1
+        Use Typography.PRIMARY instead.
+    
     Returns:
         Font family string suitable for the current platform.
+    
+    Ref: docs/specs/features/typography-system.md §4.1
     """
-    if sys.platform == "darwin":
-        # macOS - use SF Pro or system fonts
-        return '"SF Pro Text", "Helvetica Neue", Arial, sans-serif'
-    else:
-        # Windows and others - use Segoe UI
-        return '"Segoe UI", "Roboto", Arial, sans-serif'
+    warnings.warn(
+        "get_font_family() is deprecated. Use Typography.PRIMARY instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return Typography.PRIMARY
 
 
 def get_monospace_font_family() -> str:
     """Get the appropriate monospace font family for the current platform.
     
+    .. deprecated:: 1.1
+        Use Typography.MONOSPACE instead.
+    
     Returns:
         Monospace font family string suitable for the current platform.
+    
+    Ref: docs/specs/features/typography-system.md §4.1
     """
-    if sys.platform == "darwin":
-        # macOS - use Menlo or Monaco
-        return '"Menlo", "Monaco", "Courier New", monospace'
-    else:
-        # Windows - use Consolas
-        return '"Consolas", "Courier New", monospace'
+    warnings.warn(
+        "get_monospace_font_family() is deprecated. Use Typography.MONOSPACE instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return Typography.MONOSPACE
 
 
 def get_log_font_size() -> int:
     """Get the appropriate font size for log table entries based on platform.
+    
+    .. deprecated:: 1.1
+        Use Typography.BODY or Typography.LOG_ENTRY instead.
     
     Ref: docs/specs/features/ui-design-system.md §2.2.2 Type Scale
     Returns 11pt for macOS (darwin) for better readability,
@@ -47,26 +65,29 @@ def get_log_font_size() -> int:
     
     Returns:
         Font size in points (11 for macOS, 9 for others).
+    
+    Ref: docs/specs/features/typography-system.md §4.1
     """
-    if sys.platform == "darwin":
-        # macOS - use 11pt for better readability
-        return 11
-    else:
-        # Windows/Linux - use 9pt
-        return 9
+    warnings.warn(
+        "get_log_font_size() is deprecated. Use Typography.BODY or Typography.LOG_ENTRY instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return Typography.BODY
 
 
 def get_application_stylesheet() -> str:
     """Get the main application stylesheet.
     
+    Ref: docs/specs/features/typography-system.md §4.1
     Ref: docs/specs/features/ui-design-system.md §2.2.2 Type Scale
     Uses platform-specific font size for better readability on macOS.
     
     Returns:
         QSS stylesheet string for the entire application.
     """
-    font_family = get_font_family()
-    font_size = get_log_font_size()
+    font_family = Typography.PRIMARY
+    font_size = Typography.BODY
     
     return f"""
         /* Main Application */
@@ -270,14 +291,15 @@ def get_application_stylesheet() -> str:
 def get_table_stylesheet() -> str:
     """Get the stylesheet for log table view.
     
+    Ref: docs/specs/features/typography-system.md §4.1
     Ref: docs/specs/features/ui-design-system.md §2.2.2
     Uses platform-specific font size for message column.
     
     Returns:
         QSS stylesheet string for QTableWidget.
     """
-    monospace_font = get_monospace_font_family()
-    font_size = get_log_font_size()
+    monospace_font = Typography.MONOSPACE
+    font_size = Typography.LOG_ENTRY
     
     return f"""
         /* Table View */
