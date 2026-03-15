@@ -61,6 +61,14 @@ from src.constants.log_levels import (
     get_log_level_config,
 )
 
+# Table configuration
+from src.constants.table_config import (
+    ALIGN_CENTER,
+    ALIGN_LEFT_VCENTER,
+    COLUMN_ALIGNMENTS,
+    get_column_alignment,
+)
+
 __all__ = [
     # App constants
     "APPLICATION_NAME",
@@ -99,4 +107,9 @@ __all__ = [
     "LogLevelConfig",
     "get_all_log_levels",
     "get_log_level_config",
+    # Table configuration
+    "ALIGN_CENTER",
+    "ALIGN_LEFT_VCENTER",
+    "COLUMN_ALIGNMENTS",
+    "get_column_alignment",
 ]

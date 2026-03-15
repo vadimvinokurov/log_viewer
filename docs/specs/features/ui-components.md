@@ -123,12 +123,14 @@ Table view for displaying log entries with columns: Time, Category, Type, Messag
 
 ### §4.2 Columns
 
-| Column | Width | Content | Font |
-|--------|-------|---------|------|
-| Time | 50px | Timestamp (time only) | Default |
-| Category | 100px | Category path | Default |
-| Type | 40px | Log level icon | Monospace |
-| Message | Stretch | Display message | Monospace |
+| Column | Width | Content | Font | Alignment |
+|--------|-------|---------|------|-----------|
+| Time | 50px | Timestamp (time only) | Default | Left + VCenter |
+| Category | 100px | Category path | Default | Left + VCenter |
+| Type | 40px | Log level icon | Monospace | Center |
+| Message | Stretch | Display message | Monospace | Left + VCenter |
+
+**Alignment Details:** See [table-column-alignment.md](table-column-alignment.md) for full alignment specification.
 
 ### §4.3 API Reference
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Optional
 from PySide6.QtWidgets import QStyledItemDelegate, QStyle
 from PySide6.QtCore import Qt, QModelIndex
-from PySide6.QtGui import QColor, QPainter, QTextDocument, QTextCharFormat
+from PySide6.QtGui import QColor, QPainter, QTextDocument, QTextCharFormat, QTextOption
 
 from src.core.highlight_engine import HighlightEngine
 
@@ -74,6 +74,11 @@ class HighlightDelegate(QStyledItemDelegate):
         doc = QTextDocument()
         doc.setDocumentMargin(0)
         
+        # CRITICAL: Disable text wrapping (per docs/specs/features/table-cell-text-overflow.md §3.2.1)
+        text_option = QTextOption()
+        text_option.setWrapMode(QTextOption.NoWrap)
+        doc.setDefaultTextOption(text_option)
+        
         # Set default text color
         default_format = QTextCharFormat()
         if option.state & QStyle.State_Selected:
@@ -109,8 +114,41 @@ class HighlightDelegate(QStyledItemDelegate):
         else:
             doc.setPlainText(text)
         
-        # Draw the text
+        # Get alignment from model (per docs/specs/features/table-column-alignment.md §3.1)
+        alignment = index.data(Qt.TextAlignmentRole)
+        if alignment is None:
+            alignment = Qt.AlignLeft | Qt.AlignVCenter
+        
+        # Set document width to cell width for proper text layout
+        doc.setTextWidth(option.rect.width())
+        
+        # Draw the text with alignment
         painter.save()
+        
+        # Clip to cell bounds (per docs/specs/features/table-cell-text-overflow.md §3.2.2)
+        painter.setClipRect(option.rect)
+        
+        # Calculate horizontal offset based on alignment
+        doc_height = doc.size().height()
+        if alignment & Qt.AlignHCenter:
+            # Center horizontally
+            x_offset = (option.rect.width() - doc.idealWidth()) / 2
+        elif alignment & Qt.AlignRight:
+            # Right align
+            x_offset = option.rect.width() - doc.idealWidth()
+        else:
+            # Left align (default)
+            x_offset = 0
+        
+        # Calculate vertical offset based on alignment
+        if alignment & Qt.AlignVCenter:
+            y_offset = (option.rect.height() - doc_height) / 2
+        elif alignment & Qt.AlignBottom:
+            y_offset = option.rect.height() - doc_height
+        else:
+            y_offset = 0
+        
         painter.translate(option.rect.topLeft())
+        painter.translate(x_offset, y_offset)
         doc.drawContents(painter)
         painter.restore()

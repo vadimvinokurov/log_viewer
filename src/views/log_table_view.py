@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 
 from src.styles.stylesheet import get_table_stylesheet
 from src.constants.typography import Typography
+from src.constants.table_config import get_column_alignment
 from src.core.highlight_engine import HighlightEngine
 from src.services.find_service import FindService
 from src.services.highlight_service import HighlightService
@@ -180,12 +181,9 @@ class LogTableModel(QAbstractTableModel):
             if col == self.COL_TYPE:
                 return LEVEL_ICON_COLORS.get(entry.level)
 
+        # Ref: docs/specs/features/table-column-alignment.md §3.1
         elif role == Qt.TextAlignmentRole:
-            if col == self.COL_TYPE:
-                return Qt.AlignCenter
-            elif col == self.COL_TIME:
-                return Qt.AlignLeft | Qt.AlignVCenter
-            return Qt.AlignLeft | Qt.AlignVCenter
+            return get_column_alignment(col)
 
         elif role == Qt.FontRole:
             if col == self.COL_MESSAGE:

@@ -26,6 +26,8 @@ Quick navigation to all specification documents.
 | [ui-components.md](specs/features/ui-components.md) | MainWindow, LogTableView, CategoryPanel, widgets | v1.2 |
 | [ui-design-system.md](specs/features/ui-design-system.md) | Visual style, colors, typography, components, accessibility, animations | v1.3 |
 | [typography-system.md](specs/features/typography-system.md) | Unified font system, type scale, platform-specific sizes | DRAFT |
+| [table-column-alignment.md](specs/features/table-column-alignment.md) | LogTableView column text alignment, horizontal/vertical positioning | v1.0 |
+| [table-cell-text-overflow.md](specs/features/table-cell-text-overflow.md) | Table cell text overflow, clipping, no-wrap behavior | v1.0 |
 | [filter-controller.md](specs/features/filter-controller.md) | Filter state management, coordination, signals | v1.0 |
 | [settings-manager.md](specs/features/settings-manager.md) | Persistent settings, QSettings wrapper | v1.0 |
 | [highlight-service.md](specs/features/highlight-service.md) | Highlight patterns, engine coordination | v1.0 |
@@ -102,6 +104,7 @@ Quick navigation to all specification documents.
 - **UI Components**: [ui-components.md](specs/features/ui-components.md)
 - **UI Design System**: [ui-design-system.md](specs/features/ui-design-system.md)
 - **Typography**: [typography-system.md](specs/features/typography-system.md)
+- **Table Rendering**: [table-column-alignment.md](specs/features/table-column-alignment.md), [table-cell-text-overflow.md](specs/features/table-cell-text-overflow.md)
 - **Settings**: [settings-manager.md](specs/features/settings-manager.md)
 - **Highlighting**: [highlight-service.md](specs/features/highlight-service.md)
 
