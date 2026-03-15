@@ -28,7 +28,7 @@ from src.constants.colors import LogColors, LogIconColors
 from src.constants.log_levels import LogLevel, LOG_LEVEL_CONFIGS
 from src.constants.dimensions import (
     get_table_row_height,
-    TABLE_HEADER_HEIGHT,
+    get_table_header_height,
     TIME_COLUMN_WIDTH,
     CATEGORY_COLUMN_WIDTH,
     TYPE_COLUMN_WIDTH,
@@ -324,7 +324,7 @@ class LogTableView(QTableView):
     def _setup_header(self) -> None:
         """Setup table header."""
         header = self.horizontalHeader()
-        header.setFixedHeight(TABLE_HEADER_HEIGHT)
+        header.setFixedHeight(get_table_header_height())
         header.setSectionsClickable(False)
         
         # Use Interactive mode for all columns

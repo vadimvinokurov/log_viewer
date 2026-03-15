@@ -1,9 +1,9 @@
 # Typography System Specification
 
-**Version:** 2.1
+**Version:** 2.2
 **Last Updated:** 2026-03-15
 **Project Context:** Python Tooling (Desktop Application - PySide6/Qt)
-**Status:** v2.1 (APPROVED)
+**Status:** v2.2 (APPROVED)
 
 ---
 
@@ -182,6 +182,10 @@ class Typography:
     BODY: int = BODY_SIZE  # Same as BODY_SIZE
     LOG_ENTRY: int = BODY_SIZE  # Same as BODY_SIZE
     
+    # Cell padding constant
+    TABLE_CELL_PADDING: int = 2
+    """Padding in pixels for table cells (rows and headers)."""
+    
     # Derived dimensions
     @classmethod
     @property
@@ -192,16 +196,30 @@ class Typography:
         and adds appropriate padding for comfortable reading.
         
         Returns:
-            Row height in pixels (font metrics height + 2px padding).
+            Row height in pixels (font metrics height + TABLE_CELL_PADDING).
         
         Ref: docs/specs/features/typography-system.md §3.2
         """
         from PySide6.QtGui import QFontMetrics
         metrics = QFontMetrics(cls.LOG_FONT)
-        return metrics.height() + 2
+        return metrics.height() + cls.TABLE_CELL_PADDING
     
-    TABLE_HEADER_HEIGHT: int = 20
-    """Table header height (fixed at 20px)."""
+    @classmethod
+    @property
+    def TABLE_HEADER_HEIGHT(cls) -> int:
+        """Get table header height based on actual font metrics.
+        
+        Uses QFontMetrics to get the actual rendered height of the font
+        and adds appropriate padding for comfortable reading.
+        
+        Returns:
+            Header height in pixels (font metrics height + TABLE_CELL_PADDING).
+        
+        Ref: docs/specs/features/typography-system.md §3.2
+        """
+        from PySide6.QtGui import QFontMetrics
+        metrics = QFontMetrics(cls.UI_FONT)
+        return metrics.height() + cls.TABLE_CELL_PADDING
 ```
 
 **Key Differences from v1.x:**
@@ -317,14 +335,17 @@ Typography.LOG_FONT    # System monospace font (QFont)
 Typography.PRIMARY     # UI font family string
 Typography.MONOSPACE   # Monospace font family string
 
-# Font size (from system)
-Typography.BODY_SIZE   # System default font size (int)
-Typography.BODY        # Alias for BODY_SIZE
-Typography.LOG_ENTRY   # Alias for BODY_SIZE
+    # Font size (from system)
+    Typography.BODY_SIZE   # System default font size (int)
+    Typography.BODY        # Alias for BODY_SIZE
+    Typography.LOG_ENTRY   # Alias for BODY_SIZE
 
-# Derived dimensions
-Typography.TABLE_ROW_HEIGHT    # Row height (font metrics height + 2)
-Typography.TABLE_HEADER_HEIGHT # Header height (20px)
+    # Cell padding
+    Typography.TABLE_CELL_PADDING  # Cell padding in pixels (2)
+
+    # Derived dimensions
+    Typography.TABLE_ROW_HEIGHT    # Row height (font metrics height + TABLE_CELL_PADDING)
+    Typography.TABLE_HEADER_HEIGHT # Header height (font metrics height + TABLE_CELL_PADDING)
 ```
 
 ### §5.2 Internal API
@@ -379,6 +400,15 @@ def test_table_row_height_derived():
     metrics = QFontMetrics(Typography.LOG_FONT)
     expected_height = metrics.height() + 2
     assert Typography.TABLE_ROW_HEIGHT == expected_height
+
+def test_table_header_height_derived():
+    """Header height should be derived from font metrics."""
+    from PySide6.QtGui import QFontMetrics
+    from src.constants.typography import Typography
+    
+    metrics = QFontMetrics(Typography.UI_FONT)
+    expected_height = metrics.height() + 2
+    assert Typography.TABLE_HEADER_HEIGHT == expected_height
 
 def test_primary_font_family():
     """PRIMARY should return font family string."""
@@ -451,6 +481,7 @@ def test_log_table_uses_monospace():
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.2 | 2026-03-15 | Changed TABLE_HEADER_HEIGHT from fixed 20px to dynamic (font metrics + 2px) |
 | 2.1 | 2026-03-15 | Use QFontMetrics.height() for accurate row height calculation |
 | 2.0.1 | 2026-03-15 | Fixed row height padding from 7px to 18px for proper text display |
 | 2.0 | 2026-03-15 | Simplified to use Qt system fonts, removed platform-specific code |

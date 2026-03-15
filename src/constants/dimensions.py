@@ -54,9 +54,43 @@ TABLE_ROW_HEIGHT: int = _LazyTableRowHeight()  # type: ignore[assignment]
 Computed dynamically from QFontMetrics.height() + 2px padding.
 """
 
-TABLE_HEADER_HEIGHT: int = Typography.TABLE_HEADER_HEIGHT
-"""Height of the table header in pixels (fixed at 20px).
-Derived from Typography.TABLE_HEADER_HEIGHT.
+
+def get_table_header_height() -> int:
+    """Get table header height based on actual font metrics.
+
+    Uses QFontMetrics to get the actual rendered height of the font
+    and adds appropriate padding for comfortable reading.
+
+    Returns:
+        Header height in pixels (font metrics height + 2px padding).
+    
+    Ref: docs/specs/features/typography-system.md §4.3
+    """
+    # Use Typography.TABLE_HEADER_HEIGHT which handles QFontMetrics calculation
+    return Typography.TABLE_HEADER_HEIGHT
+
+
+class _LazyTableHeaderHeight:
+    """Lazy descriptor for TABLE_HEADER_HEIGHT.
+    
+    QFontMetrics requires QApplication to be initialized.
+    This descriptor computes the value on first access.
+    
+    Ref: docs/specs/features/typography-system.md §4.3
+    """
+    
+    def __init__(self):
+        self._value: int | None = None
+    
+    def __get__(self, obj, objtype=None) -> int:
+        if self._value is None:
+            self._value = Typography.TABLE_HEADER_HEIGHT
+        return self._value
+
+
+TABLE_HEADER_HEIGHT: int = _LazyTableHeaderHeight()  # type: ignore[assignment]
+"""Height of the table header in pixels.
+Computed dynamically from QFontMetrics.height() + 2px padding.
 """
 
 

@@ -172,6 +172,10 @@ class Typography:
         """
         return cls.UI_FONT.pointSize()
     
+    # Cell padding constant
+    TABLE_CELL_PADDING: int = 2
+    """Padding in pixels for table cells (rows and headers)."""
+    
     # Derived dimensions
     @classproperty
     def TABLE_ROW_HEIGHT(cls) -> int:
@@ -181,13 +185,26 @@ class Typography:
         and adds appropriate padding for comfortable reading.
         
         Returns:
-            Row height in pixels (font metrics height + 2px padding).
+            Row height in pixels (font metrics height + TABLE_CELL_PADDING).
         
         Ref: docs/specs/features/typography-system.md §3.2
         """
         from PySide6.QtGui import QFontMetrics
         metrics = QFontMetrics(cls.LOG_FONT)
-        return metrics.height() + 2
+        return metrics.height() + cls.TABLE_CELL_PADDING
     
-    TABLE_HEADER_HEIGHT: int = 20
-    """Table header height (fixed at 20px)."""
+    @classproperty
+    def TABLE_HEADER_HEIGHT(cls) -> int:
+        """Get table header height based on actual font metrics.
+        
+        Uses QFontMetrics to get the actual rendered height of the font
+        and adds appropriate padding for comfortable reading.
+        
+        Returns:
+            Header height in pixels (font metrics height + TABLE_CELL_PADDING).
+        
+        Ref: docs/specs/features/typography-system.md §3.2
+        """
+        from PySide6.QtGui import QFontMetrics
+        metrics = QFontMetrics(cls.UI_FONT)
+        return metrics.height() + cls.TABLE_CELL_PADDING

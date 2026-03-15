@@ -256,6 +256,8 @@ def get_table_stylesheet() -> str:
         
         /* Table Header */
         QHeaderView::section {
+            font-family: """ + Typography.PRIMARY + """;
+            font-weight: normal;
             background-color: #f5f5f5;
             border: none;
             border-bottom: 1px solid #c0c0c0;

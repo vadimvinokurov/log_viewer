@@ -82,3 +82,12 @@ class TestGetTableStylesheet:
         """
         stylesheet = get_table_stylesheet()
         assert ':message-column' not in stylesheet
+    
+    def test_table_header_font_weight_normal(self) -> None:
+        """Test that table header has explicit font-weight: normal.
+        
+        Ref: docs/specs/features/typography-system.md §4.1
+        Header font should match table rows (normal weight, not bold).
+        """
+        stylesheet = get_table_stylesheet()
+        assert 'font-weight: normal' in stylesheet

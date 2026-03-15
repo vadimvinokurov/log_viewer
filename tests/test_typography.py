@@ -90,9 +90,12 @@ class TestTypography:
         expected_height = metrics.height() + 2
         assert Typography.TABLE_ROW_HEIGHT == expected_height
     
-    def test_table_header_height_fixed(self) -> None:
-        """Header height should be fixed at 20."""
-        assert Typography.TABLE_HEADER_HEIGHT == 20
+    def test_table_header_height_derived(self, qapp: QApplication) -> None:
+        """Header height should be derived from font metrics."""
+        from PySide6.QtGui import QFontMetrics
+        metrics = QFontMetrics(Typography.UI_FONT)
+        expected_height = metrics.height() + 2
+        assert Typography.TABLE_HEADER_HEIGHT == expected_height
 
 
 class TestDimensionsIntegration:
@@ -104,10 +107,14 @@ class TestDimensionsIntegration:
     def test_dimensions_uses_typography(self, qapp: QApplication) -> None:
         """Dimensions should use Typography constants."""
         from PySide6.QtGui import QFontMetrics
-        from src.constants.dimensions import get_table_row_height, TABLE_HEADER_HEIGHT
+        from src.constants.dimensions import get_table_row_height, get_table_header_height
         
         # get_table_row_height should be computed from QFontMetrics
         metrics = QFontMetrics(Typography.LOG_FONT)
         expected_height = metrics.height() + 2
         assert get_table_row_height() == expected_height
-        assert TABLE_HEADER_HEIGHT == Typography.TABLE_HEADER_HEIGHT
+        
+        # get_table_header_height should be computed from QFontMetrics
+        header_metrics = QFontMetrics(Typography.UI_FONT)
+        expected_header_height = header_metrics.height() + 2
+        assert get_table_header_height() == expected_header_height
