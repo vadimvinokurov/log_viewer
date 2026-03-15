@@ -65,9 +65,9 @@ class TestTypeScale:
     def test_type_scale_sizes(self) -> None:
         """Type scale should be platform-appropriate."""
         if Platform.IS_MACOS:
-            assert TypeScale.BODY == 11
-            assert TypeScale.HEADER == 13
-            assert TypeScale.SMALL == 10
+            assert TypeScale.BODY == 12
+            assert TypeScale.HEADER == 14
+            assert TypeScale.SMALL == 11
         else:
             assert TypeScale.BODY == 9
             assert TypeScale.HEADER == 11
@@ -118,7 +118,7 @@ class TestTypography:
         """Row height should be derived from font size."""
         assert Typography.TABLE_ROW_HEIGHT == Typography.BODY + 7
         if Platform.IS_MACOS:
-            assert Typography.TABLE_ROW_HEIGHT == 18
+            assert Typography.TABLE_ROW_HEIGHT == 19
         else:
             assert Typography.TABLE_ROW_HEIGHT == 16
     
@@ -152,6 +152,6 @@ class TestStylesheetIntegration:
         
         # Check that font size is present
         if Platform.IS_MACOS:
-            assert "11pt" in style
+            assert "12pt" in style
         else:
             assert "9pt" in style

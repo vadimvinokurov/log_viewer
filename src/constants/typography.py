@@ -91,7 +91,7 @@ class TypeScale:
     """Type scale with platform-aware sizes.
     
     Provides font sizes in points for different text contexts. macOS uses
-    +2pt offset for better readability on Retina displays.
+    +3pt offset for better readability on Retina displays.
     
     Ref: docs/specs/features/typography-system.md §3.3
     Ref: docs/specs/features/ui-design-system.md §2.2.2
@@ -108,18 +108,18 @@ class TypeScale:
     """Base small text size for Windows/Linux (8pt)."""
     
     # macOS offset for Retina displays
-    MACOS_OFFSET: int = 2
-    """Font size offset for macOS Retina displays (+2pt)."""
+    MACOS_OFFSET: int = 3
+    """Font size offset for macOS Retina displays (+3pt)."""
     
     # Computed sizes (platform-aware)
     BODY: int = BODY_BASE + (MACOS_OFFSET if Platform.IS_MACOS else 0)
-    """Body text size: 9pt (Windows/Linux) or 11pt (macOS)."""
+    """Body text size: 9pt (Windows/Linux) or 12pt (macOS)."""
     
     HEADER: int = HEADER_BASE + (MACOS_OFFSET if Platform.IS_MACOS else 0)
-    """Header text size: 11pt (Windows/Linux) or 13pt (macOS)."""
+    """Header text size: 11pt (Windows/Linux) or 14pt (macOS)."""
     
     SMALL: int = SMALL_BASE + (MACOS_OFFSET if Platform.IS_MACOS else 0)
-    """Small text size: 8pt (Windows/Linux) or 10pt (macOS)."""
+    """Small text size: 8pt (Windows/Linux) or 11pt (macOS)."""
     
     # Aliases for clarity
     BODY_SIZE: int = BODY
@@ -156,20 +156,20 @@ class Typography:
     
     # Type scale (in points)
     BODY: int = TypeScale.BODY
-    """Body text size in points (9 or 11)."""
+    """Body text size in points (9 or 12)."""
     
     HEADER: int = TypeScale.HEADER
-    """Header text size in points (11 or 13)."""
+    """Header text size in points (11 or 14)."""
     
     SMALL: int = TypeScale.SMALL
-    """Small text size in points (8 or 10)."""
+    """Small text size in points (8 or 11)."""
     
     LOG_ENTRY: int = TypeScale.LOG_ENTRY_SIZE
     """Log entry text size in points (same as BODY)."""
     
     # Derived dimensions (in pixels)
     TABLE_ROW_HEIGHT: int = TypeScale.BODY + 7
-    """Table row height in pixels (16px for 9pt, 18px for 11pt font).
+    """Table row height in pixels (16px for 9pt, 19px for 12pt font).
     
     Calculation: font size + 7px padding for comfortable row height.
     """

@@ -112,7 +112,7 @@ class TypeScale:
     """Type scale with platform-aware sizes.
     
     Ref: docs/specs/features/ui-design-system.md §2.2.2
-    macOS uses +2pt for better readability on Retina displays.
+    macOS uses +3pt for better readability on Retina displays.
     """
     # Base sizes (in points)
     BODY_BASE: int = 9      # Windows/Linux base
@@ -120,7 +120,7 @@ class TypeScale:
     SMALL_BASE: int = 8     # Windows/Linux small
     
     # macOS offset
-    MACOS_OFFSET: int = 2
+    MACOS_OFFSET: int = 3
     
     # Computed sizes
     BODY: int = BODY_BASE + (MACOS_OFFSET if Platform.IS_MACOS else 0)
@@ -139,9 +139,9 @@ class TypeScale:
 
 | Name | Windows/Linux | macOS | Usage |
 |------|---------------|-------|-------|
-| BODY | 9pt | 11pt | Default text, labels, table content |
-| HEADER | 11pt | 13pt | Dialog titles, section headers |
-| SMALL | 8pt | 10pt | Tooltips, hints, secondary text |
+| BODY | 9pt | 12pt | Default text, labels, table content |
+| HEADER | 11pt | 14pt | Dialog titles, section headers |
+| SMALL | 8pt | 11pt | Tooltips, hints, secondary text |
 
 ### §3.4 Unified Typography Class
 
@@ -171,7 +171,7 @@ class Typography:
 **Dimension Calculation:**
 - `TABLE_ROW_HEIGHT = BODY + 7`
 - 9pt font → 16px row height
-- 11pt font → 18px row height
+- 12pt font → 19px row height
 
 ---
 
@@ -326,9 +326,9 @@ def test_font_family_selection():
 def test_type_scale_sizes():
     """Type scale should be platform-appropriate."""
     if Platform.IS_MACOS:
-        assert Typography.BODY == 11
-        assert Typography.HEADER == 13
-        assert Typography.SMALL == 10
+        assert Typography.BODY == 12
+        assert Typography.HEADER == 14
+        assert Typography.SMALL == 11
     else:
         assert Typography.BODY == 9
         assert Typography.HEADER == 11
@@ -338,7 +338,7 @@ def test_table_row_height():
     """Row height should be derived from font size."""
     assert Typography.TABLE_ROW_HEIGHT == Typography.BODY + 7
     if Platform.IS_MACOS:
-        assert Typography.TABLE_ROW_HEIGHT == 18
+        assert Typography.TABLE_ROW_HEIGHT == 19
     else:
         assert Typography.TABLE_ROW_HEIGHT == 16
 ```
@@ -352,7 +352,7 @@ def test_stylesheet_uses_typography():
     style = get_application_stylesheet()
     
     if Platform.IS_MACOS:
-        assert "11pt" in style
+        assert "12pt" in style
     else:
         assert "9pt" in style
 
@@ -388,4 +388,5 @@ def test_dimensions_uses_typography():
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-15 | Changed macOS offset from +2pt to +3pt (BODY: 9→12pt, HEADER: 11→14pt, SMALL: 8→11pt) |
 | 1.0 | 2026-03-15 | Initial specification for unified typography system |
