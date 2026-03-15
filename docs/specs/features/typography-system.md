@@ -1,33 +1,39 @@
 # Typography System Specification
 
-**Version:** 1.0
+**Version:** 2.1
 **Last Updated:** 2026-03-15
 **Project Context:** Python Tooling (Desktop Application - PySide6/Qt)
-**Status:** v1.0 (IMPLEMENTED)
+**Status:** v2.1 (APPROVED)
 
 ---
 
 ## §1 Overview
 
-This specification defines a unified typography system that serves as the single source of truth for all font-related settings in the Log Viewer application. The system ensures consistent font rendering across platforms and prevents issues where font sizes are calculated but not applied.
+This specification defines a simplified typography system that uses Qt's system default fonts instead of hardcoded font families and sizes. This approach ensures native look-and-feel on all platforms without manual font selection.
 
 ### §1.1 Problem Statement
 
-Previous implementation had scattered font logic:
-- `get_font_family()` in `stylesheet.py`
-- `get_monospace_font_family()` in `stylesheet.py`
-- `get_log_font_size()` in `stylesheet.py`
-- `TABLE_ROW_HEIGHT` in `dimensions.py` (depends on font size)
+Previous implementation (v1.x) had:
+- Hardcoded font families (SF Pro Text, Segoe UI)
+- Hardcoded font sizes with platform-specific offsets
+- Multiple type scales (BODY, HEADER, SMALL)
+- Manual maintenance required for each platform
 
-This led to bugs where font size was computed but not used in global stylesheet.
+This created inconsistency and maintenance overhead.
 
 ### §1.2 Goals
 
-1. **Single Source of Truth**: All typography constants in one module
-2. **Platform-Aware**: Automatic adjustment for macOS vs Windows/Linux
-3. **Type Scale**: Named sizes for different text contexts
-4. **Derived Dimensions**: Row heights computed from font size
-5. **Maintainability**: Easy to modify font settings in one place
+1. **System Native**: Use Qt's system default fonts for native look-and-feel
+2. **Automatic Sizing**: Let the OS determine appropriate font size
+3. **Simplified API**: Single font size for all UI text
+4. **Monospace for Logs**: Preserve monospace font for log entries
+5. **Zero Maintenance**: No platform-specific code required
+
+### §1.3 Non-Goals
+
+- Custom font sizes for headers or tooltips (use system default)
+- Font weight variations (use system default weight)
+- Manual font family selection (delegate to Qt)
 
 ---
 
@@ -37,7 +43,7 @@ This led to bugs where font size was computed but not used in global stylesheet.
 
 ```
 src/constants/
-├── typography.py    # NEW: Single source of truth for fonts
+├── typography.py    # System fonts + monospace
 ├── dimensions.py    # Imports TABLE_ROW_HEIGHT from typography
 ├── colors.py        # Unchanged
 └── app_constants.py # Unchanged
@@ -48,130 +54,165 @@ src/constants/
 ```
 typography.py
     ↓ (imported by)
-├── stylesheet.py    # Uses Typography.PRIMARY, Typography.BODY
+├── stylesheet.py    # Uses Typography.PRIMARY, Typography.MONOSPACE
 ├── dimensions.py    # Uses Typography.TABLE_ROW_HEIGHT
-└── log_table_view.py # Uses Typography.MONOSPACE, Typography.LOG_ENTRY
+└── log_table_view.py # Uses Typography.LOG_FONT
 ```
 
 ---
 
 ## §3 Typography Module Specification
 
-### §3.1 Platform Detection
+### §3.1 System Font Detection
 
 ```python
-class Platform:
-    """Platform detection constants."""
-    IS_MACOS: bool = sys.platform == "darwin"
-    IS_WINDOWS: bool = sys.platform == "win32"
-    IS_LINUX: bool = sys.platform.startswith("linux")
-```
+from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtWidgets import QApplication
 
-**Rules:**
-- `IS_MACOS`: True on macOS (darwin)
-- `IS_WINDOWS`: True on Windows (win32)
-- `IS_LINUX`: True on Linux (linux, linux2)
-
-### §3.2 Font Families
-
-```python
-class FontFamily:
-    """Font family stacks for different contexts.
+class SystemFonts:
+    """Qt-based system font detection.
     
-    Ref: docs/specs/features/ui-design-system.md §2.2.1
+    Uses Qt's font system to get native fonts for each platform.
+    No manual platform detection required.
+    
+    Ref: docs/specs/features/typography-system.md §3.1
     """
-    # Primary UI font
-    MACOS_PRIMARY: str = '"SF Pro Text", "Helvetica Neue", Arial, sans-serif'
-    WINDOWS_PRIMARY: str = '"Segoe UI", "Roboto", Arial, sans-serif'
     
-    # Monospace font for code/logs
-    MACOS_MONOSPACE: str = '"Menlo", "Monaco", "Courier New", monospace'
-    WINDOWS_MONOSPACE: str = '"Consolas", "Courier New", monospace'
+    @staticmethod
+    def get_ui_font() -> QFont:
+        """Get system default UI font.
+        
+        Returns:
+            QFont: System default font (SF Pro Text on macOS, 
+                   Segoe UI on Windows, system font on Linux).
+                   Font size is determined by system settings.
+        
+        Ref: docs/specs/features/typography-system.md §3.1
+        """
+        if QApplication.instance():
+            return QApplication.font()
+        # Fallback for when QApplication is not initialized
+        return QFont()
     
-    @classmethod
-    def get_primary(cls) -> str:
-        """Get primary font family for current platform."""
-        return cls.MACOS_PRIMARY if Platform.IS_MACOS else cls.WINDOWS_PRIMARY
-    
-    @classmethod
-    def get_monospace(cls) -> str:
-        """Get monospace font family for current platform."""
-        return cls.MACOS_MONOSPACE if Platform.IS_MACOS else cls.WINDOWS_MONOSPACE
+    @staticmethod
+    def get_monospace_font() -> QFont:
+        """Get system default monospace font.
+        
+        Returns:
+            QFont: System monospace font (Menlo on macOS,
+                   Consolas on Windows, monospace on Linux).
+                   Font size matches UI font size.
+        
+        Ref: docs/specs/features/typography-system.md §3.1
+        """
+        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        # Ensure monospace font matches UI font size
+        ui_font = SystemFonts.get_ui_font()
+        font.setPointSize(ui_font.pointSize())
+        return font
 ```
 
-**Font Stack Rationale:**
-- **macOS Primary**: SF Pro Text is the native font, fallback to Helvetica Neue
-- **Windows Primary**: Segoe UI is the native font, fallback to Roboto
-- **macOS Monospace**: Menlo is the native code font, fallback to Monaco
-- **Windows Monospace**: Consolas is the native code font
+**Font Selection Table:**
 
-### §3.3 Type Scale
+| Platform | UI Font | Monospace Font | Size Source |
+|----------|---------|----------------|--------------|
+| macOS | SF Pro Text | Menlo | System Preferences |
+| Windows | Segoe UI | Consolas | Display Settings |
+| Linux | Sans Serif | Monospace | Desktop Environment |
 
-```python
-class TypeScale:
-    """Type scale with platform-aware sizes.
-    
-    Ref: docs/specs/features/ui-design-system.md §2.2.2
-    macOS uses +3pt for better readability on Retina displays.
-    """
-    # Base sizes (in points)
-    BODY_BASE: int = 9      # Windows/Linux base
-    HEADER_BASE: int = 11   # Windows/Linux header
-    SMALL_BASE: int = 8     # Windows/Linux small
-    
-    # macOS offset
-    MACOS_OFFSET: int = 3
-    
-    # Computed sizes
-    BODY: int = BODY_BASE + (MACOS_OFFSET if Platform.IS_MACOS else 0)
-    HEADER: int = HEADER_BASE + (MACOS_OFFSET if Platform.IS_MACOS else 0)
-    SMALL: int = SMALL_BASE + (MACOS_OFFSET if Platform.IS_MACOS else 0)
-    
-    # Aliases for clarity
-    BODY_SIZE: int = BODY
-    HEADER_SIZE: int = HEADER
-    SMALL_SIZE: int = SMALL
-    TABLE_HEADER_SIZE: int = BODY
-    LOG_ENTRY_SIZE: int = BODY
-```
-
-**Type Scale Table:**
-
-| Name | Windows/Linux | macOS | Usage |
-|------|---------------|-------|-------|
-| BODY | 9pt | 12pt | Default text, labels, table content |
-| HEADER | 11pt | 14pt | Dialog titles, section headers |
-| SMALL | 8pt | 11pt | Tooltips, hints, secondary text |
-
-### §3.4 Unified Typography Class
+### §3.2 Typography Constants
 
 ```python
 class Typography:
-    """Unified typography constants.
+    """Simplified typography constants.
     
-    Single source of truth for all font-related settings.
-    Import from this class, not from FontFamily or TypeScale directly.
+    Uses Qt's system fonts instead of hardcoded values.
+    All UI text uses the same font family and size.
+    Log entries use monospace font.
+    
+    Ref: docs/specs/features/typography-system.md §3.2
     """
-    # Font families
-    PRIMARY: str = FontFamily.get_primary()
-    MONOSPACE: str = FontFamily.get_monospace()
     
-    # Type scale (in points)
-    BODY: int = TypeScale.BODY
-    HEADER: int = TypeScale.HEADER
-    SMALL: int = TypeScale.SMALL
-    LOG_ENTRY: int = TypeScale.LOG_ENTRY_SIZE
+    # System fonts (QFont instances)
+    UI_FONT: QFont = SystemFonts.get_ui_font()
+    """System default UI font. Use for all UI text."""
     
-    # Derived dimensions (in pixels)
-    # Row height = font size + 7px padding
-    TABLE_ROW_HEIGHT: int = TypeScale.BODY + 7  # 16px (9pt) or 18px (11pt)
+    LOG_FONT: QFont = SystemFonts.get_monospace_font()
+    """System monospace font. Use for log entries."""
+    
+    # Font family strings (for QSS stylesheets)
+    @classmethod
+    @property
+    def PRIMARY(cls) -> str:
+        """Get UI font family as string for QSS.
+        
+        Returns:
+            Font family string (e.g., '"SF Pro Text"', 'Segoe UI').
+        
+        Ref: docs/specs/features/typography-system.md §3.2
+        """
+        return f'"{cls.UI_FONT.family()}"'
+    
+    @classmethod
+    @property
+    def MONOSPACE(cls) -> str:
+        """Get monospace font family as string for QSS.
+        
+        Returns:
+            Font family string (e.g., '"Menlo"', 'Consolas').
+        
+        Ref: docs/specs/features/typography-system.md §3.2
+        """
+        return f'"{cls.LOG_FONT.family()}"'
+    
+    # Font size (from system)
+    @classmethod
+    @property
+    def BODY_SIZE(cls) -> int:
+        """Get system default font size in points.
+        
+        Returns:
+            Font size in points (determined by system settings).
+        
+        Ref: docs/specs/features/typography-system.md §3.2
+        """
+        return cls.UI_FONT.pointSize()
+    
+    # Convenience aliases
+    BODY: int = BODY_SIZE  # Same as BODY_SIZE
+    LOG_ENTRY: int = BODY_SIZE  # Same as BODY_SIZE
+    
+    # Derived dimensions
+    @classmethod
+    @property
+    def TABLE_ROW_HEIGHT(cls) -> int:
+        """Get table row height based on actual font metrics.
+        
+        Uses QFontMetrics to get the actual rendered height of the font
+        and adds appropriate padding for comfortable reading.
+        
+        Returns:
+            Row height in pixels (font metrics height + 12px padding).
+        
+        Ref: docs/specs/features/typography-system.md §3.2
+        """
+        from PySide6.QtGui import QFontMetrics
+        metrics = QFontMetrics(cls.LOG_FONT)
+        return metrics.height() + 12
+    
     TABLE_HEADER_HEIGHT: int = 20
+    """Table header height (fixed at 20px)."""
 ```
 
-**Dimension Calculation:**
-- `TABLE_ROW_HEIGHT = BODY + 7`
-- 9pt font → 16px row height
-- 12pt font → 19px row height
+**Key Differences from v1.x:**
+
+| Aspect | v1.x | v2.0 |
+|--------|------|------|
+| Font Family | Hardcoded per platform | Qt system font |
+| Font Size | Hardcoded (9/12pt) | System default |
+| Type Scales | BODY/HEADER/SMALL | Single size |
+| Platform Code | Manual detection | Qt handles it |
+| Maintenance | Update for each OS | Zero maintenance |
 
 ---
 
@@ -179,69 +220,42 @@ class Typography:
 
 ### §4.1 stylesheet.py Changes
 
-**Before:**
-```python
-def get_font_family() -> str:
-    if sys.platform == "darwin":
-        return '"SF Pro Text", "Helvetica Neue", Arial, sans-serif'
-    else:
-        return '"Segoe UI", "Roboto", Arial, sans-serif'
-
-def get_monospace_font_family() -> str:
-    if sys.platform == "darwin":
-        return '"Menlo", "Monaco", "Courier New", monospace'
-    else:
-        return '"Consolas", "Courier New", monospace'
-
-def get_log_font_size() -> int:
-    if sys.platform == "darwin":
-        return 11
-    else:
-        return 9
-```
-
-**After:**
+**Before (v1.x):**
 ```python
 from src.constants.typography import Typography
 
-# Use Typography.PRIMARY instead of get_font_family()
-# Use Typography.MONOSPACE instead of get_monospace_font_family()
-# Use Typography.BODY instead of get_log_font_size()
+font_family = Typography.PRIMARY
+font_size = Typography.BODY
+
+return f"""
+    QWidget {{
+        font-family: {font_family};
+        font-size: {font_size}pt;
+        color: #333333;
+    }}
+"""
 ```
 
-### §4.2 dimensions.py Changes
-
-**Before:**
-```python
-import sys
-
-if sys.platform == "darwin":
-    TABLE_ROW_HEIGHT: int = 18
-else:
-    TABLE_ROW_HEIGHT: int = 16
-```
-
-**After:**
+**After (v2.0):**
 ```python
 from src.constants.typography import Typography
 
-TABLE_ROW_HEIGHT: int = Typography.TABLE_ROW_HEIGHT
-TABLE_HEADER_HEIGHT: int = Typography.TABLE_HEADER_HEIGHT
+# Use system font - no need to specify size
+# Qt will use the application font automatically
+
+return f"""
+    QWidget {{
+        font-family: {Typography.PRIMARY};
+        color: #333333;
+    }}
+"""
 ```
 
-### §4.3 log_table_view.py Changes
+**Note:** Font size is no longer specified in QSS. Qt uses the system default size automatically.
 
-**Before:**
-```python
-from src.styles.stylesheet import get_monospace_font_family, get_log_font_size
+### §4.2 log_table_view.py Changes
 
-self._monospace_font = QFont(
-    get_monospace_font_family().replace('"', ''),
-    get_log_font_size()
-)
-```
-
-**After:**
+**Before (v1.x):**
 ```python
 from src.constants.typography import Typography
 
@@ -249,6 +263,41 @@ self._monospace_font = QFont(
     Typography.MONOSPACE.replace('"', ''),
     Typography.LOG_ENTRY
 )
+```
+
+**After (v2.0):**
+```python
+from src.constants.typography import Typography
+
+self._monospace_font = Typography.LOG_FONT
+```
+
+### §4.3 dimensions.py Changes
+
+**Before (v1.x):**
+```python
+from src.constants.typography import Typography
+
+TABLE_ROW_HEIGHT: int = Typography.TABLE_ROW_HEIGHT
+```
+
+**After (v2.0):**
+```python
+from src.constants.typography import Typography
+
+# TABLE_ROW_HEIGHT is now dynamic (computed at runtime)
+def get_table_row_height() -> int:
+    """Get table row height based on actual font metrics.
+    
+    Returns:
+        Row height in pixels (font metrics height + 12px padding).
+    """
+    from PySide6.QtGui import QFontMetrics
+    metrics = QFontMetrics(Typography.LOG_FONT)
+    return metrics.height() + 12
+
+# Module-level constant computed at import time
+TABLE_ROW_HEIGHT: int = get_table_row_height()
 ```
 
 ---
@@ -260,43 +309,32 @@ self._monospace_font = QFont(
 ```python
 from src.constants.typography import Typography
 
-# Font families
-Typography.PRIMARY      # Primary UI font family (str)
-Typography.MONOSPACE   # Monospace font family (str)
+# System fonts (QFont instances)
+Typography.UI_FONT      # System default UI font (QFont)
+Typography.LOG_FONT    # System monospace font (QFont)
 
-# Type scale (font sizes in points)
-Typography.BODY        # Body text size (9 or 11)
-Typography.HEADER      # Header text size (11 or 13)
-Typography.SMALL       # Small text size (8 or 10)
-Typography.LOG_ENTRY   # Log entry size (same as BODY)
+# Font family strings (for QSS)
+Typography.PRIMARY     # UI font family string
+Typography.MONOSPACE   # Monospace font family string
 
-# Derived dimensions (in pixels)
-Typography.TABLE_ROW_HEIGHT    # Row height (16 or 18)
-Typography.TABLE_HEADER_HEIGHT # Header height (20)
+# Font size (from system)
+Typography.BODY_SIZE   # System default font size (int)
+Typography.BODY        # Alias for BODY_SIZE
+Typography.LOG_ENTRY   # Alias for BODY_SIZE
+
+# Derived dimensions
+Typography.TABLE_ROW_HEIGHT    # Row height (font metrics height + 12)
+Typography.TABLE_HEADER_HEIGHT # Header height (20px)
 ```
 
 ### §5.2 Internal API
 
 ```python
-from src.constants.typography import Platform, FontFamily, TypeScale
+from src.constants.typography import SystemFonts
 
-# Platform detection
-Platform.IS_MACOS   # bool
-Platform.IS_WINDOWS # bool
-Platform.IS_LINUX   # bool
-
-# Font families
-FontFamily.MACOS_PRIMARY    # str
-FontFamily.WINDOWS_PRIMARY  # str
-FontFamily.MACOS_MONOSPACE  # str
-FontFamily.WINDOWS_MONOSPACE # str
-FontFamily.get_primary()    # str
-FontFamily.get_monospace()  # str
-
-# Type scale
-TypeScale.BODY      # int
-TypeScale.HEADER    # int
-TypeScale.SMALL     # int
+# System font detection
+SystemFonts.get_ui_font()         # Returns QFont
+SystemFonts.get_monospace_font()  # Returns QFont
 ```
 
 ---
@@ -308,71 +346,95 @@ TypeScale.SMALL     # int
 ```python
 # tests/test_typography.py
 
-def test_platform_detection():
-    """Platform detection should work correctly."""
-    import sys
-    assert Platform.IS_MACOS == (sys.platform == "darwin")
-    assert Platform.IS_WINDOWS == (sys.platform == "win32")
+def test_ui_font_is_system_default():
+    """UI font should be Qt's default application font."""
+    from PySide6.QtWidgets import QApplication
+    from src.constants.typography import Typography
+    
+    app_font = QApplication.font()
+    assert Typography.UI_FONT.family() == app_font.family()
+    assert Typography.UI_FONT.pointSize() == app_font.pointSize()
 
-def test_font_family_selection():
-    """Font family should match platform."""
-    if Platform.IS_MACOS:
-        assert "SF Pro Text" in Typography.PRIMARY
-        assert "Menlo" in Typography.MONOSPACE
-    else:
-        assert "Segoe UI" in Typography.PRIMARY
-        assert "Consolas" in Typography.MONOSPACE
+def test_monospace_font_is_system_fixed():
+    """Monospace font should be Qt's fixed font."""
+    from PySide6.QtGui import QFontDatabase
+    from src.constants.typography import Typography
+    
+    fixed_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+    assert Typography.LOG_FONT.family() == fixed_font.family()
 
-def test_type_scale_sizes():
-    """Type scale should be platform-appropriate."""
-    if Platform.IS_MACOS:
-        assert Typography.BODY == 12
-        assert Typography.HEADER == 14
-        assert Typography.SMALL == 11
-    else:
-        assert Typography.BODY == 9
-        assert Typography.HEADER == 11
-        assert Typography.SMALL == 8
+def test_font_size_matches_system():
+    """Font size should match system default."""
+    from PySide6.QtWidgets import QApplication
+    from src.constants.typography import Typography
+    
+    app_font = QApplication.font()
+    assert Typography.BODY_SIZE == app_font.pointSize()
 
-def test_table_row_height():
-    """Row height should be derived from font size."""
-    assert Typography.TABLE_ROW_HEIGHT == Typography.BODY + 7
-    if Platform.IS_MACOS:
-        assert Typography.TABLE_ROW_HEIGHT == 19
-    else:
-        assert Typography.TABLE_ROW_HEIGHT == 16
+def test_table_row_height_derived():
+    """Row height should be derived from font metrics."""
+    from PySide6.QtGui import QFontMetrics
+    from src.constants.typography import Typography
+    
+    metrics = QFontMetrics(Typography.LOG_FONT)
+    expected_height = metrics.height() + 12
+    assert Typography.TABLE_ROW_HEIGHT == expected_height
+
+def test_primary_font_family():
+    """PRIMARY should return font family string."""
+    from src.constants.typography import Typography
+    
+    family = Typography.PRIMARY
+    assert isinstance(family, str)
+    assert family.startswith('"')
+    assert family.endswith('"')
+
+def test_monospace_font_family():
+    """MONOSPACE should return monospace family string."""
+    from src.constants.typography import Typography
+    
+    family = Typography.MONOSPACE
+    assert isinstance(family, str)
+    assert family.startswith('"')
+    assert family.endswith('"')
 ```
 
 ### §6.2 Integration Tests
 
 ```python
-def test_stylesheet_uses_typography():
-    """Stylesheet should use Typography constants."""
+def test_stylesheet_uses_system_font():
+    """Stylesheet should use system font family."""
     from src.styles.stylesheet import get_application_stylesheet
-    style = get_application_stylesheet()
+    from src.constants.typography import Typography
     
-    if Platform.IS_MACOS:
-        assert "12pt" in style
-    else:
-        assert "9pt" in style
+    style = get_application_stylesheet()
+    # Should contain font family
+    assert Typography.PRIMARY in style
+    # Font size should NOT be hardcoded
+    assert "font-size:" not in style
 
-def test_dimensions_uses_typography():
-    """Dimensions should use Typography constants."""
-    from src.constants.dimensions import TABLE_ROW_HEIGHT
-    assert TABLE_ROW_HEIGHT == Typography.TABLE_ROW_HEIGHT
+def test_log_table_uses_monospace():
+    """Log table should use monospace font."""
+    from src.styles.stylesheet import get_table_stylesheet
+    from src.constants.typography import Typography
+    
+    style = get_table_stylesheet()
+    # Should contain monospace font family
+    assert Typography.MONOSPACE in style
 ```
 
 ---
 
 ## §7 Migration Checklist
 
-- [x] Create `src/constants/typography.py`
-- [x] Update `src/constants/dimensions.py` to import from typography
-- [x] Update `src/styles/stylesheet.py` to use Typography constants
-- [x] Update `src/views/log_table_view.py` to use Typography constants
-- [x] Create `tests/test_typography.py`
-- [ ] Update `docs/specs/features/ui-design-system.md` to reference typography module (optional)
-- [x] Deprecate font functions in stylesheet.py (kept with DeprecationWarning)
+- [ ] Update `src/constants/typography.py` to use Qt system fonts
+- [ ] Update `src/constants/dimensions.py` to use dynamic row height
+- [ ] Update `src/styles/stylesheet.py` to remove font-size from QSS
+- [ ] Update `src/views/log_table_view.py` to use `Typography.LOG_FONT`
+- [ ] Update `tests/test_typography.py` for new API
+- [ ] Update `tests/test_stylesheet.py` for new behavior
+- [ ] Update `docs/specs/features/ui-design-system.md` to reference v2.0
+- [ ] Remove all deprecated FontFamily and TypeScale classes
 
 ---
 
@@ -381,6 +443,7 @@ def test_dimensions_uses_typography():
 - **UI Design System:** [ui-design-system.md](ui-design-system.md) §2.2 Typography
 - **Dimensions:** [src/constants/dimensions.py](../../src/constants/dimensions.py)
 - **Stylesheet:** [src/styles/stylesheet.py](../../src/styles/stylesheet.py)
+- **Qt Documentation:** https://doc.qt.io/qt-6/qfont.html
 
 ---
 
@@ -388,5 +451,6 @@ def test_dimensions_uses_typography():
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.1 | 2026-03-15 | Changed macOS offset from +2pt to +3pt (BODY: 9→12pt, HEADER: 11→14pt, SMALL: 8→11pt) |
-| 1.0 | 2026-03-15 | Initial specification for unified typography system |
+| 2.1 | 2026-03-15 | Use QFontMetrics.height() for accurate row height calculation |
+| 2.0.1 | 2026-03-15 | Fixed row height padding from 7px to 18px for proper text display |
+| 2.0 | 2026-03-15 | Simplified to use Qt system fonts, removed platform-specific code |

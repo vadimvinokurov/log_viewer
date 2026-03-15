@@ -6,6 +6,8 @@ import tempfile
 from typing import Generator
 
 import pytest
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
 
 from src.models.log_entry import LogEntry, LogLevel
 
@@ -151,3 +153,37 @@ def large_log_entries() -> list[LogEntry]:
         ))
     
     return entries
+
+
+@pytest.fixture(scope="session")
+def qapp() -> Generator[QApplication, None, None]:
+    """Create a QApplication instance for tests that need Qt.
+    
+    This fixture ensures QApplication is available for font detection tests.
+    Uses session scope to create only one instance per test session.
+    Resets cached fonts in Typography module to ensure proper font detection.
+    
+    Yields:
+        QApplication instance.
+    
+    Ref: docs/specs/features/typography-system.md §6.1
+    """
+    # Check if QApplication already exists
+    app = QApplication.instance()
+    if app is None:
+        # Create new QApplication if none exists
+        app = QApplication([])
+    
+    # Reset cached fonts in Typography module
+    # This ensures fonts are detected correctly after QApplication is created
+    from src.constants.typography import Typography, _CachedFont
+    for attr_name in ('UI_FONT', 'LOG_FONT'):
+        descriptor = Typography.__dict__.get(attr_name)
+        if isinstance(descriptor, _CachedFont):
+            descriptor._font = None
+    
+    yield app
+    
+    # Cleanup after all tests
+    if QApplication.instance() is app:
+        app.quit()

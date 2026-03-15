@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex, Signal
 from PySide6.QtGui import (
-    QColor, QGuiApplication, QKeyEvent, QShortcut, QFont
+    QColor, QGuiApplication, QKeyEvent, QShortcut
 )
 
 from src.styles.stylesheet import get_table_stylesheet
@@ -26,7 +26,7 @@ from src.views.table_context_menu import TableContextMenu
 from src.constants.colors import LogColors, LogIconColors
 from src.constants.log_levels import LogLevel, LOG_LEVEL_CONFIGS
 from src.constants.dimensions import (
-    TABLE_ROW_HEIGHT,
+    get_table_row_height,
     TABLE_HEADER_HEIGHT,
     TIME_COLUMN_WIDTH,
     CATEGORY_COLUMN_WIDTH,
@@ -136,11 +136,8 @@ class LogTableModel(QAbstractTableModel):
         super().__init__(parent)
         self._entries: List[LogEntry] = []
         self._headers = ["Time", "Category", "Type", "Message"]
-        # Ref: docs/specs/features/typography-system.md §4.3 - Typography constants for fonts
-        self._monospace_font = QFont(
-            Typography.MONOSPACE.replace('"', ''),
-            Typography.LOG_ENTRY
-        )
+        # Ref: docs/specs/features/typography-system.md §4.2 - Use pre-configured monospace font
+        self._monospace_font = Typography.LOG_FONT
 
     def set_entries(self, entries: List[LogEntry]) -> None:
         """Set entries and reset model."""
@@ -297,10 +294,11 @@ class LogTableView(QTableView):
         """Setup highlight delegate and row height."""
         self.setItemDelegate(self._highlight_delegate)
         
+        row_height = get_table_row_height()
         v_header = self.verticalHeader()
-        v_header.setDefaultSectionSize(TABLE_ROW_HEIGHT)
-        v_header.setMinimumSectionSize(TABLE_ROW_HEIGHT)
-        v_header.setMaximumSectionSize(TABLE_ROW_HEIGHT)
+        v_header.setDefaultSectionSize(row_height)
+        v_header.setMinimumSectionSize(row_height)
+        v_header.setMaximumSectionSize(row_height)
         v_header.setSectionResizeMode(QHeaderView.Fixed)
         v_header.setVisible(False)
 
@@ -381,8 +379,9 @@ class LogTableView(QTableView):
 
     def _force_row_height(self) -> None:
         """Force all rows to have the same height."""
+        row_height = get_table_row_height()
         for row in range(self._model.rowCount()):
-            self.setRowHeight(row, TABLE_ROW_HEIGHT)
+            self.setRowHeight(row, row_height)
 
     def get_entry(self, row: int) -> Optional[LogEntry]:
         """Get entry at row."""

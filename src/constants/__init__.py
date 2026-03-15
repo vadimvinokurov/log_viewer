@@ -43,11 +43,14 @@ from src.constants.dimensions import (
     SPLITTER_LEFT_RATIO,
     SPLITTER_RIGHT_RATIO,
     TABLE_HEADER_HEIGHT,
-    TABLE_ROW_HEIGHT,
     TIME_COLUMN_WIDTH,
     TOTAL_SPLITTER_RATIO,
     TYPE_COLUMN_WIDTH,
 )
+
+# TABLE_ROW_HEIGHT is accessed via get_table_row_height() or Typography.TABLE_ROW_HEIGHT
+# to ensure QFontMetrics is called only when QApplication is initialized
+from src.constants.dimensions import get_table_row_height
 
 # Log level definitions
 from src.constants.log_levels import (
@@ -86,10 +89,10 @@ __all__ = [
     "SPLITTER_LEFT_RATIO",
     "SPLITTER_RIGHT_RATIO",
     "TABLE_HEADER_HEIGHT",
-    "TABLE_ROW_HEIGHT",
     "TIME_COLUMN_WIDTH",
     "TOTAL_SPLITTER_RATIO",
     "TYPE_COLUMN_WIDTH",
+    "get_table_row_height",
     # Log levels
     "LOG_LEVEL_CONFIGS",
     "LogLevel",

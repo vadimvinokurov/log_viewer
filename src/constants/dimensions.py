@@ -6,14 +6,52 @@ column widths, and layout ratios.
 Ref: docs/specs/features/typography-system.md §4.2
 """
 
+from __future__ import annotations
+
 from src.constants.typography import Typography
 
 
 # Table dimensions - derived from Typography system
-# Ref: docs/specs/features/typography-system.md §3.4
-TABLE_ROW_HEIGHT: int = Typography.TABLE_ROW_HEIGHT
-"""Height of each row in the log table in pixels (16px for Windows/Linux, 18px for macOS).
-Derived from Typography.TABLE_ROW_HEIGHT.
+# Ref: docs/specs/features/typography-system.md §4.3
+
+
+def get_table_row_height() -> int:
+    """Get table row height based on actual font metrics.
+
+    Uses QFontMetrics to get the actual rendered height of the font
+    and adds appropriate padding for comfortable reading.
+
+    Returns:
+        Row height in pixels (font metrics height + 12px padding).
+    
+    Ref: docs/specs/features/typography-system.md §4.3
+    """
+    # Use Typography.TABLE_ROW_HEIGHT which handles QFontMetrics calculation
+    return Typography.TABLE_ROW_HEIGHT
+
+
+class _LazyTableRowHeight:
+    """Lazy descriptor for TABLE_ROW_HEIGHT.
+    
+    QFontMetrics requires QApplication to be initialized.
+    This descriptor computes the value on first access.
+    
+    Ref: docs/specs/features/typography-system.md §4.3
+    """
+    
+    def __init__(self):
+        self._value: int | None = None
+    
+    def __get__(self, obj, objtype=None) -> int:
+        if self._value is None:
+            self._value = Typography.TABLE_ROW_HEIGHT
+        return self._value
+
+
+# Module-level constant computed lazily on first access
+TABLE_ROW_HEIGHT: int = _LazyTableRowHeight()  # type: ignore[assignment]
+"""Height of each row in the log table in pixels.
+Computed dynamically from QFontMetrics.height() + 12px padding.
 """
 
 TABLE_HEADER_HEIGHT: int = Typography.TABLE_HEADER_HEIGHT

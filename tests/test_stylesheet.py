@@ -1,78 +1,59 @@
 """Unit tests for stylesheet functions.
 
-Tests deprecated font functions and stylesheet generation.
+Tests stylesheet generation with system fonts.
 Ref: docs/specs/features/typography-system.md §4.1
 Ref: docs/specs/features/ui-design-system.md §2.2.2
 """
 from __future__ import annotations
 
-import warnings
-
 import pytest
 
 from src.constants.typography import Typography
 from src.styles.stylesheet import (
-    get_log_font_size,
-    get_font_family,
-    get_monospace_font_family,
     get_application_stylesheet,
     get_table_stylesheet,
 )
 
 
-class TestDeprecatedFunctions:
-    """Tests for deprecated font functions.
+class TestGetApplicationStylesheet:
+    """Tests for get_application_stylesheet function.
     
-    These functions delegate to Typography constants and emit DeprecationWarning.
-    Platform-specific behavior is tested in test_typography.py.
+    Ref: docs/specs/features/typography-system.md §4.1
+    Ref: docs/specs/features/ui-design-system.md §2.2.2
     """
     
-    def test_get_log_font_size_returns_typography_body(self) -> None:
-        """Test that get_log_font_size() returns Typography.BODY value."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = get_log_font_size()
-            
-            # Should return Typography.BODY value
-            assert result == Typography.BODY
-            
-            # Should emit DeprecationWarning
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "get_log_font_size() is deprecated" in str(w[0].message)
+    def test_stylesheet_uses_system_font_family(self) -> None:
+        """Test that stylesheet uses system font family.
+        
+        Ref: docs/specs/features/typography-system.md §6.2
+        """
+        stylesheet = get_application_stylesheet()
+        # Should contain font family from Typography.PRIMARY
+        assert Typography.PRIMARY in stylesheet
     
-    def test_get_font_family_returns_typography_primary(self) -> None:
-        """Test that get_font_family() returns Typography.PRIMARY value."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = get_font_family()
-            
-            # Should return Typography.PRIMARY value
-            assert result == Typography.PRIMARY
-            
-            # Should emit DeprecationWarning
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "get_font_family() is deprecated" in str(w[0].message)
+    def test_stylesheet_no_hardcoded_font_size(self) -> None:
+        """Test that stylesheet does not hardcode font-size.
+        
+        Ref: docs/specs/features/typography-system.md §4.1
+        Qt uses the system default font size automatically.
+        """
+        stylesheet = get_application_stylesheet()
+        # Font size should NOT be hardcoded
+        assert "font-size:" not in stylesheet
     
-    def test_get_monospace_font_family_returns_typography_monospace(self) -> None:
-        """Test that get_monospace_font_family() returns Typography.MONOSPACE value."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = get_monospace_font_family()
-            
-            # Should return Typography.MONOSPACE value
-            assert result == Typography.MONOSPACE
-            
-            # Should emit DeprecationWarning
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "get_monospace_font_family() is deprecated" in str(w[0].message)
+    def test_stylesheet_basic_structure(self) -> None:
+        """Test that stylesheet contains expected selectors."""
+        stylesheet = get_application_stylesheet()
+        assert 'QWidget' in stylesheet
+        assert 'QMainWindow' in stylesheet
+        assert 'QMenuBar' in stylesheet
+        assert 'QToolTip' in stylesheet
 
 
 class TestGetTableStylesheet:
     """Tests for get_table_stylesheet function.
     
+    Ref: docs/specs/features/typography-system.md §4.1
     Ref: docs/specs/features/ui-design-system.md §2.2.2
     Note: Message column font is set via Qt.FontRole in LogTableModel.data(),
     not via QSS. QSS pseudo-classes like :message-column are invalid in Qt.
@@ -80,10 +61,18 @@ class TestGetTableStylesheet:
     
     def test_table_stylesheet_basic_structure(self) -> None:
         """Test that table stylesheet contains expected selectors."""
-        from src.styles.stylesheet import get_table_stylesheet
         stylesheet = get_table_stylesheet()
         assert 'QTableWidget' in stylesheet
         assert 'QHeaderView::section' in stylesheet
+    
+    def test_table_stylesheet_no_font_size(self) -> None:
+        """Test that table stylesheet does not contain font-size.
+        
+        Ref: docs/specs/features/typography-system.md §4.1
+        Font is set via Qt.FontRole in LogTableModel.data(), not via QSS.
+        """
+        stylesheet = get_table_stylesheet()
+        assert "font-size:" not in stylesheet
     
     def test_table_stylesheet_no_invalid_pseudo_class(self) -> None:
         """Test that stylesheet does not contain invalid :message-column pseudo-class.
@@ -91,6 +80,5 @@ class TestGetTableStylesheet:
         Ref: docs/specs/features/ui-design-system.md §2.2.2
         Qt doesn't support custom pseudo-classes in QSS.
         """
-        from src.styles.stylesheet import get_table_stylesheet
         stylesheet = get_table_stylesheet()
         assert ':message-column' not in stylesheet

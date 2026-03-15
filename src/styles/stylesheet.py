@@ -1,94 +1,29 @@
 """Centralized QSS stylesheet for Log Viewer application.
 
 This module provides cross-platform compatible styles for all UI components.
-Fonts are selected based on platform availability.
+Uses Qt's system default fonts for native look-and-feel.
 
 Ref: docs/specs/features/typography-system.md §4.1
 Ref: docs/specs/features/ui-design-system.md §2.2
 """
 from __future__ import annotations
 
-import sys
-import warnings
-
 from src.constants.colors import StatsColors
 from src.constants.typography import Typography
-
-
-def get_font_family() -> str:
-    """Get the appropriate font family for the current platform.
-    
-    .. deprecated:: 1.1
-        Use Typography.PRIMARY instead.
-    
-    Returns:
-        Font family string suitable for the current platform.
-    
-    Ref: docs/specs/features/typography-system.md §4.1
-    """
-    warnings.warn(
-        "get_font_family() is deprecated. Use Typography.PRIMARY instead.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    return Typography.PRIMARY
-
-
-def get_monospace_font_family() -> str:
-    """Get the appropriate monospace font family for the current platform.
-    
-    .. deprecated:: 1.1
-        Use Typography.MONOSPACE instead.
-    
-    Returns:
-        Monospace font family string suitable for the current platform.
-    
-    Ref: docs/specs/features/typography-system.md §4.1
-    """
-    warnings.warn(
-        "get_monospace_font_family() is deprecated. Use Typography.MONOSPACE instead.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    return Typography.MONOSPACE
-
-
-def get_log_font_size() -> int:
-    """Get the appropriate font size for log table entries based on platform.
-    
-    .. deprecated:: 1.1
-        Use Typography.BODY or Typography.LOG_ENTRY instead.
-    
-    Ref: docs/specs/features/ui-design-system.md §2.2.2 Type Scale
-    Returns 11pt for macOS (darwin) for better readability,
-    9pt for Windows/Linux as the default.
-    
-    Returns:
-        Font size in points (11 for macOS, 9 for others).
-    
-    Ref: docs/specs/features/typography-system.md §4.1
-    """
-    warnings.warn(
-        "get_log_font_size() is deprecated. Use Typography.BODY or Typography.LOG_ENTRY instead.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    return Typography.BODY
 
 
 def get_application_stylesheet() -> str:
     """Get the main application stylesheet.
     
+    Uses system default font family. Qt uses the application font
+    automatically for sizing.
+    
     Ref: docs/specs/features/typography-system.md §4.1
-    Ref: docs/specs/features/ui-design-system.md §2.2.2 Type Scale
-    Uses platform-specific font size for better readability on macOS.
+    Ref: docs/specs/features/ui-design-system.md §2.2
     
     Returns:
         QSS stylesheet string for the entire application.
     """
-    font_family = Typography.PRIMARY
-    font_size = Typography.BODY
-    
     return f"""
         /* Main Application */
         QMainWindow {{
@@ -97,8 +32,7 @@ def get_application_stylesheet() -> str:
         
         /* Global Widget Styling */
         QWidget {{
-            font-family: {font_family};
-            font-size: {font_size}pt;
+            font-family: {Typography.PRIMARY};
             color: #333333;
         }}
         
@@ -291,49 +225,48 @@ def get_application_stylesheet() -> str:
 def get_table_stylesheet() -> str:
     """Get the stylesheet for log table view.
     
+    Uses system default fonts. Font for message column is set via
+    Qt.FontRole in LogTableModel.data(), not via QSS.
+    
     Ref: docs/specs/features/typography-system.md §4.1
     Ref: docs/specs/features/ui-design-system.md §2.2.2
-    Uses platform-specific font size for message column.
     
     Returns:
         QSS stylesheet string for QTableWidget.
     """
-    monospace_font = Typography.MONOSPACE
-    font_size = Typography.LOG_ENTRY
-    
-    return f"""
+    return """
         /* Table View */
-        QTableWidget {{
+        QTableWidget {
             background-color: #ffffff;
             border: 1px solid #c0c0c0;
             gridline-color: #e0e0e0;
             selection-background-color: #dcebf7;
             selection-color: #000000;
-        }}
+        }
         
-        QTableWidget::item {{
+        QTableWidget::item {
             padding: 0px;
             border-bottom: 1px solid #e0e0e0;
-        }}
+        }
         
-        QTableWidget::item:selected {{
+        QTableWidget::item:selected {
             background-color: #dcebf7;
             color: #000000;
-        }}
+        }
         
         /* Table Header */
-        QHeaderView::section {{
+        QHeaderView::section {
             background-color: #f5f5f5;
             border: none;
             border-bottom: 1px solid #c0c0c0;
             border-right: 1px solid #e0e0e0;
             padding: 0px;
             text-align: center;
-        }}
+        }
         
-        QHeaderView::section:hover {{
+        QHeaderView::section:hover {
             background-color: #e8e8e8;
-        }}
+        }
     """
 
 
