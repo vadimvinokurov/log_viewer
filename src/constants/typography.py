@@ -181,13 +181,13 @@ class Typography:
         and adds appropriate padding for comfortable reading.
         
         Returns:
-            Row height in pixels (font metrics height + 12px padding).
+            Row height in pixels (font metrics height + 2px padding).
         
         Ref: docs/specs/features/typography-system.md §3.2
         """
         from PySide6.QtGui import QFontMetrics
         metrics = QFontMetrics(cls.LOG_FONT)
-        return metrics.height() + 12
+        return metrics.height() + 2
     
     TABLE_HEADER_HEIGHT: int = 20
     """Table header height (fixed at 20px)."""

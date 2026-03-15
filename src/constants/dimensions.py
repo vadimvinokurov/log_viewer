@@ -22,7 +22,7 @@ def get_table_row_height() -> int:
     and adds appropriate padding for comfortable reading.
 
     Returns:
-        Row height in pixels (font metrics height + 12px padding).
+        Row height in pixels (font metrics height + 2px padding).
     
     Ref: docs/specs/features/typography-system.md §4.3
     """
@@ -51,7 +51,7 @@ class _LazyTableRowHeight:
 # Module-level constant computed lazily on first access
 TABLE_ROW_HEIGHT: int = _LazyTableRowHeight()  # type: ignore[assignment]
 """Height of each row in the log table in pixels.
-Computed dynamically from QFontMetrics.height() + 12px padding.
+Computed dynamically from QFontMetrics.height() + 2px padding.
 """
 
 TABLE_HEADER_HEIGHT: int = Typography.TABLE_HEADER_HEIGHT

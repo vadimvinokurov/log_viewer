@@ -87,7 +87,7 @@ class TestTypography:
         """Row height should be derived from font metrics."""
         from PySide6.QtGui import QFontMetrics
         metrics = QFontMetrics(Typography.LOG_FONT)
-        expected_height = metrics.height() + 12
+        expected_height = metrics.height() + 2
         assert Typography.TABLE_ROW_HEIGHT == expected_height
     
     def test_table_header_height_fixed(self) -> None:
@@ -108,6 +108,6 @@ class TestDimensionsIntegration:
         
         # get_table_row_height should be computed from QFontMetrics
         metrics = QFontMetrics(Typography.LOG_FONT)
-        expected_height = metrics.height() + 12
+        expected_height = metrics.height() + 2
         assert get_table_row_height() == expected_height
         assert TABLE_HEADER_HEIGHT == Typography.TABLE_HEADER_HEIGHT

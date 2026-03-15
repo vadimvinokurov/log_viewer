@@ -192,13 +192,13 @@ class Typography:
         and adds appropriate padding for comfortable reading.
         
         Returns:
-            Row height in pixels (font metrics height + 12px padding).
+            Row height in pixels (font metrics height + 2px padding).
         
         Ref: docs/specs/features/typography-system.md §3.2
         """
         from PySide6.QtGui import QFontMetrics
         metrics = QFontMetrics(cls.LOG_FONT)
-        return metrics.height() + 12
+        return metrics.height() + 2
     
     TABLE_HEADER_HEIGHT: int = 20
     """Table header height (fixed at 20px)."""
@@ -290,11 +290,11 @@ def get_table_row_height() -> int:
     """Get table row height based on actual font metrics.
     
     Returns:
-        Row height in pixels (font metrics height + 12px padding).
+        Row height in pixels (font metrics height + 2px padding).
     """
     from PySide6.QtGui import QFontMetrics
     metrics = QFontMetrics(Typography.LOG_FONT)
-    return metrics.height() + 12
+    return metrics.height() + 2
 
 # Module-level constant computed at import time
 TABLE_ROW_HEIGHT: int = get_table_row_height()
@@ -323,7 +323,7 @@ Typography.BODY        # Alias for BODY_SIZE
 Typography.LOG_ENTRY   # Alias for BODY_SIZE
 
 # Derived dimensions
-Typography.TABLE_ROW_HEIGHT    # Row height (font metrics height + 12)
+Typography.TABLE_ROW_HEIGHT    # Row height (font metrics height + 2)
 Typography.TABLE_HEADER_HEIGHT # Header height (20px)
 ```
 
@@ -377,7 +377,7 @@ def test_table_row_height_derived():
     from src.constants.typography import Typography
     
     metrics = QFontMetrics(Typography.LOG_FONT)
-    expected_height = metrics.height() + 12
+    expected_height = metrics.height() + 2
     assert Typography.TABLE_ROW_HEIGHT == expected_height
 
 def test_primary_font_family():
