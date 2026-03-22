@@ -1,0 +1,814 @@
+# Log Viewer API Specification
+
+**Version:** 1.0  
+**Last Updated:** 2026-03-13  
+**Project Context:** Python Tooling (Desktop Application)
+
+---
+
+## §1 Overview
+
+This document specifies the public API for the Log Viewer application. All public classes and methods are documented with their signatures, parameters, return types, and usage examples.
+
+---
+
+## §2 Models
+
+### §2.1 LogEntry
+
+```python
+from dataclasses import dataclass
+from src.models.log_level import LogLevel
+
+@dataclass(frozen=True)
+class LogEntry:
+    """Immutable log entry data."""
+    
+    row_index: int           # Row index in the model
+    timestamp: str           # Formatted timestamp string
+    category: str            # Category path (e.g., "HordeMode/scripts/app")
+    raw_message: str         # Original message with level prefix
+    display_message: str     # Message with level prefix removed
+    level: LogLevel          # Log level enum
+    file_offset: int          # Byte offset in file for seeking
+    raw_line: str            # Original line for copying
+    
+    # Note: This is a frozen dataclass (immutable)
+    # Use dataclass replacement pattern for modifications
+```
+
+### §2.2 LogLevel
+
+```python
+from enum import Enum
+
+class LogLevel(Enum):
+    """Log level enumeration.
+    
+    Maps log level strings from parsed logs to enum values.
+    """
+    
+    CRITICAL = "LOG_CRITICAL"
+    ERROR = "LOG_ERROR"
+    WARNING = "LOG_WARNING"
+    MSG = "LOG_MSG"
+    DEBUG = "LOG_DEBUG"
+    TRACE = "LOG_TRACE"
+    
+    @classmethod
+    def from_string(cls, name: str) -> LogLevel:
+        """Parse log level from string."""
+        
+    def to_icon(self) -> str:
+        """Get the icon character for this level."""
+        
+    def to_color(self) -> str:
+        """Get the color name for this level."""
+```
+
+### §2.3 LogDocument
+
+```python
+from pathlib import Path
+from typing import Iterator
+
+class LogDocument:
+    """Document representing a log file."""
+    
+    def __init__(self, filepath: str) -> None:
+        """
+        Initialize a log document.
+        
+        Args:
+            filepath: Path to the log file
+            
+        Raises:
+            FileNotFoundError: If file does not exist
+            PermissionError: If file cannot be read
+        """
+    
+    @property
+    def filepath(self) -> str:
+        """Get the file path."""
+        
+    @property
+    def filename(self) -> str:
+        """Get the file name."""
+        
+    @property
+    def line_count(self) -> int:
+        """Get the total line count."""
+        
+    def get_entries(self) -> list[LogEntry]:
+        """Get all log entries."""
+        
+    def get_entry(self, index: int) -> LogEntry | None:
+        """Get entry at index."""
+        
+    def get_entries_range(self, start: int, end: int) -> list[LogEntry]:
+        """Get entries in range [start, end)."""
+        
+    def reload(self) -> None:
+        """Reload the file from disk."""
+        
+    def close(self) -> None:
+        """Release resources."""
+    
+    def __enter__(self) -> LogDocument:
+        """Context manager entry."""
+        
+    def __exit__(self, *args) -> None:
+        """Context manager exit."""
+```
+
+### §2.4 CategoryDisplayNode
+
+```python
+from dataclasses import dataclass, field
+
+@dataclass
+class CategoryDisplayNode:
+    """Display node for category tree view.
+    
+    This is a display model used by the UI to show the category tree.
+    It is transformed from CategoryNode (internal tree structure) by
+    build_category_display_nodes() function.
+    
+    Note: This is separate from CategoryNode which is used internally
+    by CategoryTree for filtering logic.
+    """
+    
+    name: str                           # Display name (last part of path)
+    path: str                           # Full path (e.g., "HordeMode/scripts/app")
+    checked: bool = True                # Checkbox state for UI
+    children: list[CategoryDisplayNode] = field(default_factory=list)
+```
+
+### §2.5 CategoryNode
+
+```python
+from dataclasses import dataclass, field
+
+@dataclass
+class CategoryNode:
+    """Node in category tree (internal).
+    
+    This is the internal tree structure used by CategoryTree for
+    filtering and visibility logic. It is NOT used directly by the UI.
+    
+    Use build_category_display_nodes() to transform CategoryNode tree to
+    CategoryDisplayNode list for display.
+    """
+    
+    name: str                           # Node name (e.g., "app")
+    full_path: str                      # Full path (e.g., "HordeMode/scripts/app")
+    parent: CategoryNode | None = None  # Parent node reference
+    children: dict[str, CategoryNode] = field(default_factory=dict)
+    is_enabled: bool = True             # Enabled state for filtering
+    is_custom: bool = False            # True for user-defined categories
+    pattern: str | None = None          # Pattern for custom categories
+```
+
+---
+
+## §3 Core
+
+### §3.1 FilterEngine
+
+```python
+from typing import Callable
+from src.models.log_entry import LogEntry
+
+class FilterEngine:
+    """Engine for compiling and applying filters."""
+    
+    @staticmethod
+    def compile(text: str, mode: str) -> CompiledFilter:
+        """
+        Compile a filter.
+        
+        Args:
+            text: Filter text
+            mode: Filter mode ('plain', 'regex', 'simple')
+            
+        Returns:
+            CompiledFilter object
+            
+        Raises:
+            FilterError: If filter is invalid
+        """
+    
+    @staticmethod
+    def compile_plain(text: str) -> CompiledFilter:
+        """Compile a plain text filter."""
+        
+    @staticmethod
+    def compile_regex(pattern: str) -> CompiledFilter:
+        """Compile a regex filter."""
+        
+    @staticmethod
+    def compile_simple(query: str) -> CompiledFilter:
+        """Compile a simple query filter."""
+
+class CompiledFilter:
+    """A compiled filter that can be applied to entries."""
+    
+    def matches(self, entry: LogEntry) -> bool:
+        """
+        Check if entry matches the filter.
+        
+        Args:
+            entry: Log entry to check
+            
+        Returns:
+            True if entry matches
+        """
+    
+    def get_predicate(self) -> Callable[[LogEntry], bool]:
+        """Get a predicate function for filtering."""
+```
+
+### §3.2 CategoryTree
+
+```python
+from src.models.category_display_node import CategoryDisplayNode
+
+class CategoryTree:
+    """Tree structure for category filtering."""
+    
+    def __init__(self) -> None:
+        """Initialize an empty tree."""
+    
+    @property
+    def root(self) -> CategoryDisplayNode:
+        """Get the root node."""
+        
+    def add_category(self, path: str) -> None:
+        """Add a category path to the tree."""
+        
+    def get_node(self, path: str) -> CategoryDisplayNode | None:
+        """Get a node by path."""
+        
+    def is_visible(self, path: str) -> bool:
+        """Check if a category is visible (self or ancestor checked)."""
+        
+    def set_checked(self, path: str, checked: bool) -> None:
+        """Set the checked state of a category."""
+        
+    def check_all(self, checked: bool) -> None:
+        """Check or uncheck all categories."""
+        
+    def get_all_paths(self) -> list[str]:
+        """Get all category paths."""
+        
+    def get_checked_paths(self) -> set[str]:
+        """Get all checked category paths."""
+        
+    def get_states(self) -> dict[str, bool]:
+        """Get all checkbox states."""
+        
+    def set_states(self, states: dict[str, bool]) -> None:
+        """Restore checkbox states."""
+        
+    @staticmethod
+    def build_from_entries(entries: list[LogEntry]) -> CategoryTree:
+        """Build a tree from log entries."""
+```
+
+### §3.3 HighlightEngine
+
+```python
+from PySide6.QtGui import QColor
+
+class HighlightEngine:
+    """Engine for applying text highlights."""
+    
+    def __init__(self) -> None:
+        """Initialize the engine."""
+    
+    def add_pattern(self, text: str, color: QColor, 
+                    is_regex: bool = False) -> None:
+        """Add a highlight pattern."""
+        
+    def remove_pattern(self, text: str) -> bool:
+        """Remove a pattern by text."""
+        
+    def clear_patterns(self) -> None:
+        """Clear all patterns."""
+        
+    def get_patterns(self) -> list[HighlightPattern]:
+        """Get all patterns."""
+        
+    def highlight(self, text: str) -> list[tuple[int, int, QColor]]:
+        """
+        Get highlight ranges for text.
+        
+        Args:
+            text: Text to highlight
+            
+        Returns:
+            List of (start, end, color) tuples
+        """
+
+@dataclass
+class HighlightPattern:
+    """A highlight pattern."""
+    text: str
+    color: QColor
+    is_regex: bool = False
+```
+
+### §3.4 SimpleQueryParser
+
+```python
+class SimpleQueryParser:
+    """Parser for simple query language."""
+    
+    def __init__(self, query: str) -> None:
+        """
+        Initialize parser with query string.
+        
+        Args:
+            query: Query string (e.g., "error AND category:Network")
+        """
+    
+    def parse(self) -> QueryNode:
+        """
+        Parse the query.
+        
+        Returns:
+            QueryNode AST
+            
+        Raises:
+            QuerySyntaxError: If query is invalid
+        """
+
+class QueryNode:
+    """AST node for query."""
+    pass
+
+class AndNode(QueryNode):
+    """AND operation node."""
+    left: QueryNode
+    right: QueryNode
+
+class OrNode(QueryNode):
+    """OR operation node."""
+    left: QueryNode
+    right: QueryNode
+
+class NotNode(QueryNode):
+    """NOT operation node."""
+    operand: QueryNode
+
+class TextNode(QueryNode):
+    """Text match node."""
+    text: str
+    field: str | None
+
+class FieldNode(QueryNode):
+    """Field match node."""
+    field: str
+    value: str
+    operator: str  # ':', '=', '!=', etc.
+```
+
+---
+
+## §4 Controllers
+
+### §4.1 MainController
+
+```python
+from PySide6.QtCore import QObject, Signal
+
+class MainController(QObject):
+    """Main application controller."""
+    
+    # Signals
+    statistics_updated = Signal(dict)
+    
+    def __init__(self, window: MainWindow) -> None:
+        """Initialize the controller."""
+    
+    # File operations
+    def open_file(self, filepath: str) -> None:
+        """Open a log file."""
+        
+    def close_file(self) -> None:
+        """Close current file."""
+        
+    def refresh(self) -> None:
+        """Refresh current file."""
+    
+    # Filter operations
+    def get_filter_controller(self) -> FilterController:
+        """Get the filter controller."""
+        
+    def get_highlight_engine(self) -> HighlightEngine:
+        """Get the highlight engine."""
+    
+    # Lifecycle
+    def close(self) -> None:
+        """Clean up resources."""
+```
+
+### §4.2 FilterController
+
+```python
+class FilterController(QObject):
+    """Controller for filter operations."""
+    
+    # Signals
+    filter_applied = Signal(list)  # List[LogEntry]
+    filter_error = Signal(str)
+    
+    def __init__(self, parent: QObject | None = None) -> None:
+        """Initialize the filter controller."""
+    
+    # Text filter
+    def set_filter_text(self, text: str) -> None:
+        """Set filter text."""
+        
+    def set_filter_mode(self, mode: str) -> None:
+        """Set filter mode ('plain', 'regex', 'simple')."""
+        
+    def clear_filter(self) -> None:
+        """Clear text filter."""
+    
+    # Category filter
+    def set_category_tree(self, tree: CategoryTree) -> None:
+        """Set category tree."""
+        
+    def toggle_category(self, path: str, checked: bool) -> None:
+        """Toggle category visibility."""
+        
+    def check_all_categories(self, checked: bool) -> None:
+        """Check/uncheck all categories."""
+    
+    # Counter filter
+    def toggle_counter(self, counter_type: str, visible: bool) -> None:
+        """Toggle log level visibility."""
+    
+    # Apply
+    def apply_filter(self, entries: list[LogEntry]) -> list[LogEntry]:
+        """Apply all filters to entries."""
+```
+
+### §4.3 FileController
+
+```python
+class FileController(QObject):
+    """Controller for file operations."""
+    
+    # Signals
+    file_opened = Signal(str)
+    file_closed = Signal()
+    file_changed = Signal()
+    
+    def __init__(self, parent: QObject | None = None) -> None:
+        """Initialize the file controller."""
+    
+    def open_file(self, filepath: str) -> LogDocument:
+        """Open a log file."""
+        
+    def close_file(self) -> None:
+        """Close current file."""
+        
+    def start_watching(self) -> None:
+        """Start file watcher."""
+        
+    def stop_watching(self) -> None:
+        """Stop file watcher."""
+```
+
+---
+
+## §5 Views
+
+### §5.1 MainWindow
+
+```python
+from PySide6.QtWidgets import QMainWindow
+from PySide6.QtCore import Signal
+
+class MainWindow(QMainWindow):
+    """Main application window."""
+    
+    # Signals
+    file_opened = Signal(str)
+    file_closed = Signal()
+    refresh_requested = Signal()
+    filter_applied = Signal(str, str)
+    filter_cleared = Signal()
+    category_toggled = Signal(str, bool)
+    counter_toggled = Signal(str, bool)
+    
+    def __init__(self) -> None:
+        """Initialize the main window."""
+    
+    def set_current_file(self, filepath: str | None) -> None:
+        """Set current file path."""
+        
+    def get_log_table(self) -> LogTableView:
+        """Get the log table view."""
+        
+    def get_category_panel(self) -> CategoryPanel:
+        """Get the category panel."""
+        
+    def show_error(self, title: str, message: str) -> None:
+        """Show an error dialog."""
+        
+    def show_status(self, message: str, timeout: int = 3000) -> None:
+        """Show a status message."""
+        
+    def update_statistics(self, stats: dict[str, int]) -> None:
+        """Update statistics counters."""
+```
+
+### §5.2 LogTableView
+
+```python
+from PySide6.QtWidgets import QTableView
+
+class LogTableView(QTableView):
+    """Table view for log entries."""
+    
+    # Signals
+    selection_changed = Signal()
+    find_requested = Signal()
+    
+    def __init__(self, parent=None) -> None:
+        """Initialize the table view."""
+    
+    def set_entries(self, entries: list[LogEntry]) -> None:
+        """Set log entries."""
+        
+    def get_entry(self, row: int) -> LogEntry | None:
+        """Get entry at row."""
+        
+    def get_selected_entries(self) -> list[LogEntry]:
+        """Get selected entries."""
+        
+    def clear(self) -> None:
+        """Clear all entries."""
+        
+    def set_highlight_engine(self, engine: HighlightEngine | None) -> None:
+        """Set highlight engine."""
+        
+    def find_text(self, text: str, case_sensitive: bool = False) -> int:
+        """Find text in entries."""
+        
+    def copy_selected(self) -> None:
+        """Copy selected to clipboard."""
+```
+
+### §5.3 CategoryPanel
+
+```python
+from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import Signal
+
+class CategoryPanel(QWidget):
+    """Panel for category filtering."""
+    
+    # Signals
+    category_toggled = Signal(str, bool)
+    search_changed = Signal(str)
+    current_tab_changed = Signal(int)
+    
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Initialize the category panel."""
+    
+    def set_categories(self, categories: list[CategoryDisplayNode]) -> None:
+        """Populate tree with categories."""
+        
+    def get_checked_categories(self) -> set[str]:
+        """Get checked category paths."""
+        
+    def check_all(self, checked: bool) -> None:
+        """Check/uncheck all categories."""
+        
+    def clear(self) -> None:
+        """Clear all categories."""
+```
+
+---
+
+## §6 Services
+
+### §6.1 StatisticsService
+
+```python
+class StatisticsService:
+    """Service for computing log statistics."""
+    
+    def compute(self, entries: list[LogEntry]) -> dict[str, int]:
+        """
+        Compute statistics for entries.
+        
+        Args:
+            entries: Log entries
+            
+        Returns:
+            Dictionary with counts per level
+        """
+    
+    def compute_visible(self, entries: list[LogEntry], 
+                        visible: set[str]) -> dict[str, int]:
+        """
+        Compute statistics for visible entries.
+        
+        Args:
+            entries: All log entries
+            visible: Set of visible log level names
+            
+        Returns:
+            Dictionary with counts per level
+        """
+```
+
+### §6.2 HighlightService
+
+```python
+class HighlightService(QObject):
+    """Service for managing highlights."""
+    
+    # Signals
+    patterns_changed = Signal()
+    
+    def __init__(self, settings_manager: SettingsManager | None = None,
+                 parent: QObject | None = None) -> None:
+        """Initialize the highlight service."""
+    
+    def add_pattern(self, text: str, color: QColor, 
+                    is_regex: bool = False) -> bool:
+        """Add a highlight pattern."""
+        
+    def remove_pattern(self, text: str) -> bool:
+        """Remove a pattern."""
+        
+    def clear_patterns(self) -> None:
+        """Clear all patterns."""
+        
+    def get_patterns(self) -> list[HighlightPattern]:
+        """Get all patterns."""
+        
+    def get_engine(self) -> HighlightEngine:
+        """Get the highlight engine."""
+```
+
+---
+
+## §7 Utilities
+
+### §7.1 SettingsManager
+
+```python
+class SettingsManager:
+    """Manager for application settings."""
+    
+    def __init__(self, organization: str = "LogViewer",
+                 application: str = "LogViewer") -> None:
+        """Initialize the settings manager."""
+    
+    # Window settings
+    def save_geometry(self, geometry: bytes) -> None:
+        """Save window geometry."""
+        
+    def load_geometry(self) -> bytes | None:
+        """Load window geometry."""
+    
+    # Column settings
+    def save_column_widths(self, widths: dict[str, int]) -> None:
+        """Save column widths."""
+        
+    def load_column_widths(self) -> dict[str, int]:
+        """Load column widths."""
+    
+    # Highlight settings
+    def save_highlight_patterns(self, patterns: list[dict]) -> None:
+        """Save highlight patterns."""
+        
+    def load_highlight_patterns(self) -> list[dict]:
+        """Load highlight patterns."""
+    
+    # Category settings
+    def save_category_states(self, states: dict[str, bool]) -> None:
+        """Save category states."""
+        
+    def load_category_states(self) -> dict[str, bool]:
+        """Load category states."""
+    
+    # File settings
+    def save_last_file(self, filepath: str) -> None:
+        """Save last file."""
+        
+    def load_last_file(self) -> str | None:
+        """Load last file."""
+```
+
+### §7.2 Clipboard
+
+```python
+def copy_to_clipboard(text: str) -> None:
+    """Copy text to clipboard."""
+    
+def copy_entries_to_clipboard(entries: list[LogEntry]) -> None:
+    """Copy log entries to clipboard as formatted text."""
+```
+
+---
+
+## §8 Constants
+
+### §8.1 Colors
+
+```python
+from PySide6.QtGui import QColor
+
+# Log level colors
+LEVEL_COLORS = {
+    LogLevel.CRITICAL: QColor(255, 0, 0),      # Red
+    LogLevel.ERROR: QColor(255, 165, 0),       # Orange
+    LogLevel.WARNING: QColor(255, 255, 0),     # Yellow
+    LogLevel.MSG: QColor(255, 255, 255),       # White
+    LogLevel.DEBUG: QColor(128, 128, 128),     # Gray
+    LogLevel.TRACE: QColor(200, 200, 200),     # Light Gray
+}
+
+# UI colors
+BACKGROUND_COLOR = QColor(30, 30, 30)
+TEXT_COLOR = QColor(255, 255, 255)
+SELECTION_COLOR = QColor(0, 120, 215)
+```
+
+### §8.2 Dimensions
+
+```python
+# Table dimensions
+TABLE_ROW_HEIGHT = 24
+TABLE_HEADER_HEIGHT = 30
+
+# Column widths
+DEFAULT_COLUMN_WIDTHS = {
+    "time": 50,
+    "category": 100,
+    "type": 40,
+    "message": -1,  # Stretch
+}
+
+# Panel dimensions
+CATEGORY_PANEL_WIDTH = 250
+STATUS_BAR_HEIGHT = 30
+```
+
+### §8.3 Log Levels
+
+```python
+LEVEL_ORDER = [
+    LogLevel.CRITICAL,
+    LogLevel.ERROR,
+    LogLevel.WARNING,
+    LogLevel.MSG,
+    LogLevel.DEBUG,
+    LogLevel.TRACE,
+]
+
+LEVEL_NAMES = {
+    LogLevel.CRITICAL: "CRITICAL",
+    LogLevel.ERROR: "ERROR",
+    LogLevel.WARNING: "WARNING",
+    LogLevel.MSG: "MSG",
+    LogLevel.DEBUG: "DEBUG",
+    LogLevel.TRACE: "TRACE",
+}
+
+LEVEL_ICONS = {
+    LogLevel.CRITICAL: "⚠",
+    LogLevel.ERROR: "✗",
+    LogLevel.WARNING: "⚡",
+    LogLevel.MSG: "○",
+    LogLevel.DEBUG: "◯",
+    LogLevel.TRACE: "·",
+}
+```
+
+---
+
+## §9 Cross-References
+
+- **Memory Model:** [../specs/global/memory-model.md](../specs/global/memory-model.md)
+- **Threading:** [../specs/global/threading.md](../specs/global/threading.md)
+- **Error Handling:** [../specs/global/error-handling.md](../specs/global/error-handling.md)
+- **Filter Engine:** [../specs/features/filter-engine.md](../specs/features/filter-engine.md)
+- **Category Tree:** [../specs/features/category-tree.md](../specs/features/category-tree.md)
+
+---
+
+## §10 Revision History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.1 | 2026-03-14 | Renamed SystemNode → CategoryDisplayNode, build_system_nodes → build_category_display_nodes |
+| 1.0 | 2026-03-13 | Initial API specification |

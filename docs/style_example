@@ -1,0 +1,610 @@
+# LogViewer Plugin UI/UX Design Specification
+
+## Document Information
+- **Plugin Name:** LogViewer
+- **IDE:** Integration Studio
+- **Theme:** Light Theme
+- **Version:** 1.0
+- **Last Updated:** 2026-03-15
+
+---
+
+## 1. Overview
+
+LogViewer is a plugin for Integration Studio IDE that provides real-time log viewing and filtering capabilities. The interface consists of a main log table view with filtering panels for systems, processes, and threads.
+
+**Note:** This specification focuses exclusively on the **Light Theme** implementation.
+
+---
+
+## 2. Visual Style
+
+### 2.1 Color Palette
+
+#### 2.1.1 Base UI Colors (LogViewer-specific)
+
+| Color Name | HEX Code | ARGB Value | Usage |
+|------------|----------|------------|-------|
+| `LogViewer` | Inherited from Gray02 | - | Main background color for log list view |
+| `LogViewerBorder` | Inherited from Gray02 | - | Border color for panels and controls |
+| `BorderMouseOver` | `#8491A3` | `0xFF8491A3` | Border color on mouse hover |
+| `BorderSelected` | `#8491A3` | `0xFF8491A3` | Border color for selected state (inherits from BorderMouseOver) |
+| `LogItemSelected` | `#B7CFD5` | `0xFFB7CFD5` | Background color for selected log items |
+| `LogItemBorderMouseOver` | `#B7CFD5` | `0xFFB7CFD5` | Log item border on hover (inherits from LogItemSelected) |
+| `LogItemTextMouseOver` | `#382F27` | `0xFF382F27` | Text color on mouse hover |
+| `TextSelected` | `#382F27` | `0xFF382F27` | Text color for selected state |
+| `LogBorder` | `#00000080` | `0x80000000` | Semi-transparent black for log borders |
+| `LogItemEntry` | Inherited from Accent3 | - | Accent color for log entry highlighting |
+| `ContainerPanelHighlighted` | `#0078D7` | `0xFF0078D7` | Highlighted container panel background |
+| `SystemFilterBorder` | Inherited from Gray0 | - | Border color for system filter items |
+
+#### 2.1.2 Log Level Colors
+
+| Log Level | Background HEX | Text HEX | Usage Description |
+|-----------|----------------|----------|-------------------|
+| **Trace** | Inherited from Message | Inherited from Message | Trace-level messages (lowest priority) |
+| **Debug** | Inherited from Message | Inherited from Message | Debug-level messages |
+| **Message** | Inherited from Gray02 | Inherited from Message | Standard informational messages |
+| **Warning** | `#6A5302` | `#6A5302` | Warning messages (amber/brown) |
+| **Error** | `#781111` | `#781111` | Error messages (dark red) |
+| **Critical** | `#781111` | `#781111` | Critical errors (inherits from Error) |
+
+#### 2.1.3 Process Identification Colors
+
+| Color Name | HEX Code | Usage |
+|------------|----------|-------|
+| `Blue` | `#96CBF8` | Process identifier color 1 |
+| `Red` | `#CC7474` | Process identifier color 2 |
+| `Orange` | `#F5B76E` | Process identifier color 3 |
+| `Pink` | `#D786CA` | Process identifier color 4 |
+| `Green` | `#9BBF7C` | Process identifier color 5 |
+| `Cream` | `#FAE744` | Process identifier color 6 |
+
+Process colors are assigned cyclically when new processes are detected.
+
+#### 2.1.4 Additional State Colors
+
+| Color Name | HEX Code | Usage |
+|------------|----------|-------|
+| `AutoScrollToEndSelected` | `#483D8B` | Auto-scroll button selected state |
+| `AutoScrollToEndMouseOver` | `#2587CF` | Auto-scroll button hover state |
+
+#### 2.1.5 Light Theme Base Colors
+
+| Color Category | Reference | HEX Code | Description |
+|----------------|-----------|----------|-------------|
+| `Accent` | Basic | `#FFA3D0FF` | Primary accent color (light blue) |
+| `Gray1` | Palette | `#FFA4A4A4` | Dark gray |
+| `Gray2` | Palette | `#FFB6B6B6` | Medium-dark gray |
+| `Gray3` | Palette | `#FFC8C8C8` | Medium gray |
+| `Gray4` | Palette | `#FFD6D6D6` | Medium-light gray |
+| `Gray5` | Palette | `#FFE7E7E7` | Light gray |
+| `Icon` | Icon | `#FF526880` | Icon color (slate blue) |
+| `PropertyTree.Icon` | PropertyTree | `#FF3F3F3F` | Property tree icon color |
+
+#### 2.1.6 Light Theme Palette Colors
+
+| Color Family | Level 1 | Level 2 | Level 3 | Level 4 | Level 5 |
+|--------------|---------|---------|---------|---------|---------|
+| **Gray** | `#A4A4A4` | `#B6B6B6` | `#C8C8C8` | `#D6D6D6` | `#E7E7E7` |
+| **Red** | `#F97575` | `#F18989` | `#FF9A9A` | `#FFB6B6` | `#FFCACA` |
+| **Orange** | `#F9A54F` | `#F9BA7B` | `#FCC48C` | `#FCCC9C` | `#FDDDBE` |
+| **Green** | `#7CEB7C` | `#94F594` | `#9CFF9C` | `#B8FFB8` | `#D2FFD2` |
+| **Cyan** | `#4AE7BF` | `#7CF3D4` | `#8FFBE0` | `#ABF9E6` | `#C3FEEF` |
+| **Blue** | `#70A3FF` | `#80B0FF` | `#8CBAFF` | `#99D0FF` | - |
+| **Purple** | `#D86EFF` | `#DF86FF` | `#E09DFF` | `#EBB5FF` | - |
+
+### 2.2 Typography
+
+#### 2.2.1 Font Families
+The LogViewer plugin uses the default IDE font stack:
+- **Primary Font:** System default UI font (Segoe UI on Windows)
+- **Monospace Font:** Used for log messages and code elements
+
+#### 2.2.2 Font Sizes
+
+| Element | Size | Unit | Notes |
+|---------|------|------|-------|
+| Log entry text | Default | px | Inherits from system default |
+| Column headers | Default | px | Standard header size |
+| Filter panel text | Default | px | Standard UI text |
+| Toolbar buttons | 16x16 | px | Icon size |
+
+#### 2.2.3 Text Alignment
+
+| Column | Alignment | Notes |
+|--------|-----------|-------|
+| Process (P) | Center | 4px width indicator |
+| System | Left | With color indicator |
+| Frame | Right | Numeric values |
+| Time | Right | Time values |
+| Type | Center | Icon-based |
+| Thread | Center | Thread identifier |
+| Message Counter | Right | Numeric values |
+| Number | Right | Sequential number |
+| Timestamp | Center | Date/time format |
+| Message | Left | Main content (wrappable) |
+
+---
+
+## 3. Layout and Composition
+
+### 3.1 Main Layout Structure
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Toolbar (Height: 32px, Margin: 4px 0)                               │
+│ ┌──────────────┐ ┌────┐ ┌─────────────────────────────────────────┐ │
+│ │ Search Box   │ │Scroll│ │ Log Type Filters (Toggle Buttons)   │ │
+│ │ Width: 315px │ │ Btn  │ │ Trace Debug Msg Warn Error Critical │ │
+│ └──────────────┘ └────┘ └─────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────────┤
+│ Log List View (MinWidth: 250px, MinHeight: 100px)                  │
+│ ┌───┬────────┬──────┬──────┬──────┬────────┬────────┬─────────────┐ │
+│ │ P │ System │ Frame│ Time │ Type │ Thread │ Counter│ Message     │ │
+│ ├───┼────────┼──────┼──────┼──────┼────────┼────────┼─────────────┤ │
+│ │   │        │      │      │      │        │        │             │ │
+│ │   │        │      │      │      │        │        │             │ │
+│ └───┴────────┴──────┴──────┴──────┴────────┴────────┴─────────────┘ │
+├─────────────────────────────────────────────────────────────────────┤
+│ SplitContainer (SplitterSize: 5px, SecondPanelMinSize: 250px)       │
+│ ┌─────────────────┬───────────────────────────────────────────────┐ │
+│ │ Systems Tab     │ Filter Panel (Tab Control)                    │ │
+│ │ ┌─────────────┐ │ ┌─────────────────────────────────────────┐ │ │
+│ │ │ Tree View   │ │ │ [Systems] [Processes] [Threads]          │ │ │
+│ │ │ with colors │ │ │ ┌─────────────────────────────────────┐ │ │ │
+│ │ │ and checkboxes│ │ │ │ Filter content (ListView)          │ │ │ │
+│ │ └─────────────┘ │ │ └─────────────────────────────────────┘ │ │ │
+│ └─────────────────┴───────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Column Specifications
+
+| Column Name | Width (px) | Visible | Sortable | Cell Template |
+|-------------|------------|---------|-----------|---------------|
+| Process (P) | 12 | Yes | No | ProcessColumnCellTemplate |
+| System | 96 | Yes | No | SystemColumnCellTemplate |
+| Frame | 44 | Yes | Yes | FrameColumnCellTemplate |
+| Time | 44 | Yes | Yes | TimeColumnCellTemplate |
+| Type | 34 | Yes | Yes | TypeColumnCellTemplate |
+| Thread | 100 | No | Yes | ThreadColumnCellTemplate |
+| MessageCounter | 50 | No | Yes | MessageCounterColumnCellTemplate |
+| Number | 70 | No | Yes | NumberColumnCellTemplate |
+| Timestamp | 80 | No | Yes | TimestampColumnCellTemplate |
+| Message | 300 | Yes | Yes | MessageColumnCellTemplate |
+
+**Note:** The Message column has `FillLastColumnWidth=True`, meaning it expands to fill remaining space.
+
+### 3.3 Margins and Padding
+
+#### 3.3.1 Main Container Margins
+
+| Element | Margin | Notes |
+|---------|--------|-------|
+| Toolbar DockPanel | `4 0` | 4px horizontal, 0 vertical |
+| Filter TextBox | `0 0 0 1` | 1px bottom margin |
+| Systems Tab DockPanel | `0 2 0 0` | 2px top margin |
+| Systems Expander Button | `0` | No margin |
+| Process Filter ListView | `0 4 0 0` | 4px top margin |
+| Threads Filter ListView | `0 4 0 0` | 4px top margin |
+
+#### 3.3.2 Log Item Padding
+
+| Element | Padding | Notes |
+|---------|---------|-------|
+| ListViewItem | `0` | No padding (set in style) |
+| ListViewItem Border | `0` | No border padding |
+| TextBox | `4 1` | 4px horizontal, 1px vertical |
+
+#### 3.3.3 Cell Margins
+
+| Element | Margin | Notes |
+|---------|--------|-------|
+| Process Column Cell | `0` | Centered, 4px width |
+| System Column Cell | `5 0` | 5px horizontal margin |
+| Frame/Time/Counter/Number | `2 0` | 2px horizontal margin |
+| Type Icon | `0` | Centered, 16px height |
+
+### 3.4 Row Heights
+
+| Element | Height | Notes |
+|---------|--------|-------|
+| Fixed ListViewItem | `16px` | Single-line mode |
+| Variable ListViewItem | Auto | Multi-line mode (AllowMultiline=True) |
+| Toolbar | `32px` | Fixed height |
+| Toolbar Filter TextBox | `24px` | Fixed height |
+| Filter Button | `20px` | Systems expander button |
+| Process Filter Item | `18px` | Fixed height |
+| Thread Filter Item | `18px` | Fixed height |
+| System Color Border | `14x14px` | Color indicator size |
+
+### 3.5 Border Specifications
+
+| Element | BorderThickness | BorderBrush | CornerRadius |
+|---------|-----------------|-------------|--------------|
+| LogListView | `0` | LogViewerBorder | 0 |
+| RoundedListView (Filters) | `1` | Background | 2 |
+| ListViewItem | `0` | Transparent | 0 |
+| System Color Border | `1` | SystemFilterBorder | 2 |
+| Process Indicator | `0` | LogBorder | 0 |
+
+---
+
+## 4. Element States
+
+### 4.1 ListViewItem States
+
+#### 4.1.1 Normal State
+```xml
+Background: Transparent (inherited from ListView)
+BorderBrush: Transparent
+BorderThickness: 0
+Foreground: LogType-dependent color
+```
+
+#### 4.1.2 MouseOver State
+```xml
+BorderBrush: {LogItemBorderMouseOver} = #B7CFD5
+Background: Transparent (no change)
+Foreground: {LogItemTextMouseOver} = #382F27
+```
+
+#### 4.1.3 Selected State
+```xml
+Background: {LogItemEntry} = #375977
+Foreground: {LogItemTextMouseOver} = #382F27
+BorderBrush: Transparent
+```
+
+#### 4.1.4 Selected + MouseOver State
+```xml
+Background: {LogItemEntry} = #375977
+Foreground: {LogItemTextMouseOver} = #382F27
+BorderBrush: {LogItemBorderMouseOver} = #B7CFD5
+```
+
+### 4.2 TextBox States (FilterTextBox)
+
+#### 4.2.1 Normal State
+```xml
+Background: {TextBox} = Gray01
+BorderBrush: {LogViewerBorder} = Gray02
+BorderThickness: 1
+Foreground: {TextBoxText} = Gray15
+```
+
+#### 4.2.2 MouseOver State
+```xml
+BorderBrush: {BorderMouseOver} = #8491A3
+Foreground: {LogItemTextMouseOver} = #382F27
+```
+
+#### 4.2.3 Focused/Selected State
+```xml
+BorderBrush: {BorderSelected} = #8491A3
+Foreground: {TextSelected} = #382F27
+```
+
+### 4.3 ToggleButton States (Log Type Filters)
+
+#### 4.3.1 Normal State
+```xml
+Background: Inherited from toolbar style
+Margin: 4 0
+Padding: 4
+```
+
+#### 4.3.2 Checked State (Log Type Enabled)
+```xml
+IsChecked: True
+Visual: Icon + Count display
+```
+
+#### 4.3.3 Unchecked State (Log Type Disabled)
+```xml
+IsChecked: False
+Visual: Icon + Count display (grayed out)
+```
+
+### 4.4 TreeListViewItem States (System Filters)
+
+#### 4.4.1 Normal State
+```xml
+Visibility: {Binding IsVisible}
+IsExpanded: {Binding IsExpanded}
+HasItems: {Binding Children}
+HorizontalAlignment: Stretch
+```
+
+#### 4.4.2 Expanded State
+```xml
+IsExpanded: True
+Children visible
+```
+
+#### 4.4.3 Collapsed State
+```xml
+IsExpanded: False
+Children hidden
+```
+
+### 4.5 CheckBox States (Filter Items)
+
+#### 4.5.1 System/Process/Thread Filters
+```xml
+IsChecked: {Binding IsDisplayed}
+Content: {Binding Name}
+VerticalAlignment: Center
+Margin: 4 0 0 0 (Process/Thread)
+```
+
+### 4.6 Icon States
+
+#### 4.6.1 Log Type Icons
+
+| Log Type | Icon Resource | Size |
+|----------|---------------|------|
+| Trace | `LogViewerIcons.TypeTrace` | 16x16 |
+| Debug | `LogViewerIcons.TypeDebug` | 16x16 |
+| Message | `LogViewerIcons.TypeMessage` | 16x16 |
+| Warning | `LogViewerIcons.TypeWarning` | 16x16 |
+| Error | `LogViewerIcons.TypeError` | 16x16 |
+| Critical | `LogViewerIcons.TypeCritical` | 16x16 |
+
+#### 4.6.2 Toolbar Icons
+
+| Icon | Resource | Size | Tooltip |
+|------|----------|------|---------|
+| Regex Toggle | `LogViewerIcons.Regex` | 16x16 | "Use Regex Filter" |
+| Scroll to Bottom | `LogViewerIcons.ScrollToBottom` | 16x16 | "Keep scrolling to last message" |
+| Expand All | `CommonIcons.ExpandAll` | 16x16 | "Expand All" |
+| Collapse All | `CommonIcons.CollapseAll` | 16x16 | "Collapse All" |
+
+---
+
+## 5. Interaction Patterns
+
+### 5.1 Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+C` | Copy selected logs to clipboard |
+| `End` | Enable auto-scroll to last message |
+
+### 5.2 Context Menu (Log Items)
+
+| Menu Item | Command | Description |
+|-----------|---------|-------------|
+| Copy | `CopyCommand` | Copy full log entry |
+| Copy Only Message | `CopyOnlyMessageCommand` | Copy message text only |
+| Exclude system | `ExcludeSystemCommand` | Hide logs from this system |
+| Clear | `ClearLogsCommand` | Clear all logs |
+
+### 5.3 Context Menu (Systems Tab)
+
+| Menu Item | Command |
+|-----------|---------|
+| Clear Unused Systems | `ClearSystemsCacheCommand` |
+
+### 5.4 Column Header Context Menu
+
+- Shows list of all columns
+- Checkable menu items to show/hide columns
+- Bound to `IsVisible` property of each column
+
+### 5.5 Auto-Scroll Behavior
+
+- Toggle button in toolbar
+- When enabled: automatically scrolls to newest log entry
+- When disabled: maintains current scroll position
+- Automatically disables when user manually selects a log entry
+
+---
+
+## 6. Data Binding
+
+### 6.1 Log Entry Properties
+
+| Property | Type | Binding | Notes |
+|----------|------|---------|-------|
+| ProcessName | string | `Binding ProcessName` | Displayed as colored indicator |
+| System | string | `Binding System` | Hierarchical system path |
+| Frame | int | `Binding Frame` | Frame number |
+| Time | string | `Binding Time` | Time string |
+| Type | LogType | `Binding Type` | Enum: Trace, Debug, Message, Warning, Error, Critical |
+| Thread | string | `Binding Thread` | Thread identifier |
+| MessageCounter | int | `Binding MessageCounter` | Message counter |
+| Number | int | `Binding Number` | Sequential log number |
+| Timestamp | long | `Binding Timestamp` | Unix timestamp (converted to local time) |
+| Message | string | `Binding Message` | Log message content |
+
+### 6.2 Filter Properties
+
+| Property | Type | Binding | Notes |
+|----------|------|---------|-------|
+| IsDisplayed | bool | TwoWay | For system/process/thread visibility |
+| IsExpanded | bool | TwoWay | For tree expansion state |
+| IsVisible | bool | OneWay | For filter visibility |
+| Count | int | OneWay | Log count per type |
+| IsEnabled | bool | TwoWay | Log type filter toggle |
+
+---
+
+## 7. Virtualization
+
+### 7.1 ListView Virtualization
+
+```xml
+VirtualizingStackPanel.IsVirtualizing="True"
+VirtualizingStackPanel.VirtualizationMode="Recycling"
+VirtualizingStackPanel.ScrollUnit="Pixel"
+```
+
+- **IsVirtualizing:** True - enables virtualization
+- **VirtualizationMode:** Recycling - reuses containers
+- **ScrollUnit:** Pixel - smooth scrolling
+
+### 7.2 Column Virtualization
+
+- Columns are dynamically generated via binding
+- `GridViewExtensions.Columns="{Binding Columns}"`
+- `GridViewExtensions.FillLastColumnWidth="True"` - last column fills space
+
+---
+
+## 8. Accessibility
+
+### 8.1 ToolTips
+
+| Element | Tooltip |
+|---------|---------|
+| Process Indicator | `{Binding ProcessName}` |
+| System Cell | `{Binding System}` |
+| Type Icon | `{Binding Type}` |
+| Message Text | `{Binding Message}` (when not multiline) |
+| Regex Toggle | "Use Regex Filter" |
+| Scroll Toggle | "Keep scrolling to last message" |
+| Expand Button | "Expand All" / "Collapse All" |
+
+### 8.2 Focus Management
+
+- FilterTextBox receives initial focus
+- ListView supports extended selection mode
+- Keyboard navigation between filter tabs
+
+---
+
+## 9. Performance Considerations
+
+### 9.1 Optimization Techniques
+
+1. **Pixel-based scrolling** for smooth log navigation
+2. **Container recycling** for memory efficiency
+3. **Deferred filtering** with async operations
+4. **Observable collections** for UI updates
+5. **One-time bindings** where possible (`Mode=OneTime`)
+
+### 9.2 Large Dataset Handling
+
+- Filter operations are asynchronous
+- Scroll position tracking for filter operations
+- Selection preservation during filter updates
+
+---
+
+## 10. Styling References
+
+### 10.1 Base Styles
+
+| Style | BasedOn | Target Type |
+|-------|---------|-------------|
+| `LogsListItemViewStyle` | `{x:Type ListViewItem}` | ListViewItem |
+| `LogsListFixedItemViewStyle` | `LogsListItemViewStyle` | ListViewItem |
+| `LogsListViewStyle` | `{x:Type ListView}` | ListView |
+| `RoundedListViewStyle` | `{x:Type ListView}` | ListView |
+| `LogViewerTextBoxStyle` | `{x:Type TextBox}` | TextBox |
+| `SystemFiltersTreeViewItemStyle` | `{x:Type s3dc:TreeListViewItem}` | TreeListViewItem |
+| `ThinListViewItemStyle` | `{x:Type ListViewItem}` | ListViewItem |
+
+### 10.2 Control State Properties
+
+The plugin uses `ControlStateProperties` for state-specific styling:
+
+```xml
+<s3dc:ControlStateProperties.MouseOver>
+    <s3dc:ControlStateProperties BorderBrush="{...}" />
+</s3dc:ControlStateProperties.MouseOver>
+
+<s3dc:ControlStateProperties.Selected>
+    <s3dc:ControlStateProperties Background="{...}" Foreground="{...}" />
+</s3dc:ControlStateProperties.Selected>
+```
+
+---
+
+## 11. Implementation Notes for AI Agents
+
+### 11.1 Key Files
+
+| File | Purpose |
+|------|---------|
+| `View/LogViewer.xaml` | Main UI layout and styles |
+| `View/LogViewerViewModel.cs` | ViewModel and data binding |
+| `Control/Brushes.cs` | Color/brush definitions |
+| `Control/LogSystemColorization.cs` | System color management |
+| `Control/Converters.cs` | Value converters |
+| `View/LogViewerIcons.cs` | Icon resource references |
+
+### 11.2 Dependency Injection Points
+
+- `LogViewerPlugin.Instance.Settings` - Plugin settings access
+- `LogSystemColorStorage.Instance` - System color storage singleton
+- `ViewHost.UI.AwaitSynchronize()` - UI thread synchronization
+
+### 11.3 State Persistence
+
+- Column visibility and width
+- System/Process/Thread filter states
+- Log type filter states
+- System colors
+- Splitter distance
+
+### 11.4 Extension Points
+
+- Custom column definitions via `Columns` collection
+- Custom cell templates via `DataTemplate`
+- Custom context menus via `ContextMenu` resource
+- Custom log type icons via `LogViewerIcons` enum
+
+---
+
+## 12. Appendix
+
+### 12.1 Color Reference Chart
+
+```
+Log Level Colors (Dark Theme):
+┌─────────────┬──────────────┬─────────────────────────────────┐
+│ Level       │ HEX           │ Visual                          │
+├─────────────┼──────────────┼─────────────────────────────────┤
+│ Trace       │ #BDBDBD      │ ░░░░░░░░░░ (Light Gray)         │
+│ Debug       │ #BDBDBD      │ ░░░░░░░░░░ (Light Gray)          │
+│ Message     │ #BDBDBD      │ ░░░░░░░░░░ (Light Gray)         │
+│ Warning     │ #6A5302      │ ██████████ (Amber/Brown)        │
+│ Error       │ #781111      │ ██████████ (Dark Red)           │
+│ Critical    │ #781111      │ ██████████ (Dark Red)           │
+└─────────────┴──────────────┴─────────────────────────────────┘
+
+Process Colors:
+┌─────────────┬──────────────┬─────────────────────────────────┐
+│ Color       │ HEX           │ Visual                          │
+├─────────────┼──────────────┼─────────────────────────────────┤
+│ Blue        │ #96CBF8      │ ██████████ (Light Blue)         │
+│ Red         │ #CC7474      │ ██████████ (Salmon)             │
+│ Orange      │ #F5B76E      │ ██████████ (Peach)              │
+│ Pink        │ #D786CA      │ ██████████ (Orchid)             │
+│ Green       │ #9BBF7C      │ ██████████ (Sage)               │
+│ Cream       │ #FAE744      │ ██████████ (Yellow)             │
+└─────────────┴──────────────┴─────────────────────────────────┘
+```
+
+### 12.2 Layout Measurements
+
+```
+Main Layout Grid:
+┌────────────────────────────────────────┐
+│ Row 0: Auto (Toolbar)                 │ 32px height
+├────────────────────────────────────────┤
+│ Row 1: * (Log List)                    │ Fill remaining
+└────────────────────────────────────────┘
+
+SplitContainer:
+├── FirstContent: Log List (MinWidth: 250px, MinHeight: 100px)
+├── Splitter: 5px
+└── SecondContent: Filter Panel (MinWidth: 250px)
+```
+
+---
+
+*End of Design Specification*
