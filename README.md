@@ -2,6 +2,30 @@
 
 High-performance log viewer for multi-gigabyte log files with advanced filtering capabilities.
 
+## Building
+
+### Prerequisites
+
+- Python 3.12 or higher
+- uv package manager ([install guide](https://docs.astral.sh/uv/))
+- PyInstaller 6.0+ (installed automatically with `uv sync`)
+
+### Production Build
+
+#### macOS
+
+```bash
+bash build/scripts/build-macos.sh
+# Output: dist/LogViewer-0.1.0-macos.dmg
+```
+
+#### Windows
+
+```bash
+python build/scripts/build-windows.py
+# Output: dist/LogViewer-0.1.0-windows.zip
+```
+
 ## Features
 
 - **Large File Support**: Handle multi-gigabyte log files efficiently with lazy loading
@@ -117,56 +141,3 @@ Examples:
 | Ctrl+Shift+P | Toggle panels |
 | Enter | Apply filter (in filter input) |
 | Escape | Clear filter (in filter input) |
-
-## Building
-
-### Prerequisites
-
-- Python 3.12 or higher
-- uv package manager ([install guide](https://docs.astral.sh/uv/))
-- PyInstaller 6.0+ (installed automatically with `uv sync`)
-
-### Development Build
-
-```bash
-# Install dependencies
-uv sync
-
-# Run PyInstaller (development)
-uv run pyinstaller build/logviewer.spec
-
-# Output: dist/Log Viewer.app (macOS) or dist/LogViewer.exe (Windows)
-```
-
-### Production Build
-
-#### macOS
-
-```bash
-bash build/scripts/build-macos.sh
-# Output: dist/LogViewer-0.1.0-macos.dmg
-```
-
-#### Windows
-
-```bash
-python build/scripts/build-windows.py
-# Output: dist/LogViewer-0.1.0-windows.zip
-```
-
-See [docs/BUILD.md](docs/BUILD.md) for detailed build instructions.
-
-### CI/CD
-
-Builds are automatically created via GitHub Actions when version tags are pushed:
-
-```bash
-git tag v0.1.0
-git push --tags
-```
-
-Artifacts are uploaded to GitHub Releases.
-
-## License
-
-[Add license information here]
