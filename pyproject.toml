@@ -41,3 +41,8 @@ asyncio_mode = "auto"
 python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.19.0",
+]
