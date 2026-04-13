@@ -1,0 +1,43 @@
+[project]
+name = "log-viewer"
+version = "0.1.0"
+description = "TUI log viewer with vim-style navigation, filtering, and highlighting"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "textual>=3.0",
+    "rich>=13.0",
+    "pyperclip>=1.8",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "black>=24.0",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+log-viewer = "log_viewer.tui.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
