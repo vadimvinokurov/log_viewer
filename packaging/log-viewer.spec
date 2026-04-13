@@ -81,12 +81,12 @@ app = BUNDLE(
     name="Log Viewer.app",
     icon=str(Path(SPECPATH) / "icon.icns"),
     bundle_identifier="com.logviewer.app",
-    version="0.1.0",
+    version="2.0.0",
     info_plist={
         "CFBundleName": "Log Viewer",
         "CFBundleDisplayName": "Log Viewer",
-        "CFBundleVersion": "0.1.0",
-        "CFBundleShortVersionString": "0.1.0",
+        "CFBundleVersion": "2.0.0",
+        "CFBundleShortVersionString": "2.0.0",
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "10.15",
         "CFBundleDocumentTypes": [

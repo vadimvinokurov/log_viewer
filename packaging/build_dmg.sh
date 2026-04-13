@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 PROJECT_ROOT="$(cd .. && pwd)"
 APP_NAME="Log Viewer"
-DMG_NAME="LogViewer-0.1.0-macOS"
+DMG_NAME="LogViewer-2.0.0-macOS"
 BUILD_DIR="build"
 DIST_DIR="dist"
 

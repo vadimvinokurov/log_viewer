@@ -1,6 +1,6 @@
 [project]
 name = "log-viewer"
-version = "0.1.0"
+version = "2.0.0"
 description = "TUI log viewer with vim-style navigation, filtering, and highlighting"
 readme = "README.md"
 requires-python = ">=3.9"
