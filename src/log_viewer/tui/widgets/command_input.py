@@ -1,8 +1,10 @@
-"""CommandInput widget — minimal command bar for :open and :q."""
+"""CommandInput widget — command bar with file path autocomplete for :open."""
 
 from __future__ import annotations
 
 from textual.widgets import Input
+
+from log_viewer.core.suggester import FilePathSuggester
 
 
 class CommandInput(Input):
@@ -19,7 +21,10 @@ class CommandInput(Input):
     """
 
     def __init__(self) -> None:
-        super().__init__(select_on_focus=False)
+        super().__init__(
+            select_on_focus=False,
+            suggester=FilePathSuggester(),
+        )
 
     def key_escape(self) -> None:
         """Cancel input and return focus to LogPanel."""
@@ -29,6 +34,12 @@ class CommandInput(Input):
         app = self.app
         if isinstance(app, LogViewerApp):
             app._return_to_log_panel()
+
+    def key_tab(self) -> None:
+        """Accept the current suggestion, if any."""
+        if self._suggestion:
+            self.value = self._suggestion
+            self.cursor_position = len(self.value)
 
     def key_up(self) -> None:
         """Navigate command history up."""

@@ -22,6 +22,7 @@ async def test_tab_accepts_suggestion(tmp_tree: Path) -> None:
     app = LogViewerApp()
     async with app.run_test() as pilot:
         cmd_input = app.query_one(CommandInput)
+        cmd_input.focus()
         cmd_input.value = f":open {tmp_tree}/hel"
         cmd_input.cursor_position = len(cmd_input.value)
         await pilot.pause()
@@ -38,6 +39,7 @@ async def test_tab_does_nothing_without_suggestion() -> None:
     app = LogViewerApp()
     async with app.run_test() as pilot:
         cmd_input = app.query_one(CommandInput)
+        cmd_input.focus()
         cmd_input.value = ":open /nonexistent_zzz_path"
         cmd_input.cursor_position = len(cmd_input.value)
         await pilot.pause()
