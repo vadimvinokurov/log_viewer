@@ -23,18 +23,20 @@ class FilePathSuggester(Suggester):
             return None
 
         expanded = os.path.expanduser(partial)
-        parent = os.path.dirname(expanded) or "."
+        parent = os.path.dirname(expanded)
         base = os.path.basename(expanded)
+        is_cwd = not parent
+        search_dir = parent or "."
 
         try:
-            entries = sorted(os.listdir(parent))
+            entries = sorted(os.listdir(search_dir))
         except (OSError, PermissionError):
             return None
 
         for entry in entries:
             if entry.startswith(base):
-                full = os.path.join(parent, entry)
-                if os.path.isdir(full):
+                full = entry if is_cwd else os.path.join(parent, entry)
+                if os.path.isdir(os.path.join(search_dir, entry)):
                     full += "/"
                 return f":open {full}"
 

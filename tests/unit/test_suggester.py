@@ -135,4 +135,4 @@ async def test_completes_bare_filename_in_cwd(
 ) -> None:
     monkeypatch.chdir(tmp_tree)
     result = await suggester.get_suggestion(":open alp")
-    assert result == ":open ./alpha.log"
+    assert result == ":open alpha.log"
