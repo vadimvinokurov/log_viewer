@@ -37,7 +37,7 @@ class CommandInput(Input):
 
     def check_consume_key(self, key: str, character: str | None) -> bool:
         """Consume Tab when a suggestion is available to prevent focus cycling."""
-        if key == "tab" and self._suggestion:
+        if key == "tab":
             return True
         return super().check_consume_key(key, character)
 
