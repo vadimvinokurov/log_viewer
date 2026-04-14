@@ -101,6 +101,8 @@ class LogViewerApp(App):
     def on_mount(self) -> None:
         self._update_status()
         self.query_one(LogPanel).focus()
+        cmd_input = self.query_one(CommandInput)
+        cmd_input.set_log_store(self.log_store)
         if self._initial_file:
             self._open_file(self._initial_file)
 

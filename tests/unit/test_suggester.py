@@ -1,4 +1,4 @@
-"""Tests for FilePathSuggester."""
+"""Tests for CommandSuggester (file path and category completion)."""
 
 from __future__ import annotations
 
@@ -7,12 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from log_viewer.core.suggester import FilePathSuggester
+from log_viewer.core.log_store import LogStore
+from log_viewer.core.models import CategoryNode
+from log_viewer.core.suggester import CommandSuggester
 
 
 @pytest.fixture
-def suggester() -> FilePathSuggester:
-    return FilePathSuggester()
+def suggester() -> CommandSuggester:
+    return CommandSuggester()
 
 
 @pytest.fixture
@@ -26,9 +28,12 @@ def tmp_tree(tmp_path: Path) -> Path:
     return tmp_path
 
 
+# --- File path completion tests ---
+
+
 @pytest.mark.asyncio
 async def test_returns_none_for_non_open_command(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
 ) -> None:
     result = await suggester.get_suggestion(":q")
     assert result is None
@@ -36,7 +41,7 @@ async def test_returns_none_for_non_open_command(
 
 @pytest.mark.asyncio
 async def test_returns_none_for_empty_path(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
 ) -> None:
     result = await suggester.get_suggestion(":open ")
     assert result is None
@@ -44,7 +49,7 @@ async def test_returns_none_for_empty_path(
 
 @pytest.mark.asyncio
 async def test_returns_none_when_no_match(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
     tmp_tree: Path,
 ) -> None:
     result = await suggester.get_suggestion(f":open {tmp_tree}/zzz")
@@ -53,7 +58,7 @@ async def test_returns_none_when_no_match(
 
 @pytest.mark.asyncio
 async def test_completes_single_file_match(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
     tmp_tree: Path,
 ) -> None:
     result = await suggester.get_suggestion(f":open {tmp_tree}/bet")
@@ -62,7 +67,7 @@ async def test_completes_single_file_match(
 
 @pytest.mark.asyncio
 async def test_completes_first_match_when_multiple(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
     tmp_tree: Path,
 ) -> None:
     result = await suggester.get_suggestion(f":open {tmp_tree}/alpha")
@@ -72,7 +77,7 @@ async def test_completes_first_match_when_multiple(
 
 @pytest.mark.asyncio
 async def test_completes_directory_with_trailing_slash(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
     tmp_tree: Path,
 ) -> None:
     result = await suggester.get_suggestion(f":open {tmp_tree}/subd")
@@ -81,7 +86,7 @@ async def test_completes_directory_with_trailing_slash(
 
 @pytest.mark.asyncio
 async def test_completes_inside_existing_directory(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
     tmp_tree: Path,
 ) -> None:
     result = await suggester.get_suggestion(f":open {tmp_tree}/subdir/nest")
@@ -90,7 +95,7 @@ async def test_completes_inside_existing_directory(
 
 @pytest.mark.asyncio
 async def test_expands_tilde(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
 ) -> None:
     home = os.path.expanduser("~")
     entries = os.listdir(home)
@@ -106,7 +111,7 @@ async def test_expands_tilde(
 
 @pytest.mark.asyncio
 async def test_completes_absolute_root_dir(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
 ) -> None:
     entries = os.listdir("/")
     if not entries:
@@ -121,7 +126,7 @@ async def test_completes_absolute_root_dir(
 
 @pytest.mark.asyncio
 async def test_returns_none_for_non_path_text(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
 ) -> None:
     result = await suggester.get_suggestion(":f pattern")
     assert result is None
@@ -129,10 +134,117 @@ async def test_returns_none_for_non_path_text(
 
 @pytest.mark.asyncio
 async def test_completes_bare_filename_in_cwd(
-    suggester: FilePathSuggester,
+    suggester: CommandSuggester,
     tmp_tree: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_tree)
     result = await suggester.get_suggestion(":open alp")
     assert result == ":open alpha.log"
+
+
+# --- Category completion tests ---
+
+
+def _make_store_with_categories(*paths: str) -> LogStore:
+    """Build a LogStore with a category tree from the given paths."""
+    store = LogStore()
+    tree = store.category_tree
+    for path in paths:
+        parts = path.split("/")
+        built: list[str] = []
+        node = tree
+        for part in parts:
+            built.append(part)
+            full = "/".join(built)
+            if part not in node.children:
+                node.children[part] = CategoryNode(name=part, full_path=full)
+            node = node.children[part]
+            node.line_count += 1
+    return store
+
+
+@pytest.fixture
+def cat_suggester() -> CommandSuggester:
+    s = CommandSuggester()
+    s.log_store = _make_store_with_categories(
+        "HordeMode/game_storage",
+        "HordeMode/player_stats",
+        "Network/packet_recv",
+        "Network/packet_send",
+        "System/init",
+    )
+    return s
+
+
+@pytest.mark.asyncio
+async def test_cate_no_log_store_returns_none() -> None:
+    s = CommandSuggester()
+    result = await s.get_suggestion(":cate H")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_cate_suggests_top_level(
+    cat_suggester: CommandSuggester,
+) -> None:
+    result = await cat_suggester.get_suggestion(":cate ")
+    assert result is not None
+    # Sorted top-level: HordeMode, Network, System
+    assert result == ":cate HordeMode/"
+
+
+@pytest.mark.asyncio
+async def test_cate_suggests_partial_top_level(
+    cat_suggester: CommandSuggester,
+) -> None:
+    result = await cat_suggester.get_suggestion(":cate N")
+    assert result == ":cate Network/"
+
+
+@pytest.mark.asyncio
+async def test_cate_suggests_child_node(
+    cat_suggester: CommandSuggester,
+) -> None:
+    result = await cat_suggester.get_suggestion(":cate HordeMode/g")
+    assert result == ":cate HordeMode/game_storage"
+
+
+@pytest.mark.asyncio
+async def test_cate_partial_child_match(
+    cat_suggester: CommandSuggester,
+) -> None:
+    result = await cat_suggester.get_suggestion(":cate HordeMode/p")
+    assert result == ":cate HordeMode/player_stats"
+
+
+@pytest.mark.asyncio
+async def test_cate_no_match_returns_none(
+    cat_suggester: CommandSuggester,
+) -> None:
+    result = await cat_suggester.get_suggestion(":cate Zzz")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_catd_works_same_as_cate(
+    cat_suggester: CommandSuggester,
+) -> None:
+    result = await cat_suggester.get_suggestion(":catd Net")
+    assert result == ":catd Network/"
+
+
+@pytest.mark.asyncio
+async def test_cate_leaf_has_no_trailing_slash(
+    cat_suggester: CommandSuggester,
+) -> None:
+    result = await cat_suggester.get_suggestion(":cate System/i")
+    assert result == ":cate System/init"
+
+
+@pytest.mark.asyncio
+async def test_cate_empty_tree_returns_none() -> None:
+    s = CommandSuggester()
+    s.log_store = LogStore()  # empty tree
+    result = await s.get_suggestion(":cate ")
+    assert result is None

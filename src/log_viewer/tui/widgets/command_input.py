@@ -1,10 +1,15 @@
-"""CommandInput widget — command bar with file path autocomplete for :open."""
+"""CommandInput widget — command bar with autocomplete for :open, :cate, :catd."""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from textual.widgets import Input
 
-from log_viewer.core.suggester import FilePathSuggester
+from log_viewer.core.suggester import CommandSuggester
+
+if TYPE_CHECKING:
+    from log_viewer.core.log_store import LogStore
 
 
 class CommandInput(Input):
@@ -23,8 +28,13 @@ class CommandInput(Input):
     def __init__(self) -> None:
         super().__init__(
             select_on_focus=False,
-            suggester=FilePathSuggester(),
+            suggester=CommandSuggester(),
         )
+
+    def set_log_store(self, store: LogStore) -> None:
+        """Provide LogStore reference for category autocomplete."""
+        if self.suggester:
+            self.suggester.log_store = store
 
     def key_escape(self) -> None:
         """Cancel input and return focus to LogPanel."""
