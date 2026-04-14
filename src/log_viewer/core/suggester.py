@@ -23,7 +23,7 @@ class FilePathSuggester(Suggester):
             return None
 
         expanded = os.path.expanduser(partial)
-        parent = os.path.dirname(expanded)
+        parent = os.path.dirname(expanded) or "."
         base = os.path.basename(expanded)
 
         try:

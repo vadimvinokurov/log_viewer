@@ -125,3 +125,14 @@ async def test_returns_none_for_non_path_text(
 ) -> None:
     result = await suggester.get_suggestion(":f pattern")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_completes_bare_filename_in_cwd(
+    suggester: FilePathSuggester,
+    tmp_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_tree)
+    result = await suggester.get_suggestion(":open alp")
+    assert result == ":open ./alpha.log"
