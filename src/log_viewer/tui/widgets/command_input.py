@@ -35,6 +35,12 @@ class CommandInput(Input):
         if isinstance(app, LogViewerApp):
             app._return_to_log_panel()
 
+    def check_consume_key(self, key: str, character: str | None) -> bool:
+        """Consume Tab when a suggestion is available to prevent focus cycling."""
+        if key == "tab" and self._suggestion:
+            return True
+        return super().check_consume_key(key, character)
+
     def key_tab(self) -> None:
         """Accept the current suggestion, if any."""
         if self._suggestion:
