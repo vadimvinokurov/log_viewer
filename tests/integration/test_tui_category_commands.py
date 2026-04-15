@@ -59,8 +59,8 @@ async def test_cate_enables_category() -> None:
 
 
 @pytest.mark.asyncio
-async def test_catea_enables_all_categories() -> None:
-    """:catea enables all categories."""
+async def test_cate_without_args_enables_all_categories() -> None:
+    """:cate without args enables all categories."""
     app = LogViewerApp()
     async with app.run_test() as pilot:
         await _load_and_prep(app)
@@ -69,7 +69,7 @@ async def test_catea_enables_all_categories() -> None:
         assert len(app.log_store.filtered_indices) == 2
 
         cmd_input = app.query_one(CommandInput)
-        cmd_input.value = ":catea"
+        cmd_input.value = ":cate"
         await cmd_input.action_submit()
         await pilot.pause()
 
@@ -77,15 +77,15 @@ async def test_catea_enables_all_categories() -> None:
 
 
 @pytest.mark.asyncio
-async def test_catda_disables_all_categories() -> None:
-    """:catda disables all categories."""
+async def test_catd_without_args_disables_all_categories() -> None:
+    """:catd without args disables all categories."""
     app = LogViewerApp()
     async with app.run_test() as pilot:
         await _load_and_prep(app)
         assert len(app.log_store.filtered_indices) == 4
 
         cmd_input = app.query_one(CommandInput)
-        cmd_input.value = ":catda"
+        cmd_input.value = ":catd"
         await cmd_input.action_submit()
         await pilot.pause()
 

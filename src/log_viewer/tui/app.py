@@ -265,10 +265,6 @@ class LogViewerApp(App):
             self._cate(parsed.text)
         elif name == "catd":
             self._catd(parsed.text)
-        elif name == "catea":
-            self._catea()
-        elif name == "catda":
-            self._catda()
         elif name == "lscat":
             self._lscat()
         elif name == "h":
@@ -479,16 +475,6 @@ class LogViewerApp(App):
             self.log_store.disable_all_categories()
         else:
             self.log_store.disable_category(path)
-        self.refresh_log_panel()
-
-    def _catea(self) -> None:
-        """Enable all categories."""
-        self.log_store.enable_all_categories()
-        self.refresh_log_panel()
-
-    def _catda(self) -> None:
-        """Disable all categories."""
-        self.log_store.disable_all_categories()
         self.refresh_log_panel()
 
     def _lscat(self) -> None:

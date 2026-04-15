@@ -156,14 +156,14 @@ class TestCategoryCommands:
         assert result.name == "catd"
         assert result.text == "HordeMode/game_storage"
 
-    def test_catea_command(self) -> None:
-        result = parse_command("catea")
-        assert result.name == "catea"
+    def test_cate_without_args(self) -> None:
+        result = parse_command("cate")
+        assert result.name == "cate"
         assert result.text == ""
 
-    def test_catda_command(self) -> None:
-        result = parse_command("catda")
-        assert result.name == "catda"
+    def test_catd_without_args(self) -> None:
+        result = parse_command("catd")
+        assert result.name == "catd"
         assert result.text == ""
 
 

@@ -24,7 +24,7 @@ _VALID_COMMANDS: set[str] = {
     "h", "hr", "hs",
     "rmf", "rmh",
     "lsf", "lsh", "lscat",
-    "cate", "catd", "catea", "catda",
+    "cate", "catd",
     "open", "reload",
     "preset", "presetl", "rmpreset", "lspreset",
     "theme", "q", "n", "N",
@@ -32,7 +32,7 @@ _VALID_COMMANDS: set[str] = {
 
 _ZERO_ARG_COMMANDS: set[str] = {
     "lsf", "lsh", "lscat",
-    "cate", "catd", "catea", "catda",
+    "cate", "catd",
     "q", "n", "N",
     "reload", "lspreset", "presetl",
     "rmf", "rmh",
