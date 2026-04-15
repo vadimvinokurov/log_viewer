@@ -156,7 +156,7 @@ class LogStore:
         """Navigate the category tree by slash-separated path. Returns None if not found."""
         if not path:
             return self.category_tree
-        parts = path.split("/")
+        parts = path.rstrip("/").split("/")
         node = self.category_tree
         for part in parts:
             if part not in node.children:
