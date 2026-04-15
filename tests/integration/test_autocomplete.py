@@ -1,4 +1,4 @@
-"""Tests for Tab-autocomplete in CommandInput."""
+"""Tests for Tab-autocomplete cycling in CommandInput."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def tmp_tree(tmp_path: Path) -> Path:
 
 
 @pytest.mark.asyncio
-async def test_tab_accepts_suggestion(tmp_tree: Path) -> None:
+async def test_tab_accepts_first_match(tmp_tree: Path) -> None:
     app = LogViewerApp()
     async with app.run_test() as pilot:
         cmd_input = app.query_one(CommandInput)
@@ -27,10 +27,35 @@ async def test_tab_accepts_suggestion(tmp_tree: Path) -> None:
         cmd_input.cursor_position = len(cmd_input.value)
         await pilot.pause()
 
-        # The suggester should have set a suggestion — press Tab to accept
         await pilot.press("tab")
         await pilot.pause()
 
+        assert cmd_input.value == f":open {tmp_tree}/hello.log"
+
+
+@pytest.mark.asyncio
+async def test_tab_cycles_through_matches(tmp_tree: Path) -> None:
+    app = LogViewerApp()
+    async with app.run_test() as pilot:
+        cmd_input = app.query_one(CommandInput)
+        cmd_input.focus()
+        cmd_input.value = f":open {tmp_tree}/hel"
+        cmd_input.cursor_position = len(cmd_input.value)
+        await pilot.pause()
+
+        # First Tab — first match
+        await pilot.press("tab")
+        await pilot.pause()
+        assert cmd_input.value == f":open {tmp_tree}/hello.log"
+
+        # Second Tab — second match
+        await pilot.press("tab")
+        await pilot.pause()
+        assert cmd_input.value == f":open {tmp_tree}/hello.txt"
+
+        # Third Tab — cycles back to first
+        await pilot.press("tab")
+        await pilot.pause()
         assert cmd_input.value == f":open {tmp_tree}/hello.log"
 
 

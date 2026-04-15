@@ -248,3 +248,70 @@ async def test_cate_empty_tree_returns_none() -> None:
     s.log_store = LogStore()  # empty tree
     result = await s.get_suggestion(":cate ")
     assert result is None
+
+
+# --- get_all_suggestions tests ---
+
+
+def test_all_file_suggestions_returns_multiple(
+    suggester: CommandSuggester,
+    tmp_tree: Path,
+) -> None:
+    results = suggester.get_all_suggestions(f":open {tmp_tree}/alpha")
+    assert results == [
+        f":open {tmp_tree}/alpha.log",
+        f":open {tmp_tree}/alpha.txt",
+    ]
+
+
+def test_all_file_suggestions_returns_empty_on_no_match(
+    suggester: CommandSuggester,
+    tmp_tree: Path,
+) -> None:
+    results = suggester.get_all_suggestions(f":open {tmp_tree}/zzz")
+    assert results == []
+
+
+def test_all_category_suggestions_top_level(
+    cat_suggester: CommandSuggester,
+) -> None:
+    results = cat_suggester.get_all_suggestions(":cate ")
+    assert results == [
+        ":cate HordeMode/",
+        ":cate Network/",
+        ":cate System/",
+    ]
+
+
+def test_all_category_suggestions_children(
+    cat_suggester: CommandSuggester,
+) -> None:
+    results = cat_suggester.get_all_suggestions(":cate HordeMode/")
+    assert results == [
+        ":cate HordeMode/game_storage",
+        ":cate HordeMode/player_stats",
+    ]
+
+
+def test_all_category_suggestions_partial(
+    cat_suggester: CommandSuggester,
+) -> None:
+    results = cat_suggester.get_all_suggestions(":cate HordeMode/p")
+    assert results == [":cate HordeMode/player_stats"]
+
+
+def test_all_category_suggestions_network_children(
+    cat_suggester: CommandSuggester,
+) -> None:
+    results = cat_suggester.get_all_suggestions(":cate Network/p")
+    assert results == [
+        ":cate Network/packet_recv",
+        ":cate Network/packet_send",
+    ]
+
+
+def test_all_category_suggestions_empty_on_no_match(
+    cat_suggester: CommandSuggester,
+) -> None:
+    results = cat_suggester.get_all_suggestions(":cate Zzz")
+    assert results == []

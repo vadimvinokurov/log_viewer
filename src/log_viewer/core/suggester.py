@@ -19,19 +19,24 @@ class CommandSuggester(Suggester):
         self.log_store: Optional[LogStore] = None
 
     async def get_suggestion(self, value: str) -> str | None:
-        if value.startswith(":open "):
-            return self._suggest_file(value)
-        if value.startswith(":cate "):
-            return self._suggest_category(value, ":cate ")
-        if value.startswith(":catd "):
-            return self._suggest_category(value, ":catd ")
-        return None
+        matches = self.get_all_suggestions(value)
+        return matches[0] if matches else None
 
-    def _suggest_file(self, value: str) -> str | None:
+    def get_all_suggestions(self, value: str) -> list[str]:
+        """Return all matching completions for Tab cycling."""
+        if value.startswith(":open "):
+            return self._all_file_suggestions(value)
+        if value.startswith(":cate "):
+            return self._all_category_suggestions(value, ":cate ")
+        if value.startswith(":catd "):
+            return self._all_category_suggestions(value, ":catd ")
+        return []
+
+    def _all_file_suggestions(self, value: str) -> list[str]:
         prefix = ":open "
         partial = value[len(prefix) :]
         if not partial:
-            return None
+            return []
 
         expanded = os.path.expanduser(partial)
         parent = os.path.dirname(expanded)
@@ -42,52 +47,56 @@ class CommandSuggester(Suggester):
         try:
             entries = sorted(os.listdir(search_dir))
         except (OSError, PermissionError):
-            return None
+            return []
 
+        results: list[str] = []
         for entry in entries:
             if entry.startswith(base):
                 full = entry if is_cwd else os.path.join(parent, entry)
                 if os.path.isdir(os.path.join(search_dir, entry)):
                     full += "/"
-                return f":open {full}"
+                results.append(f":open {full}")
+        return results
 
-        return None
-
-    def _suggest_category(self, value: str, prefix: str) -> str | None:
+    def _all_category_suggestions(self, value: str, prefix: str) -> list[str]:
         partial = value[len(prefix) :]
         if not self.log_store:
-            return None
+            return []
 
         tree = self.log_store.category_tree
         if not tree.children:
-            return None
+            return []
 
-        # Navigate to the deepest matching node based on typed partial path
+        trailing_slash = partial.endswith("/")
         parts = [p for p in partial.split("/") if p]
         if not parts:
-            # No partial segment yet — suggest from top-level children
-            children = sorted(tree.children)
-            if children:
-                return f"{prefix}{children[0]}/"
-            return None
+            return [f"{prefix}{name}/" for name in sorted(tree.children)]
 
-        # The last part may be incomplete — find matches at its level
-        *completed, last_part = parts
         node = tree
+        if trailing_slash:
+            # "HordeMode/" → all parts are completed, list children of last node
+            for part in parts:
+                if part not in node.children:
+                    return []
+                node = node.children[part]
+            base = "/".join(parts)
+            return [
+                f"{prefix}{base}/{name}" + ("/" if node.children[name].children else "")
+                for name in sorted(node.children)
+            ]
+
+        *completed, last_part = parts
         for part in completed:
             if part not in node.children:
-                return None
+                return []
             node = node.children[part]
 
-        # Find children of current node that start with last_part
         matches = sorted(name for name in node.children if name.startswith(last_part))
-        if not matches:
-            return None
-
         base = "/".join(completed)
-        chosen = matches[0]
-        full = f"{base}/{chosen}" if base else chosen
-        child_node = node.children[chosen]
-        if child_node.children:
-            full += "/"
-        return f"{prefix}{full}"
+        results: list[str] = []
+        for name in matches:
+            full = f"{base}/{name}" if base else name
+            if node.children[name].children:
+                full += "/"
+            results.append(f"{prefix}{full}")
+        return results

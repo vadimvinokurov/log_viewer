@@ -1,4 +1,4 @@
-"""CommandInput widget — command bar with autocomplete for :open, :cate, :catd."""
+"""CommandInput widget — command bar with Tab-cycling autocomplete for :open, :cate, :catd."""
 
 from __future__ import annotations
 
@@ -30,6 +30,9 @@ class CommandInput(Input):
             select_on_focus=False,
             suggester=CommandSuggester(),
         )
+        self._cycle_matches: list[str] = []
+        self._cycle_index: int = 0
+        self._last_tab_value: str = ""
 
     def set_log_store(self, store: LogStore) -> None:
         """Provide LogStore reference for category autocomplete."""
@@ -39,6 +42,7 @@ class CommandInput(Input):
     def key_escape(self) -> None:
         """Cancel input and return focus to LogPanel."""
         self.value = ""
+        self._reset_cycle()
         from log_viewer.tui.app import LogViewerApp
 
         app = self.app
@@ -52,10 +56,24 @@ class CommandInput(Input):
         return super().check_consume_key(key, character)
 
     def key_tab(self) -> None:
-        """Accept the current suggestion, if any."""
-        if self._suggestion:
-            self.value = self._suggestion
-            self.cursor_position = len(self.value)
+        """Cycle through all matching completions on repeated Tab presses."""
+        if self.value == self._last_tab_value and self._cycle_matches:
+            self._cycle_index = (self._cycle_index + 1) % len(self._cycle_matches)
+        else:
+            matches = self.suggester.get_all_suggestions(self.value)
+            if not matches:
+                return
+            self._cycle_matches = matches
+            self._cycle_index = 0
+
+        self.value = self._cycle_matches[self._cycle_index]
+        self._last_tab_value = self.value
+        self.cursor_position = len(self.value)
+
+    def _reset_cycle(self) -> None:
+        self._cycle_matches = []
+        self._cycle_index = 0
+        self._last_tab_value = ""
 
     def key_up(self) -> None:
         """Navigate command history up."""
