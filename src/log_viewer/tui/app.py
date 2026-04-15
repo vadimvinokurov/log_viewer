@@ -25,7 +25,6 @@ from log_viewer.core.models import (
 )
 from log_viewer.core.preset_manager import PresetManager
 from log_viewer.core.filter_engine import find_spans
-from log_viewer.tui.screens.category_list import CategoryListScreen
 from log_viewer.tui.screens.filter_list import FilterListScreen
 from log_viewer.tui.screens.highlight_list import HighlightListScreen
 from log_viewer.tui.widgets.category_panel import CategoryPanel
@@ -84,6 +83,7 @@ class LogViewerApp(App):
         self._preset_manager = PresetManager(self._config_manager)
         self._command_history = CommandHistory(self._config_manager)
         self._y_pressed = False
+        self._category_panel_visible = False
 
     @property
     def input_mode(self) -> InputMode:
@@ -103,6 +103,8 @@ class LogViewerApp(App):
         self.query_one(LogPanel).focus()
         cmd_input = self.query_one(CommandInput)
         cmd_input.set_log_store(self.log_store)
+        cat_panel = self.query_one(CategoryPanel)
+        cat_panel.display = False
         if self._initial_file:
             self._open_file(self._initial_file)
 
@@ -478,8 +480,12 @@ class LogViewerApp(App):
         self.refresh_log_panel()
 
     def _lscat(self) -> None:
-        """Show category list modal."""
-        self.push_screen(CategoryListScreen(self.log_store))
+        """Toggle category panel visibility."""
+        self._category_panel_visible = not self._category_panel_visible
+        cat_panel = self.query_one(CategoryPanel)
+        cat_panel.display = self._category_panel_visible
+        if self._category_panel_visible:
+            cat_panel.rebuild()
 
     def _open_file(self, path: str) -> None:
         """Open and load a log file or HTTP URL via worker thread."""

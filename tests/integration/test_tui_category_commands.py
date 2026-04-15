@@ -6,7 +6,7 @@ import pytest
 
 from log_viewer.tui.app import LogViewerApp
 from log_viewer.tui.widgets.command_input import CommandInput
-from log_viewer.tui.screens.category_list import CategoryListScreen
+from log_viewer.tui.widgets.category_panel import CategoryPanel
 
 
 SAMPLE_LINES = [
@@ -93,8 +93,17 @@ async def test_catd_without_args_disables_all_categories() -> None:
 
 
 @pytest.mark.asyncio
-async def test_lscat_shows_category_list_screen() -> None:
-    """:lscat opens the CategoryListScreen modal."""
+async def test_category_panel_hidden_by_default() -> None:
+    """CategoryPanel is hidden on startup."""
+    app = LogViewerApp()
+    async with app.run_test() as pilot:
+        cat_panel = app.query_one(CategoryPanel)
+        assert not cat_panel.display
+
+
+@pytest.mark.asyncio
+async def test_lscat_toggles_panel_visible() -> None:
+    """:lscat toggles CategoryPanel visibility on."""
     app = LogViewerApp()
     async with app.run_test() as pilot:
         await _load_and_prep(app)
@@ -104,7 +113,28 @@ async def test_lscat_shows_category_list_screen() -> None:
         await cmd_input.action_submit()
         await pilot.pause()
 
-        assert isinstance(app.screen, CategoryListScreen)
+        cat_panel = app.query_one(CategoryPanel)
+        assert cat_panel.display
+
+
+@pytest.mark.asyncio
+async def test_lscat_toggles_panel_hidden() -> None:
+    """:lscat toggles CategoryPanel visibility off when already visible."""
+    app = LogViewerApp()
+    async with app.run_test() as pilot:
+        await _load_and_prep(app)
+
+        # Show it first
+        app._category_panel_visible = True
+        cat_panel = app.query_one(CategoryPanel)
+        cat_panel.display = True
+
+        cmd_input = app.query_one(CommandInput)
+        cmd_input.value = ":lscat"
+        await cmd_input.action_submit()
+        await pilot.pause()
+
+        assert not cat_panel.display
 
 
 @pytest.mark.asyncio
@@ -119,7 +149,6 @@ async def test_catd_updates_category_panel() -> None:
         await cmd_input.action_submit()
         await pilot.pause()
 
-        from log_viewer.tui.widgets.category_panel import CategoryPanel
         cat_panel = app.query_one(CategoryPanel)
         cat_panel.root.expand()
         children = list(cat_panel.root.children)

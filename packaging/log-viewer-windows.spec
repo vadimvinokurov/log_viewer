@@ -35,7 +35,6 @@ a = Analysis(
         "log_viewer.tui.screens",
         "log_viewer.tui.screens.filter_list",
         "log_viewer.tui.screens.highlight_list",
-        "log_viewer.tui.screens.category_list",
         "textual",
         "rich",
         "pyperclip",
