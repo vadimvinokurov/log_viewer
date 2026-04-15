@@ -144,6 +144,7 @@ bd close <id>         # Complete work
 
 **Modern Python (3.9+) with uv as the package manager.**
 
+- **ALWAYS use `uv run`** for ALL Python execution — tests, scripts, one-liners, everything. Never call `python`, `python3`, or `.venv/bin/python` directly.
 - **Package management**: All dependencies through `uv`
 - **Type hints**: Required for all function signatures and class attributes
 - **Linting & formatting**: ruff for linting, black for formatting
@@ -151,7 +152,7 @@ bd close <id>         # Complete work
 - **Structure**: Standard layout (src/, tests/, pyproject.toml)
 - **Documentation**: Docstrings for public APIs
 
-**How to apply**: `uv init` to start, `uv add` for deps, `uv run pytest` to test, `uv run black .` to format, `uv run ruff check .` to lint.
+**How to apply**: `uv init` to start, `uv add` for deps, `uv run pytest` to test, `uv run black .` to format, `uv run ruff check .` to lint, `uv run python -c "..."` for one-liners.
 
 ## Quality Gates
 

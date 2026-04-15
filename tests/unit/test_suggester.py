@@ -94,7 +94,7 @@ async def test_completes_inside_existing_directory(
 
 
 @pytest.mark.asyncio
-async def test_expands_tilde(
+async def test_preserves_tilde_in_completions(
     suggester: CommandSuggester,
 ) -> None:
     home = os.path.expanduser("~")
@@ -103,10 +103,11 @@ async def test_expands_tilde(
         pytest.skip("Home directory is empty")
     first = sorted(entries)[0]
     result = await suggester.get_suggestion(f":open ~/{first[0]}")
+    expected = f"~/{first}"
     expected_full = os.path.join(home, first)
     if os.path.isdir(expected_full):
-        expected_full += "/"
-    assert result == f":open {expected_full}"
+        expected += "/"
+    assert result == f":open {expected}"
 
 
 @pytest.mark.asyncio

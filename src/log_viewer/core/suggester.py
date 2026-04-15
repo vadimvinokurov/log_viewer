@@ -44,6 +44,8 @@ class CommandSuggester(Suggester):
         is_cwd = not parent
         search_dir = parent or "."
 
+        home = os.path.expanduser("~")
+
         try:
             entries = sorted(os.listdir(search_dir))
         except (OSError, PermissionError):
@@ -53,6 +55,9 @@ class CommandSuggester(Suggester):
         for entry in entries:
             if entry.startswith(base):
                 full = entry if is_cwd else os.path.join(parent, entry)
+                # Keep ~ prefix if user typed it
+                if partial.startswith("~") and full.startswith(home):
+                    full = "~" + full[len(home):]
                 if os.path.isdir(os.path.join(search_dir, entry)):
                     full += "/"
                 results.append(f":open {full}")

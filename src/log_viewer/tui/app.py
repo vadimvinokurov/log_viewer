@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from textual import work
@@ -500,7 +501,7 @@ class LogViewerApp(App):
     def _open_file_worker(self, path: str) -> None:
         """Load file in background thread."""
         worker = get_current_worker()
-        file_path = Path(path)
+        file_path = Path(os.path.expanduser(path))
         if not file_path.exists():
             if not worker.is_cancelled:
                 self.call_from_thread(self._show_error, f"File not found: {path}")
