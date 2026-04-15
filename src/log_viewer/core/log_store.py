@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from typing import Optional
 
@@ -125,21 +126,17 @@ class LogStore:
         self.search_state = None
 
     def enable_category(self, path: str) -> None:
-        """Enable a category and all its children."""
-        node = self._find_category_node(path)
-        if node is None:
-            return
-        node.enabled = True
-        self._set_enabled_recursive(node, True)
+        """Enable a category and all its children. Supports * wildcards."""
+        for node in self._match_categories(path):
+            node.enabled = True
+            self._set_enabled_recursive(node, True)
         self._apply_filters()
 
     def disable_category(self, path: str) -> None:
-        """Disable a category and all its children."""
-        node = self._find_category_node(path)
-        if node is None:
-            return
-        node.enabled = False
-        self._set_enabled_recursive(node, False)
+        """Disable a category and all its children. Supports * wildcards."""
+        for node in self._match_categories(path):
+            node.enabled = False
+            self._set_enabled_recursive(node, False)
         self._apply_filters()
 
     def enable_all_categories(self) -> None:
@@ -163,6 +160,18 @@ class LogStore:
                 return None
             node = node.children[part]
         return node
+
+    def _match_categories(self, pattern: str) -> list[CategoryNode]:
+        """Find category nodes matching a path. Supports * wildcards."""
+        if "*" not in pattern:
+            node = self._find_category_node(pattern)
+            return [node] if node else []
+        regex = re.compile(".*".join(re.escape(p) for p in pattern.split("*")))
+        return [
+            self._find_category_node(path)
+            for path in self.category_counts
+            if regex.search(path)
+        ]
 
     def _set_enabled_recursive(self, node: CategoryNode, enabled: bool) -> None:
         """Set enabled state on a node and all its descendants."""

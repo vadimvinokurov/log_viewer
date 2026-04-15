@@ -541,3 +541,42 @@ class TestLogStoreCategoryEnableDisable:
         assert len(store.filtered_indices) == 4
         assert 1 in store.filtered_indices
         assert 3 in store.filtered_indices
+
+
+class TestWildcardCategory:
+    """Tests for wildcard (*pattern) support in enable/disable_category."""
+
+    def _store(self) -> LogStore:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        return store
+
+    def test_wildcard_disable_matches_substring(self) -> None:
+        store = self._store()
+        store.disable_category("*folder")
+        # Only HordeMode/game_storage/folder lines hidden
+        assert len(store.filtered_indices) == 4
+
+    def test_wildcard_disable_contains_match(self) -> None:
+        store = self._store()
+        store.disable_category("*game_stor*")
+        # All HordeMode/game_storage/* lines hidden
+        assert len(store.filtered_indices) == 2  # LEECH/CORE + PLATFORM
+
+    def test_wildcard_enable_after_disable(self) -> None:
+        store = self._store()
+        store.disable_category("HordeMode")
+        store.enable_category("*folder")
+        # folder lines restored
+        assert 1 in store.filtered_indices
+        assert 3 in store.filtered_indices
+
+    def test_wildcard_no_match_is_noop(self) -> None:
+        store = self._store()
+        store.disable_category("*zzz_nothing")
+        assert len(store.filtered_indices) == 6
+
+    def test_wildcard_disable_top_level(self) -> None:
+        store = self._store()
+        store.disable_category("*Horde*")
+        assert len(store.filtered_indices) == 2  # LEECH/CORE + PLATFORM
