@@ -466,13 +466,19 @@ class LogViewerApp(App):
         self._update_status()
 
     def _cate(self, path: str) -> None:
-        """Enable a category by path."""
-        self.log_store.enable_category(path)
+        """Enable a category by path. Empty path enables all."""
+        if not path:
+            self.log_store.enable_all_categories()
+        else:
+            self.log_store.enable_category(path)
         self.refresh_log_panel()
 
     def _catd(self, path: str) -> None:
-        """Disable a category by path."""
-        self.log_store.disable_category(path)
+        """Disable a category by path. Empty path disables all."""
+        if not path:
+            self.log_store.disable_all_categories()
+        else:
+            self.log_store.disable_category(path)
         self.refresh_log_panel()
 
     def _catea(self) -> None:

@@ -32,7 +32,7 @@ _VALID_COMMANDS: set[str] = {
 
 _ZERO_ARG_COMMANDS: set[str] = {
     "lsf", "lsh", "lscat",
-    "catea", "catda",
+    "cate", "catd", "catea", "catda",
     "q", "n", "N",
     "reload", "lspreset", "presetl",
     "rmf", "rmh",
