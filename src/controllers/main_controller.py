@@ -13,23 +13,23 @@ from __future__ import annotations
 
 import logging
 
+from beartype import beartype
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
 
-from beartype import beartype
-
-from src.models.log_document import LogDocument
-from src.models.log_entry import LogEntry, LogLevel
-from src.models.filter_state import FilterMode
-from src.views.main_window import MainWindow
-from src.controllers.filter_controller import FilterController
 from src.controllers.file_controller import FileController
+from src.controllers.filter_controller import FilterController
 from src.controllers.index_worker import IndexWorker
 from src.controllers.saved_filter_controller import SavedFilterController
 from src.core.category_tree import CategoryTree, build_category_display_nodes
-from src.services.statistics_service import StatisticsService
+from src.core.command_parser import CommandParser, ParseError
+from src.models.log_document import LogDocument
+from src.models.log_entry import LogEntry, LogLevel
+from src.services.command_service import CommandService
 from src.services.highlight_service import HighlightService
+from src.services.statistics_service import StatisticsService
 from src.utils.settings_manager import SettingsManager
+from src.views.main_window import MainWindow
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,14 @@ class MainController(QObject):
         # Initialize category tree
         self._category_tree = CategoryTree()
 
+        # Initialize command service
+        self._command_service = CommandService(
+            filter_controller=self._filter_controller,
+            highlight_service=self._highlight_service,
+            log_table=self._window.get_log_table(),
+            status_callback=lambda msg: self._window.show_status(msg, 3000),
+        )
+
         # Load settings
         self._load_settings()
 
@@ -110,7 +118,7 @@ class MainController(QObject):
         # Filter controller signals
         self._filter_controller.filter_applied.connect(self._on_filter_applied)
         self._filter_controller.filter_error.connect(self._on_filter_error)
-        
+
         # Saved filter controller signals
         # Ref: docs/specs/features/saved-filters.md §5.2
         self._saved_filter_controller.filters_changed.connect(
@@ -119,13 +127,11 @@ class MainController(QObject):
         self._saved_filter_controller.filter_applied.connect(
             self._on_saved_filters_applied
         )
-        
-        # SearchToolbar save filter signal
-        # Ref: docs/specs/features/saved-filters.md §5.2
-        self._window.get_search_toolbar().save_filter_requested.connect(
-            self._on_save_filter_requested
-        )
-        
+
+        # CommandBar signals
+        self._window.get_command_bar().command_submitted.connect(self._on_command_submitted)
+        self._window.get_command_bar().cancelled.connect(self._on_command_cancelled)
+
         # CategoryPanel saved filter signals
         # Ref: docs/specs/features/saved-filters.md §5.2
         self._window.get_category_panel().saved_filter_enabled_changed.connect(
@@ -221,7 +227,7 @@ class MainController(QObject):
         self._settings_manager.set_column_widths(
             self._window.get_log_table().get_column_widths()
         )
-        
+
         # Save category states
         self._save_category_states()
 
@@ -252,7 +258,7 @@ class MainController(QObject):
         # Create new document
         try:
             self._document = LogDocument(filepath)
-            
+
             # Track current file in window
             self._window.set_current_file(filepath)
 
@@ -272,21 +278,21 @@ class MainController(QObject):
         Per docs/specs/features/file-open-dialog.md §3.1:
         Opens the file in a new window (new process instance).
         """
-        import sys
         import subprocess
+        import sys
         from pathlib import Path
-        
+
         # Get the pending filepath from the window
         pending_filepath = self._window.get_pending_filepath()
         self._window.clear_pending_filepath()
-        
+
         if not pending_filepath:
             return
-        
+
         # Get the path to the main script
         # Use __file__ to get the actual main.py path
         main_script = Path(__file__).parent.parent / "main.py"
-        
+
         # Launch a new instance of the application with the file
         try:
             if main_script.suffix == '.py':
@@ -335,7 +341,7 @@ class MainController(QObject):
         # Update category panel with category tree
         category_nodes = build_category_display_nodes(self._category_tree)
         self._window.get_category_panel().set_categories(category_nodes)
-        
+
         # Restore category checkbox states from settings
         self._restore_category_states()
 
@@ -343,7 +349,7 @@ class MainController(QObject):
         # Ref: docs/specs/features/saved-filters.md §5.2
         filters = self._saved_filter_controller.get_all_filters()
         self._window.get_category_panel().get_filters_content().set_filters(filters)
-        
+
         # Populate highlights tab with loaded patterns
         # Ref: docs/specs/features/highlight-panel.md §7.4
         highlight_patterns = self._highlight_service.get_user_patterns()
@@ -427,7 +433,7 @@ class MainController(QObject):
             mode: Filter mode ('plain', 'regex', or 'simple').
         """
         from src.models.filter_state import FilterMode
-        
+
         # Map mode string to FilterMode enum
         mode_map = {
             "plain": FilterMode.PLAIN,
@@ -435,7 +441,7 @@ class MainController(QObject):
             "simple": FilterMode.SIMPLE,
         }
         filter_mode = mode_map.get(mode, FilterMode.PLAIN)
-        
+
         # Update filter controller
         self._filter_controller.set_filter_text(text)
         self._filter_controller.set_filter_mode(filter_mode)
@@ -461,10 +467,10 @@ class MainController(QObject):
         # Ref: docs/specs/features/category-checkbox-behavior.md §3.1, §3.2
         self._filter_controller.toggle_category(category_path, checked)
         self._filter_controller.apply_filter()
-        
+
         # Save category states to settings
         self._save_category_states()
-    
+
     def _on_categories_batch_changed(self) -> None:
         """Handle batch category change (Check All/Uncheck All).
         
@@ -475,24 +481,24 @@ class MainController(QObject):
         # Get all current checkbox states from UI
         # These have already been updated by CategoryPanel.check_all()
         category_states = self._window.get_category_panel().get_category_states()
-        
+
         if not category_states:
             return
-        
+
         # All states should be the same after Check All/Uncheck All
         # Check the first one to determine the action
         first_state = next(iter(category_states.values()))
-        
+
         # Use toggle_all_categories for efficient batch update
         # This properly updates the CategoryTree and enabled_categories set
         self._filter_controller.toggle_all_categories(first_state)
-        
+
         # Apply filter once
         self._filter_controller.apply_filter()
-        
+
         # Save category states to settings
         self._save_category_states()
-    
+
     def _save_category_states(self) -> None:
         """Save current category checkbox states for current file.
         
@@ -501,11 +507,11 @@ class MainController(QObject):
         """
         if self._document is None:
             return
-        
+
         filepath = self._document.filepath
         category_states = self._window.get_category_panel().get_category_states()
         self._settings_manager.set_category_states(filepath, category_states)
-    
+
     def _restore_category_states(self) -> None:
         """Restore category checkbox states for current file.
         
@@ -517,18 +523,18 @@ class MainController(QObject):
         """
         if self._document is None:
             return
-        
+
         filepath = self._document.filepath
         saved_states = self._settings_manager.get_category_states(filepath)
-        
+
         if saved_states:
             # Apply saved states
             self._window.get_category_panel().set_category_states(saved_states)
-            
+
             # Update filter controller with restored states
             for category_path, checked in saved_states.items():
                 self._filter_controller.set_category_enabled(category_path, checked)
-            
+
             # Recompile filter with restored category states
             # Ref: docs/specs/features/category-checkbox-behavior.md §6.3
             self._filter_controller.apply_filter()
@@ -593,14 +599,14 @@ class MainController(QObject):
         # Step 1: Capture selection state BEFORE filter
         # Ref: docs/specs/features/selection-preservation.md §5.2
         selection_state = self._window.get_log_table().get_selection_state()
-        
+
         # Step 2: Capture viewport state BEFORE filter
         # Ref: docs/specs/features/selection-preservation.md §7.4
         viewport_state = self._window.get_log_table().get_viewport_state()
 
         # Step 3: Get category/level filter from filter controller
         category_filter = self._filter_controller.get_filter()
-        
+
         # Step 4: Get saved text filter (combined OR) from saved filter controller
         # Ref: docs/specs/features/saved-filters.md §3.1, §3.2
         saved_text_filter = self._saved_filter_controller.get_combined_filter()
@@ -645,7 +651,7 @@ class MainController(QObject):
             selection_state,
             skip_scroll=(viewport_state is not None)
         )
-        
+
         # Step 8: Restore viewport position
         # Ref: docs/specs/features/selection-preservation.md §7.4
         if viewport_state:
@@ -719,6 +725,24 @@ class MainController(QObject):
         count = self._window.get_log_table().find_text(text, case_sensitive)
         self._window.show_status(f"Found {count} matches", 3000)
 
+    def _on_command_submitted(self, text: str, prefix: str) -> None:
+        """Handle command submitted from CommandBar.
+
+        Args:
+            text: Command text (without prefix).
+            prefix: Command prefix (":", "/", or "?").
+        """
+        direction = "backward" if prefix == "?" else "forward"
+        try:
+            cmd = CommandParser.parse(text, direction=direction)
+            self._command_service.execute(cmd)
+        except ParseError as e:
+            self._window.get_command_bar().show_error(str(e))
+
+    def _on_command_cancelled(self) -> None:
+        """Handle command bar cancelled."""
+        self._window.get_log_table().setFocus()
+
     def handle_error(self, title: str, message: str, details: str = "") -> None:
         """Handle error with user feedback.
 
@@ -734,38 +758,7 @@ class MainController(QObject):
 
     # === Saved Filter Signal Handlers ===
     # Ref: docs/specs/features/saved-filters.md §5.2
-    
-    @beartype
-    def _on_save_filter_requested(self, text: str, mode: str) -> None:
-        """Handle save filter request from SearchToolbar.
-        
-        Args:
-            text: Filter text content
-            mode: Filter mode ('plain', 'regex', or 'simple')
-        
-        // Ref: docs/specs/features/saved-filters.md §5.2
-        // Ref: docs/specs/features/saved-filters.md §7.2 (status message)
-        """
-        mode_map = {
-            "plain": FilterMode.PLAIN,
-            "regex": FilterMode.REGEX,
-            "simple": FilterMode.SIMPLE,
-        }
-        filter_mode = mode_map.get(mode, FilterMode.PLAIN)
-        filter_id = self._saved_filter_controller.save_filter(text, filter_mode)
-        
-        # Get the saved filter to show its name in status message
-        filters = self._saved_filter_controller.get_all_filters()
-        for f in filters:
-            if f.id == filter_id:
-                self._window.show_status(f"Filter saved: {f.name}", 3000)
-                break
-        
-        # Clear the filter input and applied filter after saving
-        self._window.get_search_toolbar().clear_search()
-        self._filter_controller.set_filter_text("")
-        self._filter_controller.apply_filter()
-    
+
     def _on_saved_filters_changed(self) -> None:
         """Handle saved filter list changes (add/delete/rename).
         
@@ -775,14 +768,14 @@ class MainController(QObject):
         """
         filters = self._saved_filter_controller.get_all_filters()
         self._window.get_category_panel().get_filters_content().set_filters(filters)
-    
+
     def _on_saved_filters_applied(self) -> None:
         """Re-apply filters when saved filters change.
         
         // Ref: docs/specs/features/saved-filters.md §5.2
         """
         self._apply_filters()
-    
+
     @beartype
     def _on_saved_filter_enabled_changed(self, filter_id: str, enabled: bool) -> None:
         """Handle saved filter enabled/disabled.
@@ -794,7 +787,7 @@ class MainController(QObject):
         // Ref: docs/specs/features/saved-filters.md §5.2
         """
         self._saved_filter_controller.set_filter_enabled(filter_id, enabled)
-    
+
     @beartype
     def _on_saved_filter_deleted(self, filter_id: str) -> None:
         """Handle saved filter deletion.
@@ -812,12 +805,12 @@ class MainController(QObject):
             if f.id == filter_id:
                 filter_name = f.name
                 break
-        
+
         self._saved_filter_controller.delete_filter(filter_id)
-        
+
         if filter_name:
             self._window.show_status(f"Filter deleted: {filter_name}", 3000)
-    
+
     @beartype
     def _on_saved_filter_renamed(self, filter_id: str, new_name: str) -> None:
         """Handle saved filter rename.
@@ -932,9 +925,6 @@ class MainController(QObject):
         """
         # Update window panels visibility
         self._window.set_panels_visible(visible)
-        
-        # Update status bar button state
-        self._window.statusBar().set_panels_visible(visible)
 
     def close(self) -> None:
         """Clean up resources."""

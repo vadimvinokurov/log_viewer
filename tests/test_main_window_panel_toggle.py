@@ -44,8 +44,7 @@ class TestMainWindowPanelToggle:
         window.toggle_panels()
         
         assert window.is_panels_visible() is False
-        assert window._main_toolbar.isVisible() is False
-    
+
     def test_toggle_panels_shows(self, qtbot: pytest.QtBot) -> None:
         """Test toggle_panels shows panels when hidden.
         
@@ -64,8 +63,7 @@ class TestMainWindowPanelToggle:
         window.toggle_panels()
         
         assert window.is_panels_visible() is True
-        assert window._main_toolbar.isVisible() is True
-    
+
     def test_set_panels_visible_false(self, qtbot: pytest.QtBot) -> None:
         """Test set_panels_visible(False) hides panels.
         
@@ -79,8 +77,7 @@ class TestMainWindowPanelToggle:
         window.set_panels_visible(False)
         
         assert window.is_panels_visible() is False
-        assert window._main_toolbar.isVisible() is False
-        
+
         # Check splitter sizes
         splitter = window.centralWidget().findChild(QSplitter)
         assert splitter is not None
@@ -105,8 +102,7 @@ class TestMainWindowPanelToggle:
         window.set_panels_visible(True)
         
         assert window.is_panels_visible() is True
-        assert window._main_toolbar.isVisible() is True
-        
+
         # Check splitter sizes are restored
         splitter = window.centralWidget().findChild(QSplitter)
         assert splitter is not None

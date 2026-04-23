@@ -8,30 +8,24 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+
 from beartype import beartype
 
 logger = logging.getLogger(__name__)
 
-from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QSplitter,
-    QToolBar, QFileDialog, QMessageBox
-)
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QShortcut, QKeySequence
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QVBoxLayout, QWidget
 
-from src.styles.stylesheet import get_application_stylesheet
-from src.views.log_table_view import LogTableView, LogEntry
-from src.views.category_panel import CategoryPanel
-from src.views.widgets.search_toolbar import SearchToolbarWithStats
-from src.views.widgets.main_status_bar import MainStatusBar
-from src.views.find_dialog import FindDialog
-from src.views.widgets.error_dialog import ErrorDialog
-from src.constants.app_constants import (
-    APPLICATION_NAME, STATUS_MESSAGE_TIMEOUT
-)
+from src.constants.app_constants import APPLICATION_NAME, STATUS_MESSAGE_TIMEOUT
 from src.constants.dimensions import SPLITTER_LEFT_RATIO, SPLITTER_RIGHT_RATIO
-
+from src.styles.stylesheet import get_application_stylesheet
+from src.views.category_panel import CategoryPanel
+from src.views.find_dialog import FindDialog
+from src.views.log_table_view import LogEntry, LogTableView
+from src.views.widgets.command_bar import CommandBar
+from src.views.widgets.error_dialog import ErrorDialog
+from src.views.widgets.main_status_bar import MainStatusBar
 
 # Keyboard shortcuts
 SHORTCUT_OPEN_FILE = "Ctrl+O"
@@ -92,14 +86,13 @@ class MainWindow(QMainWindow):
 
     def _create_components(self) -> None:
         """Create UI components."""
-        self._search_toolbar: SearchToolbarWithStats = SearchToolbarWithStats()
-        self._main_toolbar: QToolBar | None = None  # Store toolbar reference for visibility control
+        self._command_bar: CommandBar = CommandBar()
         self._log_table: LogTableView = LogTableView()
         self._category_panel: CategoryPanel = CategoryPanel()
         self._status_bar: MainStatusBar = MainStatusBar()
-        self._find_dialog: Optional[FindDialog] = None
-        self._current_file: Optional[str] = None
-        self._pending_filepath: Optional[str] = None
+        self._find_dialog: FindDialog | None = None
+        self._current_file: str | None = None
+        self._pending_filepath: str | None = None
         # Panel toggle state
         # Ref: docs/specs/features/panel-toggle-button.md §4.2
         self._panels_visible: bool = True
@@ -114,33 +107,15 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Add toolbar
-        self.addToolBar(Qt.TopToolBarArea, self._create_toolbar())
-
         # Add splitter with log table and systems panel
         layout.addWidget(self._create_splitter())
 
-        # Add status bar
-        self.setStatusBar(self._status_bar)
+        # Command bar (hidden by default)
+        self._command_bar.hide()
+        layout.addWidget(self._command_bar)
 
-    def _create_toolbar(self) -> QToolBar:
-        """Create and configure the main toolbar.
-        
-        Returns:
-            Configured toolbar.
-        """
-        toolbar = QToolBar("Main Toolbar")
-        toolbar.setMovable(False)
-        toolbar.setFloatable(False)
-        
-        # Add search toolbar directly (visibility controlled by panel toggle button)
-        # Ref: docs/specs/features/ui-components.md §6
-        toolbar.addWidget(self._search_toolbar)
-        
-        # Store toolbar reference for visibility control
-        self._main_toolbar = toolbar
-        
-        return toolbar
+        # Add status bar
+        layout.addWidget(self._status_bar)
 
     def _create_splitter(self) -> QSplitter:
         """Create the main splitter with log table and category panel.
@@ -151,12 +126,12 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self._log_table)
         splitter.addWidget(self._category_panel)
-        
+
         # Set initial sizes based on ratios
         left_size = int(self.width() * SPLITTER_LEFT_RATIO / 100)
         right_size = int(self.width() * SPLITTER_RIGHT_RATIO / 100)
         splitter.setSizes([left_size, right_size])
-        
+
         return splitter
 
     def _setup_shortcuts(self) -> None:
@@ -169,22 +144,18 @@ class MainWindow(QMainWindow):
             (QKeySequence(SHORTCUT_EXIT), self.close),
             (QKeySequence(SHORTCUT_TOGGLE_PANELS), self._on_toggle_panels),
         ]
-        
+
         for key_sequence, handler in shortcuts:
             shortcut = QShortcut(key_sequence, self)
             shortcut.activated.connect(handler)
 
     def _connect_signals(self) -> None:
         """Connect internal signals."""
-        # Search toolbar signals
-        self._search_toolbar.filter_applied.connect(self.filter_applied)
-        self._search_toolbar.filter_cleared.connect(self.filter_cleared)
-        self._search_toolbar.open_file_clicked.connect(self._on_open_file_requested)
-        self._search_toolbar.refresh_clicked.connect(self._on_reload)
+        # CommandBar signals are connected by MainController
 
         # Status bar signals (statistics counters)
         self._status_bar.counter_clicked.connect(self.counter_toggled)
-        
+
         # Status bar signals (panel toggle)
         # Ref: docs/specs/features/panel-toggle-button.md §4.2
         self._status_bar.panels_toggled.connect(self._on_status_bar_panels_toggled)
@@ -214,10 +185,10 @@ class MainWindow(QMainWindow):
             "",
             "Log Files (*.log *.txt);;All Files (*)"
         )
-        
+
         if not filepath:
             return
-        
+
         if self._current_file is None:
             self._open_file(filepath)
         else:
@@ -246,7 +217,7 @@ class MainWindow(QMainWindow):
         - Close (X) = Cancel (do nothing)
         """
         new_filename = os.path.basename(filepath)
-        
+
         reply = QMessageBox.question(
             self,
             "Open File",
@@ -254,7 +225,7 @@ class MainWindow(QMainWindow):
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes
         )
-        
+
         if reply == QMessageBox.Yes:
             # Open in new window
             self._pending_filepath = filepath
@@ -263,17 +234,17 @@ class MainWindow(QMainWindow):
             # Open in current window (close old log first)
             # Ref: docs/specs/features/file-open-dialog.md §3.1
             logger.debug(f"User chose No - opening in current window: {filepath}")
-            
+
             # Set new file path
             self._current_file = filepath
-            
+
             # Emit close signal - controller will handle cleanup
             # Ref: docs/specs/features/file-open-dialog.md §3.1
             # Thread: Main thread only (Qt requirement)
             # Memory: Controller clears UI models safely before destroying document
             logger.debug("Emitting file_closed signal")
             self.file_closed.emit()
-            
+
             # Defer file opening to allow controller to finish closing
             # Use 200ms delay to give Qt more time to process events
             logger.debug("Scheduling deferred file open")
@@ -357,6 +328,18 @@ class MainWindow(QMainWindow):
         """Handle about action."""
         QMessageBox.about(self, ABOUT_TITLE, ABOUT_TEXT)
 
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Intercept :, /, ? to activate command bar."""
+        if self._command_bar.is_active():
+            super().keyPressEvent(event)
+            return
+        text = event.text()
+        if text in (":", "/", "?"):
+            self._command_bar.activate(text)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     # === Public API ===
 
     def open_file_dialog(self) -> None:
@@ -414,9 +397,9 @@ class MainWindow(QMainWindow):
         """Return the category panel."""
         return self._category_panel
 
-    def get_search_toolbar(self) -> SearchToolbarWithStats:
-        """Return the search toolbar."""
-        return self._search_toolbar
+    def get_command_bar(self) -> CommandBar:
+        """Return the command bar."""
+        return self._command_bar
 
     @beartype
     def show_error(self, title: str, message: str) -> None:
@@ -523,10 +506,6 @@ class MainWindow(QMainWindow):
             return  # No change needed
 
         if visible:
-            # Restore search toolbar (show toolbar container)
-            if self._main_toolbar:
-                self._main_toolbar.setVisible(True)
-            
             # Restore category panel
             splitter = self.centralWidget().findChild(QSplitter)
             if splitter:
@@ -543,21 +522,17 @@ class MainWindow(QMainWindow):
             splitter = self.centralWidget().findChild(QSplitter)
             if splitter:
                 self._stored_splitter_sizes = list(splitter.sizes())
-            
-            # Hide search toolbar (hide toolbar container)
-            if self._main_toolbar:
-                self._main_toolbar.setVisible(False)
-            
+
             # Hide category panel
             if splitter:
                 splitter.setSizes([self.width(), 0])
-        
+
         # Store state
         self._panels_visible = visible
-        
+
         # Update status bar button
         self._status_bar.set_panels_visible(visible)
-        
+
         # Emit signal
         self.panels_toggled.emit(visible)
 
