@@ -89,13 +89,11 @@ class MainStatusBar(QStatusBar):
         self._toggle_button.clicked.connect(self._on_toggle_clicked)
         self.addPermanentWidget(self._toggle_button)
 
-        # Command bar widgets (hidden by default)
+        # Command bar widgets — created but NOT added to layout yet.
+        # Added/removed dynamically in activate/deactivate to avoid
+        # affecting the status bar height when hidden.
         self._cmd_prefix_label = self._command_bar.prefix_label
         self._cmd_input = self._command_bar.input
-        self._cmd_prefix_label.hide()
-        self._cmd_input.hide()
-        self.addWidget(self._cmd_prefix_label)
-        self.addWidget(self._cmd_input)
         # Install event filter on input so we can delegate to CommandBar
         self._cmd_input.installEventFilter(self)
 
@@ -245,17 +243,17 @@ class MainStatusBar(QStatusBar):
         # Hide normal status bar content
         self._file_label.hide()
         self._stretch.hide()
-        # Show command widgets
-        self._cmd_prefix_label.show()
-        self._cmd_input.show()
+        # Insert command widgets into the status bar
+        self.insertWidget(0, self._cmd_prefix_label)
+        self.insertWidget(1, self._cmd_input)
         self._cmd_input.setFocus()
 
     def deactivate_command_bar(self) -> None:
         """Restore normal status bar content, hiding command input."""
         self._command_bar.deactivate()
-        # Hide command widgets
-        self._cmd_prefix_label.hide()
-        self._cmd_input.hide()
+        # Remove command widgets from the status bar
+        self.removeWidget(self._cmd_prefix_label)
+        self.removeWidget(self._cmd_input)
         # Restore normal content
         self._file_label.show()
         self._stretch.show()
