@@ -90,7 +90,6 @@ class MainWindow(QMainWindow):
 
     def _create_components(self) -> None:
         """Create UI components."""
-        self._command_bar: CommandBar = CommandBar()
         self._log_table: LogTableView = LogTableView()
         self._category_panel: CategoryPanel = CategoryPanel()
         self._status_bar: MainStatusBar = MainStatusBar()
@@ -113,10 +112,6 @@ class MainWindow(QMainWindow):
 
         # Add splitter with log table and systems panel
         layout.addWidget(self._create_splitter())
-
-        # Command bar (hidden by default)
-        self._command_bar.hide()
-        layout.addWidget(self._command_bar)
 
         # Add status bar
         layout.addWidget(self._status_bar)
@@ -336,8 +331,8 @@ class MainWindow(QMainWindow):
         """Intercept :, /, ? globally to activate command bar."""
         if event.type() != event.Type.KeyPress:
             return False
-        # Don't intercept when command bar is active or when focus is in a text input
-        if self._command_bar.is_active():
+        cmd_bar = self._status_bar.get_command_bar()
+        if cmd_bar.is_active():
             return False
         # Skip if focus is in QLineEdit, QTextEdit, or similar text widgets
         from PySide6.QtWidgets import QApplication, QLineEdit, QTextEdit
@@ -346,7 +341,7 @@ class MainWindow(QMainWindow):
             return False
         text = event.text()
         if text in (":", "/", "?"):
-            self._command_bar.activate(text)
+            self._status_bar.activate_command_bar(text)
             return True  # event handled, don't propagate
         return False
 
@@ -408,8 +403,12 @@ class MainWindow(QMainWindow):
         return self._category_panel
 
     def get_command_bar(self) -> CommandBar:
-        """Return the command bar."""
-        return self._command_bar
+        """Return the command bar (embedded in status bar)."""
+        return self._status_bar.get_command_bar()
+
+    def get_status_bar(self) -> MainStatusBar:
+        """Return the status bar."""
+        return self._status_bar
 
     @beartype
     def show_error(self, title: str, message: str) -> None:

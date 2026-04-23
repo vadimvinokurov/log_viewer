@@ -128,9 +128,10 @@ class MainController(QObject):
             self._on_saved_filters_applied
         )
 
-        # CommandBar signals
-        self._window.get_command_bar().command_submitted.connect(self._on_command_submitted)
-        self._window.get_command_bar().cancelled.connect(self._on_command_cancelled)
+        # CommandBar signals (on status bar, which owns the Qt signals)
+        status_bar = self._window.get_status_bar()
+        status_bar.command_submitted.connect(self._on_command_submitted)
+        status_bar.command_cancelled.connect(self._on_command_cancelled)
 
         # CategoryPanel saved filter signals
         # Ref: docs/specs/features/saved-filters.md §5.2

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.command_parser import CommandParser, ParseError, ParsedCommand
+from src.core.command_parser import CommandParser, ParsedCommand, ParseError
 
 
 class TestParsePlainSearch:
@@ -171,7 +171,7 @@ class TestParseNavigation:
         cmd = CommandParser.parse("n something")
         assert cmd.text == ""
 
-    def test_N_ignores_text(self) -> None:
+    def test_prev_ignores_text(self) -> None:
         cmd = CommandParser.parse("N something")
         assert cmd.text == ""
 

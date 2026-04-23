@@ -1,66 +1,90 @@
-"""Vim-style command bar widget."""
+"""Command bar logic — input handling, history, parsing signals.
+
+The actual UI lives in MainStatusBar. This class owns the QLineEdit,
+prefix label, and all command-related logic (history, events).
+"""
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
+from PySide6.QtWidgets import QLabel, QLineEdit
 
 HISTORY_DIR = Path.home() / ".logviewer"
 HISTORY_FILE = HISTORY_DIR / "history.json"
 DEFAULT_HISTORY_SIZE = 100
 
+# Style matching the status bar (24px height, same bg)
+_INPUT_STYLE = (
+    "QLineEdit { background: transparent; color: #333333; "
+    "border: none; padding: 0 4px; }"
+)
+_INPUT_STYLE_ERROR = (
+    "QLineEdit { background: transparent; color: #cc0000; "
+    "border: none; padding: 0 4px; }"
+)
+_PREFIX_STYLE = "color: #666666; padding: 0 2px 0 6px; font-weight: bold;"
 
-class CommandBar(QWidget):
-    command_submitted = Signal(str, str)  # text (without prefix), prefix
-    cancelled = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
+class CommandBar:
+    """Command bar logic: input widget, prefix label, history, events.
+
+    Created by MainStatusBar, which owns the actual widgets and Qt signals.
+    """
+
+    def __init__(self) -> None:
         self._prefix: str = ":"
         self._history: list[str] = []
         self._max_history: int = DEFAULT_HISTORY_SIZE
         self._history_index: int = -1
-        self._load_history()
         self._visible: bool = False
-        self._setup_ui()
-        self.hide()
+        self._on_submitted: Callable[[str, str], None] | None = None
+        self._on_cancelled: Callable[[], None] | None = None
+        self._load_history()
+        self._create_widgets()
 
-    def _setup_ui(self) -> None:
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(0)
-
+    def _create_widgets(self) -> None:
         self._prefix_label = QLabel(":")
-        self._prefix_label.setFixedWidth(12)
-        self._prefix_label.setStyleSheet("color: #aaaaaa; font-family: monospace;")
+        self._prefix_label.setStyleSheet(_PREFIX_STYLE)
 
         self._input = QLineEdit()
-        self._input.setStyleSheet(
-            "QLineEdit { background: #1e1e1e; color: #ffffff; "
-            "border: none; font-family: monospace; padding: 2px; }"
-        )
+        self._input.setStyleSheet(_INPUT_STYLE)
+        self._input.setPlaceholderText("")
         self._input.returnPressed.connect(self._on_return)
-        self._input.installEventFilter(self)
 
-        layout.addWidget(self._prefix_label)
-        layout.addWidget(self._input)
+    def set_callbacks(
+        self,
+        on_submitted: Callable[[str, str], None],
+        on_cancelled: Callable[[], None],
+    ) -> None:
+        """Set callbacks for command submission and cancellation."""
+        self._on_submitted = on_submitted
+        self._on_cancelled = on_cancelled
+
+    @property
+    def prefix_label(self) -> QLabel:
+        return self._prefix_label
+
+    @property
+    def input(self) -> QLineEdit:
+        return self._input
 
     def activate(self, prefix: str) -> None:
         self._prefix = prefix
         self._prefix_label.setText(prefix)
         self._input.clear()
+        self._input.setStyleSheet(_INPUT_STYLE)
         self._history_index = -1
         self._visible = True
-        self.show()
         self._input.setFocus()
 
     def deactivate(self) -> None:
         self._visible = False
         self._input.clear()
-        self.hide()
+        self._input.setStyleSheet(_INPUT_STYLE)
 
     def is_active(self) -> bool:
         return self._visible
@@ -72,7 +96,8 @@ class CommandBar(QWidget):
             key = event.key()
             if key == Qt.Key_Escape:
                 self.deactivate()
-                self.cancelled.emit()
+                if self._on_cancelled:
+                    self._on_cancelled()
                 return True
             elif key == Qt.Key_Up:
                 self._navigate_history(-1)
@@ -86,11 +111,13 @@ class CommandBar(QWidget):
         text = self._input.text()
         if not text:
             self.deactivate()
-            self.cancelled.emit()
+            if self._on_cancelled:
+                self._on_cancelled()
             return
         full_command = f"{self._prefix}{text}"
         self._add_to_history(full_command)
-        self.command_submitted.emit(text, self._prefix)
+        if self._on_submitted:
+            self._on_submitted(text, self._prefix)
         self.deactivate()
 
     def _navigate_history(self, direction: int) -> None:
@@ -142,8 +169,5 @@ class CommandBar(QWidget):
         self._max_history = size
 
     def show_error(self, message: str) -> None:
-        self._input.setStyleSheet(
-            "QLineEdit { background: #1e1e1e; color: #ff4444; "
-            "border: none; font-family: monospace; padding: 2px; }"
-        )
+        self._input.setStyleSheet(_INPUT_STYLE_ERROR)
         self._input.setText(f"Error: {message}")
