@@ -1,9 +1,16 @@
 """Vim-style command bar widget."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
+
+HISTORY_DIR = Path.home() / ".logviewer"
+HISTORY_FILE = HISTORY_DIR / "history.json"
+DEFAULT_HISTORY_SIZE = 100
 
 
 class CommandBar(QWidget):
@@ -14,7 +21,9 @@ class CommandBar(QWidget):
         super().__init__(parent)
         self._prefix: str = ":"
         self._history: list[str] = []
+        self._max_history: int = DEFAULT_HISTORY_SIZE
         self._history_index: int = -1
+        self._load_history()
         self._visible: bool = False
         self._setup_ui()
         self.hide()
@@ -102,8 +111,29 @@ class CommandBar(QWidget):
 
     def _add_to_history(self, full_command: str) -> None:
         self._history.append(full_command)
-        if len(self._history) > 100:
-            self._history = self._history[-100:]
+        if len(self._history) > self._max_history:
+            self._history = self._history[-self._max_history:]
+        self._save_history()
+
+    def _load_history(self) -> None:
+        try:
+            if HISTORY_FILE.exists():
+                data = json.loads(HISTORY_FILE.read_text())
+                self._history = data.get("commands", [])[-self._max_history:]
+        except (json.JSONDecodeError, OSError):
+            self._history = []
+
+    def _save_history(self) -> None:
+        try:
+            HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+            HISTORY_FILE.write_text(
+                json.dumps({"commands": self._history[-self._max_history:]})
+            )
+        except OSError:
+            pass
+
+    def set_max_history(self, size: int) -> None:
+        self._max_history = size
 
     def show_error(self, message: str) -> None:
         self._input.setStyleSheet(
