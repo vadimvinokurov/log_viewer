@@ -119,7 +119,13 @@ class CommandBar(QWidget):
         try:
             if HISTORY_FILE.exists():
                 data = json.loads(HISTORY_FILE.read_text())
-                self._history = data.get("commands", [])[-self._max_history:]
+                if isinstance(data, dict):
+                    commands = data.get("commands", [])
+                elif isinstance(data, list):
+                    commands = data
+                else:
+                    commands = []
+                self._history = commands[-self._max_history:]
         except (json.JSONDecodeError, OSError):
             self._history = []
 
