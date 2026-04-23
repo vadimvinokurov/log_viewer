@@ -467,6 +467,12 @@ class LogTableView(QTableView):
         if event.key() == Qt.Key_C and event.modifiers() == Qt.ControlModifier:
             self.copy_selected()
             event.accept()
+        elif event.key() == Qt.Key_N and event.modifiers() == Qt.NoModifier:
+            self.find_next()
+            event.accept()
+        elif event.key() == Qt.Key_N and event.modifiers() == Qt.ShiftModifier:
+            self.find_previous()
+            event.accept()
         else:
             super().keyPressEvent(event)
 
