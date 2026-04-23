@@ -146,35 +146,38 @@ Boris Cherny (creator of Claude Code) keeps his team's file around 100 lines. Un
 **Fill this in per project. Keep it specific. Delete sections that don't apply.**
 
 ### Stack
-- Language and version:
-- Framework(s):
-- Package manager:
-- Runtime / deployment target:
+- Language and version: Python 3.12+
+- Framework(s): PySide6 (Qt6), PyInstaller (packaging)
+- Package manager: uv
+- Runtime / deployment target: Desktop (macOS, Windows)
 
 ### Commands
-- Install: `TODO`
-- Build: `TODO`
-- Test (all): `TODO`
-- Test (single file): `TODO`
-- Lint: `TODO`
-- Typecheck: `TODO`
-- Run locally: `TODO`
+- Install: `uv sync`
+- Build (macOS): `bash build/scripts/build-macos.sh`
+- Build (Windows): `python build/scripts/build-windows.py`
+- Test (all): `uv run pytest`
+- Test (single file): `uv run pytest tests/test_foo.py`
+- Lint: `uv run ruff check`
+- Typecheck: `uv run mypy`
+- Run locally: `uv run python -m src.main`
 
 Prefer single-file or single-test runs during iteration. Full suites are for the final verification pass.
 
 ### Layout
-- Source lives in: `TODO`
-- Tests live in: `TODO`
-- Do not modify: `TODO` (generated code, vendored deps, legacy areas)
+- Source lives in: `src/` (MVC: models/, views/, controllers/, core/, services/, utils/, constants/, styles/)
+- Tests live in: `tests/`
+- Do not modify: `.venv/`, `build/dist/`, `__pycache__/`
 
 ### Conventions specific to this repo
-- Naming: `TODO`
-- Import style: `TODO`
-- Error handling pattern: `TODO`
-- Testing pattern and framework: `TODO`
+- Naming: PascalCase classes, snake_case functions/variables, UPPER_SNAKE_CASE constants
+- Import style: `from __future__ import annotations` at top of files, absolute imports from `src.*`
+- Error handling pattern: Custom exception classes in models, `@beartype` runtime type checking
+- Testing pattern and framework: pytest + pytest-qt for GUI testing, `test_` prefix, fixtures in `conftest.py`
+- Dataclasses: `@dataclass(frozen=True)` for immutable models
+- Ruff config: line-length 100, target py312
 
 ### Forbidden
-- `TODO`: things that look reasonable but will break this project.
+- `mypy --strict` violations: the project uses strict mypy, don't introduce `Any` or missing annotations
 
 ---
 
