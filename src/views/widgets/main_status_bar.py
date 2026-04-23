@@ -67,31 +67,24 @@ class MainStatusBar(QStatusBar):
 
         // Ref: docs/specs/features/panel-toggle-button.md §6.2
         """
-        # Force single-line compact height
-        self.setFixedHeight(24)
-
         # File label on the left
         self._file_label = QLabel("No file open")
-        self._file_label.setStyleSheet("padding: 0 8px; font-size: 11px;")
-        self._file_label.setFixedHeight(20)
+        self._file_label.setStyleSheet("padding: 0 8px;")
         self.addWidget(self._file_label)
 
         # Stretch in the middle
         self._stretch = QWidget()
         self._stretch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        self._stretch.setFixedHeight(1)
         self.addWidget(self._stretch)
 
         # Statistics bar on the right
         self._statistics_bar = StatisticsBar()
-        self._statistics_bar.setFixedHeight(20)
         self.addPermanentWidget(self._statistics_bar)
 
         # Panel toggle button (NEW) - rightmost position
         # Ref: docs/specs/features/panel-toggle-button.md §6.2
         self._toggle_button = QPushButton("\U0001f441\ufe0f")
         self._toggle_button.setFlat(True)
-        self._toggle_button.setFixedHeight(20)
         self._toggle_button.setToolTip("Hide panels (Ctrl+Shift+P)")
         self._toggle_button.clicked.connect(self._on_toggle_clicked)
         self.addPermanentWidget(self._toggle_button)
@@ -99,8 +92,6 @@ class MainStatusBar(QStatusBar):
         # Command bar widgets (hidden by default)
         self._cmd_prefix_label = self._command_bar.prefix_label
         self._cmd_input = self._command_bar.input
-        self._cmd_prefix_label.setFixedHeight(20)
-        self._cmd_input.setFixedHeight(20)
         self._cmd_prefix_label.hide()
         self._cmd_input.hide()
         self.addWidget(self._cmd_prefix_label)
