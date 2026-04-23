@@ -89,21 +89,21 @@ input = action [mode] ["/" flags "/"] [text]
      | action [mode] " " [text]              # space separator when no flags
      | action [mode]                         # no-arg commands (:rmf, :lsf, :n, etc.)
 
-action = "s" | "f" | "h" | "rmf" | "rmh" | "lsf" | "lsh" | "n" | "N"
+action = "s" | "f" | "h" | "rmf" | "rmh" | "n" | "N"
 mode = "r" | "s"                           # regex, simple. plain = no suffix
 flags = flag ("/" flag)+
 flag = "cs" | "color=" value
 text = .*                                  # remainder of input (may be empty)
 ```
 
-`text` is optional — commands like `:rmf`, `:lsf`, `:n` have no text argument.
+`text` is optional — commands like `:rmf`, `:n` have no text argument.
 
 ### Result
 
 ```python
 @dataclass(frozen=True)
 class ParsedCommand:
-    action: str           # "s", "f", "h", "rmf", "rmh", "lsf", "lsh", "n", "N"
+    action: str           # "s", "f", "h", "rmf", "rmh", "n", "N"
     mode: str             # "plain", "regex", "simple"
     case_sensitive: bool  # False by default, True if /cs flag present
     color: str | None     # Highlight color, None if not specified
@@ -139,8 +139,6 @@ class ParsedCommand:
 | `:rmf` | clear_filters | — | — |
 | `:rmh/color=red/ERROR` | remove_highlight | plain | `ERROR` |
 | `:rmh` | clear_highlights | — | — |
-| `:lsf` | list_filters | — | — |
-| `:lsh` | list_highlights | — | — |
 | `:n` | next_match | — | — |
 | `:N` | prev_match | — | — |
 
@@ -163,21 +161,10 @@ Routes `ParsedCommand` to the correct existing service.
 | `rmf` (no text) | `FilterController` | Clear all filters |
 | `rmh` (with text) | `HighlightService` | Remove specific highlight by exact match |
 | `rmh` (no text) | `HighlightService` | Clear all highlights |
-| `lsf` | CommandBar overlay | Display active filters list as multi-line overlay in the command bar area |
-| `lsh` | CommandBar overlay | Display active highlights list as multi-line overlay in the command bar area |
 | `n` | `FindService` | Jump to next match |
 | `N` | `FindService` | Jump to previous match |
 
 **Error display:** Service errors shown in CommandBar (red text) or status bar temporary message.
-
-**`:lsf`/`:lsh` display:** shown as a temporary multi-line overlay in the CommandBar area (not the status bar — the output can span multiple lines). Disappears on next key press or after a timeout.
-
-Output format (from spec):
-```
-Active filters (2):
-  1. :f Some text
-  2. :f/cs/Some text
-```
 
 ---
 
