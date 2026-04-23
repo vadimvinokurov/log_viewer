@@ -78,6 +78,10 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_shortcuts()
         self._connect_signals()
+        # Install global event filter to intercept :, /, ? before child widgets
+        from PySide6.QtWidgets import QApplication
+        if QApplication.instance():
+            QApplication.instance().installEventFilter(self)  # type: ignore[union-attr]
 
     def _setup_window(self) -> None:
         """Set up window properties."""
@@ -328,17 +332,23 @@ class MainWindow(QMainWindow):
         """Handle about action."""
         QMessageBox.about(self, ABOUT_TITLE, ABOUT_TEXT)
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        """Intercept :, /, ? to activate command bar."""
+    def eventFilter(self, obj: object, event: QKeyEvent) -> bool:
+        """Intercept :, /, ? globally to activate command bar."""
+        if event.type() != event.Type.KeyPress:
+            return False
+        # Don't intercept when command bar is active or when focus is in a text input
         if self._command_bar.is_active():
-            super().keyPressEvent(event)
-            return
+            return False
+        # Skip if focus is in QLineEdit, QTextEdit, or similar text widgets
+        from PySide6.QtWidgets import QApplication, QLineEdit, QTextEdit
+        focus_widget = QApplication.focusWidget()
+        if isinstance(focus_widget, (QLineEdit, QTextEdit)):
+            return False
         text = event.text()
         if text in (":", "/", "?"):
             self._command_bar.activate(text)
-            event.accept()
-            return
-        super().keyPressEvent(event)
+            return True  # event handled, don't propagate
+        return False
 
     # === Public API ===
 
