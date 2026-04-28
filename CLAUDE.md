@@ -1,98 +1,212 @@
-# Development Principles
+# CLAUDE.md
 
-## 1. Think Before Coding
+Drop-in operating instructions for coding agents. Read this file before every task.
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+**Working code only. Finish the job. Plausibility is not correctness.**
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+This file follows the [AGENTS.md](https://agents.md) open standard (Linux Foundation / Agentic AI Foundation). Claude Code, Codex, Cursor, Windsurf, Copilot, Aider, Devin, Amp read it natively. For tools that look elsewhere, symlink:
 
-## 2. Simplicity First
+---
 
-**Minimum code that solves the problem. Nothing speculative.**
+## 0. Non-negotiables
+
+These rules override everything else in this file when in conflict:
+
+1. **No flattery, no filler.** Skip openers like "Great question", "You're absolutely right", "Excellent idea", "I'd be happy to". Start with the answer or the action.
+2. **Disagree when you disagree.** If the user's premise is wrong, say so before doing the work. Agreeing with false premises to be polite is the single worst failure mode in coding agents.
+3. **Never fabricate.** Not file paths, not commit hashes, not API names, not test results, not library functions. If you don't know, read the file, run the command, or say "I don't know, let me check."
+4. **Stop when confused.** If the task has two plausible interpretations, ask. Do not pick silently and proceed.
+5. **Touch only what you must.** Every changed line must trace directly to the user's request. No drive-by refactors, reformatting, or "while I was in there" cleanups.
+
+---
+
+## 1. Before writing code
+
+**Goal: understand the problem and the codebase before producing a diff.**
+
+- State your plan in one or two sentences before editing. For anything non-trivial, produce a numbered list of steps with a verification check for each.
+- Read the files you will touch. Read the files that call the files you will touch. Claude Code: use subagents for exploration so the main context stays clean.
+- Match existing patterns in the codebase. If the project uses pattern X, use pattern X, even if you'd do it differently in a greenfield repo.
+- Surface assumptions out loud: "I'm assuming you want X, Y, Z. If that's wrong, say so." Do not bury assumptions inside the implementation.
+- If two approaches exist, present both with tradeoffs. Do not pick one silently. Exception: trivial tasks (typo, rename, log line) where the diff fits in one sentence.
+
+---
+
+## 2. Writing code: simplicity first
+
+**Goal: the minimum code that solves the stated problem. Nothing speculative.**
 
 - No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
+- No abstractions for single-use code. No configurability, flexibility, or hooks that were not requested.
+- No error handling for impossible scenarios. Handle the failures that can actually happen.
+- If the solution runs 200 lines and could be 50, rewrite it before showing it.
+- If you find yourself adding "for future extensibility", stop. Future extensibility is a future decision.
+- Bias toward deleting code over adding code. Shipping less is almost always better.
 
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+The test: would a senior engineer reading the diff call this overcomplicated? If yes, simplify.
 
-## 3. Surgical Changes
+---
 
-**Touch only what you must. Clean up only your own mess.**
+## 3. Surgical changes
 
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
+**Goal: clean, reviewable diffs. Change only what the request requires.**
 
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
+- Do not "improve" adjacent code, comments, formatting, or imports that are not part of the task.
+- Do not refactor code that works just because you are in the file.
+- Do not delete pre-existing dead code unless asked. If you notice it, mention it in the summary.
+- Do clean up orphans created by your own changes (unused imports, variables, functions your edit made obsolete).
+- Match the project's existing style exactly: indentation, quotes, naming, file layout.
 
-The test: Every changed line should trace directly to the user's request.
+The test: every changed line traces directly to the user's request. If a line fails that test, revert it.
 
-## 4. Goal-Driven Execution
+---
 
-**Define success criteria. Loop until verified.**
+## 4. Goal-driven execution
 
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+**Goal: define success as something you can verify, then loop until verified.**
 
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
+Rewrite vague asks into verifiable goals before starting:
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+- "Add validation" becomes "Write tests for invalid inputs (empty, malformed, oversized), then make them pass."
+- "Fix the bug" becomes "Write a failing test that reproduces the reported symptom, then make it pass."
+- "Refactor X" becomes "Ensure the existing test suite passes before and after, and no public API changes."
+- "Make it faster" becomes "Benchmark the current hot path, identify the bottleneck with profiling, change it, show the benchmark is faster."
 
-## 5. Code Standards
+For every task:
 
-- **Comments** — Only for complex logic (code should be self-documenting)
-- **Security** — Never commit secrets, use .env
-- **Context7** — Use for API docs when working with unfamiliar or rapidly-changing libraries. Not needed for stdlib or well-known patterns.
-- **Single Responsibility** — For all modules, classes, and functions
+1. State the success criteria before writing code.
+2. Write the verification (test, script, benchmark, screenshot diff) where practical.
+3. Run the verification. Read the output. Do not claim success without checking.
+4. If the verification fails, fix the cause, not the test.
 
-# Workflow
+---
 
-## Tiers
+## 5. Tool use and verification
 
-Not every task needs the full process. Pick the right tier:
+- Prefer running the code to guessing about the code. If a test suite exists, run it. If a linter exists, run it. If a type checker exists, run it.
+- Never report "done" based on a plausible-looking diff alone. Plausibility is not correctness.
+- When debugging, address root causes, not symptoms. Suppressing the error is not fixing the error.
+- For UI changes, verify visually: screenshot before, screenshot after, describe the diff.
+- Use CLI tools (gh, aws, gcloud, kubectl) when they exist. They are more context-efficient than reading docs or hitting APIs unauthenticated.
+- When reading logs, errors, or stack traces, read the whole thing. Half-read traces produce wrong fixes.
 
-### Trivial (typo fix, config change, one-liner)
-1. Fix it
-2. Verify manually or with existing tests
-3. Commit
+---
 
-### Normal (bug fix, small feature, refactor)
-1. `bd create` — track the task
-2. Write a failing test (if applicable)
-3. Implement until tests pass
-4. Run quality gates
-5. `bd close` + commit
+## 6. Session hygiene
 
-### Feature (new capability, multi-file change, architectural decision)
-1. Follow the /unified-workflow skill recommendations 
+- Context is the constraint. Long sessions with accumulated failed attempts perform worse than fresh sessions with a better prompt.
+- After two failed corrections on the same issue, stop. Summarize what you learned and ask the user to reset the session with a sharper prompt.
+- Use subagents (Claude Code: "use subagents to investigate X") for exploration tasks that would otherwise pollute the main context with dozens of file reads.
+- When committing, write descriptive commit messages (subject under 72 chars, body explains the why). No "update file" or "fix bug" commits. No "Co-Authored-By: Claude" attribution unless the project explicitly wants it.
 
-### How to choose
-- In doubt? Start with Normal. Upgrade to Feature if scope grows.
-- Downgrading mid-work is fine — don't force ceremony on small things.
+---
 
-## Context7
+## 7. Communication style
 
-Use `resolve-library-id` → `query-docs` when working with external libraries/frameworks. Skip for stdlib, builtins, or patterns you're confident about.
+- Direct, not diplomatic. "This won't scale because X" beats "That's an interesting approach, but have you considered...".
+- Concise by default. Two or three short paragraphs unless the user asks for depth. No padding, no restating the question, no ceremonial closings.
+- When a question has a clear answer, give it. When it does not, say so and give your best read on the tradeoffs.
+- Celebrate only what matters: shipping, solving genuinely hard problems, metrics that moved. Not feature ideas, not scope creep, not "wouldn't it be cool if".
+- No excessive bullet points, no unprompted headers, no emoji. Prose is usually clearer than structure for short answers.
 
+---
+
+## 8. When to ask, when to proceed
+
+**Ask before proceeding when:**
+- The request has two plausible interpretations and the choice materially affects the output.
+- The change touches something you've been told is load-bearing, versioned, or has a migration path.
+- You need a credential, a secret, or a production resource you don't have access to.
+- The user's stated goal and the literal request appear to conflict.
+
+**Proceed without asking when:**
+- The task is trivial and reversible (typo, rename a local variable, add a log line).
+- The ambiguity can be resolved by reading the code or running a command.
+- The user has already answered the question once in this session.
+
+---
+
+## 9. Self-improvement loop
+
+**This file is living. Keep it short by keeping it honest.**
+
+After every session where the agent did something wrong:
+
+1. Ask: was the mistake because this file lacks a rule, or because the agent ignored a rule?
+2. If lacking: add the rule under "Project Learnings" below, written as concretely as possible ("Always use X for Y" not "be careful with Y").
+3. If ignored: the rule may be too long, too vague, or buried. Tighten it or move it up.
+4. Every few weeks, prune. For each line, ask: "Would removing this cause the agent to make a mistake?" If no, delete. Bloated AGENTS.md files get ignored wholesale.
+
+Boris Cherny (creator of Claude Code) keeps his team's file around 100 lines. Under 300 is a good ceiling. Over 500 and you are fighting your own config.
+
+---
+
+## 10. Project context
+
+**Fill this in per project. Keep it specific. Delete sections that don't apply.**
+
+### Stack
+- Language and version: Python 3.12+
+- Framework(s): PySide6 (Qt6), PyInstaller (packaging)
+- Package manager: uv
+- Runtime / deployment target: Desktop (macOS, Windows)
+
+### Commands
+- Install: `uv sync`
+- Build (macOS): `bash build/scripts/build-macos.sh`
+- Build (Windows): `python build/scripts/build-windows.py`
+- Test (all): `uv run pytest`
+- Test (single file): `uv run pytest tests/test_foo.py`
+- Lint: `uv run ruff check`
+- Typecheck: `uv run mypy`
+- Run locally: `uv run python -m src.main`
+
+Prefer single-file or single-test runs during iteration. Full suites are for the final verification pass.
+
+### Layout
+- Source lives in: `src/` (MVC: models/, views/, controllers/, core/, services/, utils/, constants/, styles/)
+- Tests live in: `tests/`
+- Do not modify: `.venv/`, `build/dist/`, `__pycache__/`
+
+### Conventions specific to this repo
+- Naming: PascalCase classes, snake_case functions/variables, UPPER_SNAKE_CASE constants
+- Import style: `from __future__ import annotations` at top of files, absolute imports from `src.*`
+- Error handling pattern: Custom exception classes in models, `@beartype` runtime type checking
+- Testing pattern and framework: pytest + pytest-qt for GUI testing, `test_` prefix, fixtures in `conftest.py`
+- Dataclasses: `@dataclass(frozen=True)` for immutable models
+- Ruff config: line-length 100, target py312
+
+### Forbidden
+- `mypy --strict` violations: the project uses strict mypy, don't introduce `Any` or missing annotations
+
+---
+
+## 11. Project Learnings
+
+**Accumulated corrections. This section is for the agent to maintain, not just the human.**
+
+When the user corrects your approach, append a one-line rule here before ending the session. Write it concretely ("Always use X for Y"), never abstractly ("be careful with Y"). If an existing line already covers the correction, tighten it instead of adding a new one. Remove lines when the underlying issue goes away (model upgrades, refactors, process changes).
+
+- Always use `bd` for planning and task decomposition — create epic + sub-tasks with `bd create` and `bd dep add`. Never write implementation plans to markdown files.
+
+---
+
+## 12. How this file was built
+
+This boilerplate synthesizes:
+- Sean Donahoe's IJFW ("It Just F\*cking Works") principles: one install, working code, no ceremony.
+- Andrej Karpathy's observations on LLM coding pitfalls (the four principles: think-first, simplicity, surgical changes, goal-driven execution).
+- Boris Cherny's public Claude Code workflow (reactive pruning, keep it ~100 lines, only rules that fix real mistakes).
+- Anthropic's official Claude Code best practices (explore-plan-code-commit, verification loops, context as the scarce resource).
+- Community anti-sycophancy patterns (explicit banned phrases, direct-not-diplomatic).
+- The AGENTS.md open standard (cross-tool portability via symlinks).
+
+Read once. Edit sections 10 and 11 for your project. Prune the rest over time. This file gets better the more you use it.
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
+
+Use 'bd' for task tracking
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
 
@@ -137,28 +251,3 @@ bd close <id>         # Complete work
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
-
-# Project Standards
-
-## Python & uv
-
-**Modern Python (3.9+) with uv as the package manager.**
-
-- **ALWAYS use `uv run`** for ALL Python execution — tests, scripts, one-liners, everything. Never call `python`, `python3`, or `.venv/bin/python` directly.
-- **Package management**: All dependencies through `uv`
-- **Type hints**: Required for all function signatures and class attributes
-- **Linting & formatting**: ruff for linting, black for formatting
-- **Testing**: pytest for all tests
-- **Structure**: Standard layout (src/, tests/, pyproject.toml)
-- **Documentation**: Docstrings for public APIs
-
-**How to apply**: `uv init` to start, `uv add` for deps, `uv run pytest` to test, `uv run black .` to format, `uv run ruff check .` to lint, `uv run python -c "..."` for one-liners.
-
-## Quality Gates
-
-**All code must pass before merging:**
-
-1. `uv run pytest` — exits with 0
-2. `uv run mypy src/` — no errors
-3. `uv run ruff check .` — no errors
-4. `uv run black --check .` — no changes needed
