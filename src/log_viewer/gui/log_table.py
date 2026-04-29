@@ -6,7 +6,8 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor, QFont, QKeyEvent
 from PySide6.QtWidgets import QApplication, QTableView
 
-from log_viewer.core.models import LogLine, LogLevel
+from log_viewer.core.filter_engine import find_spans
+from log_viewer.core.models import Highlight, LogLine, LogLevel
 
 _COLUMNS = ("Line", "Time", "Category", "Message")
 
@@ -19,6 +20,15 @@ _LEVEL_COLORS: dict[str, str] = {
     "TRACE": "gray",
 }
 
+_HIGHLIGHT_COLORS: dict[str, str] = {
+    "red": "#f38ba8",
+    "green": "#a6e3a1",
+    "yellow": "#f9e2af",
+    "blue": "#89b4fa",
+    "magenta": "#cba6f7",
+    "cyan": "#94e2d5",
+}
+
 
 class LogTableModel(QAbstractTableModel):
     """Table model backed by a list of LogLine objects."""
@@ -26,6 +36,7 @@ class LogTableModel(QAbstractTableModel):
     def __init__(self, lines: list[LogLine] | None = None) -> None:
         super().__init__()
         self._lines: list[LogLine] = lines or []
+        self._highlights: list[Highlight] = []
 
     @property
     def lines(self) -> list[LogLine]:
@@ -69,6 +80,9 @@ class LogTableModel(QAbstractTableModel):
             color_name = _LEVEL_COLORS.get(line.level.name)
             return QColor(color_name) if color_name else None
 
+        if role == Qt.ItemDataRole.BackgroundRole:
+            return self._highlight_color(line)
+
         if role == Qt.ItemDataRole.UserRole:
             return line
 
@@ -78,6 +92,20 @@ class LogTableModel(QAbstractTableModel):
         self.beginResetModel()
         self._lines = lines
         self.endResetModel()
+
+    def set_highlights(self, highlights: list[Highlight]) -> None:
+        self._highlights = highlights
+
+    def _highlight_color(self, line: LogLine) -> QColor | None:
+        """Return the first matching highlight color (with alpha) for a line."""
+        for hl in self._highlights:
+            spans = find_spans(line.raw, hl.pattern, hl.mode, hl.case_sensitive)
+            if spans:
+                hex_color = _HIGHLIGHT_COLORS.get(hl.color, "#f38ba8")
+                color = QColor(hex_color)
+                color.setAlpha(60)
+                return color
+        return None
 
 
 class LogTableView(QTableView):

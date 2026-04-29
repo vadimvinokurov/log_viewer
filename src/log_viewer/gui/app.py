@@ -110,6 +110,7 @@ class MainWindow(QMainWindow):
 
         # Signals
         self.bottom_bar.command_input.command_submitted.connect(self._on_command_submitted)
+        self.bottom_bar.command_input.textChanged.connect(self._on_command_text_changed)
 
         # Drag & Drop
         self.setAcceptDrops(True)
@@ -188,6 +189,11 @@ class MainWindow(QMainWindow):
         elif raw.startswith("?"):
             self._do_search(raw[1:], SearchMode.PLAIN, SearchDirection.BACKWARD)
         self.log_table.setFocus()
+
+    def _on_command_text_changed(self, text: str) -> None:
+        if text.startswith(":"):
+            suggestions = self._suggester.get_all_suggestions(text)
+            self.bottom_bar.command_input.set_suggestions(suggestions)
 
     def _handle_command(self, cmd: str) -> None:
         if not cmd:
@@ -334,6 +340,7 @@ class MainWindow(QMainWindow):
         store = self.log_store
         visible_lines = [store.lines[i] for i in store.filtered_indices]
         self._table_model.update_lines(visible_lines)
+        self._table_model.set_highlights(store.highlights)
         self._refresh_side_panel()
         self._update_status()
 

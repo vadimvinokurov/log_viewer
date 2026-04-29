@@ -48,4 +48,6 @@ class CommandInput(QLineEdit):
             self.clear()
             return
 
+        # Reset suggestion index on regular typing so Tab starts from first match
+        self._suggestion_index = 0
         super().keyPressEvent(event)
