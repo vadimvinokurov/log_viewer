@@ -7,7 +7,7 @@ from PySide6.QtGui import QColor, QFont, QKeyEvent
 from PySide6.QtWidgets import QApplication, QTableView
 
 from log_viewer.core.filter_engine import find_spans
-from log_viewer.core.models import Highlight, LogLine, LogLevel
+from log_viewer.core.models import Highlight, LogLine
 
 _COLUMNS = ("Line", "Time", "Category", "Message")
 

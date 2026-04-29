@@ -1,5 +1,4 @@
 import pytest
-from PySide6.QtCore import Qt
 from log_viewer.gui.bottom_bar import BottomBar
 
 

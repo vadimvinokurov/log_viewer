@@ -22,7 +22,7 @@ def _build_tree() -> CategoryNode:
 
 
 @pytest.fixture
-def cat_tree(qtbot: pytestqt.qtbot.QtBot) -> CategoryTreeWidget:
+def cat_tree(qtbot) -> CategoryTreeWidget:
     tree = CategoryTreeWidget()
     qtbot.addWidget(tree)
     return tree
