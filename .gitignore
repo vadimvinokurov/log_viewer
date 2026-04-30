@@ -26,3 +26,8 @@ venv.bak/
 packaging/build/
 packaging/dist/
 packaging/*.png
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
