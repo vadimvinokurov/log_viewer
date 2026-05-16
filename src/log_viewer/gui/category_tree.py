@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import sys
+
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QStyleFactory, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from log_viewer.core.models import CategoryNode
 from log_viewer.core.themes import _t
@@ -73,6 +75,8 @@ class CategoryTreeWidget(QWidget):
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
         self._tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        if sys.platform == "win32":
+            self._tree.setStyle(QStyleFactory.create("Fusion"))
         self._tree.setStyleSheet(
             f"""
             QTreeWidget {{
