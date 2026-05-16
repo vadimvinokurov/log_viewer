@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, Qt, QThread, Signal
-from PySide6.QtGui import QAction, QColor, QPalette
+from PySide6.QtGui import QColor, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -111,8 +111,8 @@ class MainWindow(QMainWindow):
         self._empty_label: QLabel | None = None
         self._show_empty_state()
 
-        # Menus
-        self._build_menus()
+        # Menus (removed — keyboard shortcuts only)
+        self._build_shortcuts()
 
         # Signals
         self.bottom_bar.command_input.command_submitted.connect(self._on_command_submitted)
@@ -125,6 +125,8 @@ class MainWindow(QMainWindow):
         self.side_panel.highlight_list.highlight_removed.connect(self._on_highlight_removed)
         self.side_panel.pinned_list.pin_removed.connect(self._on_pin_removed)
         self.bottom_bar.level_bar.level_clicked.connect(self._on_level_clicked)
+        self.bottom_bar.open_clicked.connect(self._file_open_dialog)
+        self.bottom_bar.reload_clicked.connect(lambda: self._handle_command("reload"))
 
         # Drag & Drop
         self.setAcceptDrops(True)
@@ -136,37 +138,11 @@ class MainWindow(QMainWindow):
         if file_path:
             self._open_file(file_path)
 
-    def _build_menus(self) -> None:
-        menu_bar = self.menuBar()
-
-        file_menu = menu_bar.addMenu("File")
-
-        open_action = QAction("Open...", self)
-        open_action.setShortcut("Ctrl+O")
-        open_action.triggered.connect(self._file_open_dialog)
-        file_menu.addAction(open_action)
-
-        reload_action = QAction("Reload", self)
-        reload_action.setShortcut("Ctrl+R")
-        reload_action.triggered.connect(lambda: self._handle_command("reload"))
-        file_menu.addAction(reload_action)
-
-        file_menu.addSeparator()
-        quit_action = QAction("Quit", self)
-        quit_action.setShortcut("Ctrl+Q")
-        quit_action.triggered.connect(self.close)
-        file_menu.addAction(quit_action)
-
-        edit_menu = menu_bar.addMenu("Edit")
-        copy_action = QAction("Copy Line", self)
-        copy_action.triggered.connect(lambda: self.log_table._copy_current_line())
-        edit_menu.addAction(copy_action)
-
-        view_menu = menu_bar.addMenu("View")
-        toggle_panel = QAction("Toggle Side Panel", self)
-        toggle_panel.setShortcut("Ctrl+B")
-        toggle_panel.triggered.connect(self._toggle_side_panel)
-        view_menu.addAction(toggle_panel)
+    def _build_shortcuts(self) -> None:
+        QShortcut(QKeySequence("Ctrl+O"), self, activated=self._file_open_dialog)
+        QShortcut(QKeySequence("Ctrl+R"), self, activated=lambda: self._handle_command("reload"))
+        QShortcut(QKeySequence("Ctrl+Q"), self, activated=self.close)
+        QShortcut(QKeySequence("Ctrl+B"), self, activated=self._toggle_side_panel)
 
     def _file_open_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Open Log File")
@@ -522,7 +498,7 @@ class MainWindow(QMainWindow):
     def _show_empty_state(self) -> None:
         if self._empty_label is not None:
             return
-        self._empty_label = QLabel("Drop a log file here or use File \u2192 Open")
+        self._empty_label = QLabel("Drop a log file here or click Open")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_label.setStyleSheet(
             "color: #86868b; font-size: 15px; letter-spacing: -0.01em;"

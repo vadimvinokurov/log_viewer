@@ -102,14 +102,39 @@ class LevelBar(QWidget):
             btn.set_active(btn._level not in disabled_levels)
 
 
+class _ActionButton(QPushButton):
+    """Small flat button matching the app's toolbar style."""
+
+    def __init__(self, label: str) -> None:
+        super().__init__(label)
+        self.setFlat(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(24)
+        self.setStyleSheet(
+            f"_ActionButton {{ color: {_t('ink')}; background: transparent; "
+            f"border: none; border-radius: 6px; padding: 2px 8px; font-size: 12px; }}"
+            f"_ActionButton:hover {{ background: {_t('recessed')}; }}"
+        )
+
+
 class BottomBar(QWidget):
-    """Horizontal bar: command input (left) + level buttons (right)."""
+    """Horizontal bar: action buttons + command input (left) + level buttons (right)."""
+
+    open_clicked = Signal()
+    reload_clicked = Signal()
 
     def __init__(self) -> None:
         super().__init__()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(8)
+
+        self._open_btn = _ActionButton("Open")
+        self._reload_btn = _ActionButton("Reload")
+        self._open_btn.clicked.connect(self.open_clicked.emit)
+        self._reload_btn.clicked.connect(self.reload_clicked.emit)
+        layout.addWidget(self._open_btn)
+        layout.addWidget(self._reload_btn)
 
         self.command_input = CommandInput()
         self.command_input.setFrame(False)
