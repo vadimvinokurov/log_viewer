@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -57,6 +58,9 @@ class PinnedItemWidget(QWidget):
         layout.addWidget(num_label)
 
         msg_label = QLabel(message[:80])
+        msg_label.setMinimumWidth(0)
+        msg_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        msg_label.setToolTip(message)
         layout.addWidget(msg_label, stretch=1)
 
         delete_btn = QPushButton("\u2715")
@@ -82,6 +86,7 @@ class PinnedListWidget(QWidget):
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setStyleSheet(
             f"""
             QScrollArea {{

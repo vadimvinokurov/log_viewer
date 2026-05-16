@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -68,7 +69,11 @@ class FilterItemWidget(QWidget):
         layout.addWidget(checkbox)
 
         prefix = _MODE_PREFIX[filt.mode]
-        label = QLabel(f"{prefix} {filt.pattern}")
+        full_text = f"{prefix} {filt.pattern}"
+        label = QLabel(full_text)
+        label.setMinimumWidth(0)
+        label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        label.setToolTip(full_text)
         layout.addWidget(label, stretch=1)
 
         delete_btn = QPushButton("\u2715")
@@ -96,6 +101,7 @@ class FilterListWidget(QWidget):
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setStyleSheet(
             f"""
             QScrollArea {{
