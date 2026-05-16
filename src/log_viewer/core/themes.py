@@ -46,9 +46,6 @@ LIGHT_THEME: dict[str, Any] = {
     # Pinned row
     "pinned_bg":    "#eef4ff",
 
-    # Scrollbar
-    "scrollbar":    "#c1c1c6",
-
     # Level colors
     "level_colors": {
         "CRITICAL": "#CC0000",
