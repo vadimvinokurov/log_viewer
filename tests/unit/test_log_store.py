@@ -850,6 +850,13 @@ class TestLogStorePinnedLines:
         store.load_lines(SAMPLE_LINES)
         assert 2 in store.pinned_line_numbers
 
+    def test_pin_lines_batch(self) -> None:
+        """pin_lines pins multiple lines at once."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.pin_lines([1, 3, 5])
+        assert store.pinned_line_numbers == {1, 3, 5}
+
 
 class TestLogStorePlainFormat:
     def test_load_plain_lines(self) -> None:

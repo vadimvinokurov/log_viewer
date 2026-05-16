@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, Qt
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QWheelEvent
-from PySide6.QtWidgets import QApplication, QTableView
+from PySide6.QtWidgets import QApplication, QMenu, QTableView
 
 from log_viewer.core.models import Highlight, LogLine
 from log_viewer.core.themes import _t
@@ -116,10 +116,12 @@ class LogTableModel(QAbstractTableModel):
 class LogTableView(QTableView):
     """Table view with vim-style key bindings for log navigation."""
 
+    pin_lines_requested = Signal(list)
+
     def __init__(self) -> None:
         super().__init__()
         self.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.setAlternatingRowColors(False)
         self.setShowGrid(False)
         self.setFont(Typography.LOG_FONT)
@@ -273,3 +275,48 @@ class LogTableView(QTableView):
             if hasattr(model, '_store') and model._store is not None:
                 raw = model._store.get_raw(line.line_number - 1)
             QApplication.clipboard().setText(raw if raw else line.message)
+
+    def _selected_lines(self) -> list[LogLine]:
+        """Return LogLine objects for all selected rows, sorted by row index."""
+        model = self.model()
+        if model is None:
+            return []
+        rows = sorted({idx.row() for idx in self.selectionModel().selectedIndexes()})
+        lines: list[LogLine] = []
+        for row in rows:
+            line = model.data(model.index(row, 0), Qt.ItemDataRole.UserRole)
+            if isinstance(line, LogLine):
+                lines.append(line)
+        return lines
+
+    def _copy_selected_lines(self) -> None:
+        """Copy all selected lines to clipboard."""
+        lines = self._selected_lines()
+        if not lines:
+            return
+        model = self.model()
+        parts: list[str] = []
+        for line in lines:
+            raw = ""
+            if model is not None and hasattr(model, '_store') and model._store is not None:
+                raw = model._store.get_raw(line.line_number - 1)
+            parts.append(raw if raw else line.message)
+        QApplication.clipboard().setText("\n".join(parts))
+
+    def _pin_selected_lines(self) -> None:
+        """Emit pin request for all selected line numbers."""
+        lines = self._selected_lines()
+        if lines:
+            self.pin_lines_requested.emit([line.line_number for line in lines])
+
+    def contextMenuEvent(self, event):  # noqa: N802
+        """Right-click context menu for selected rows."""
+        menu = QMenu(self)
+        copy_action = menu.addAction("Copy selected lines")
+        pin_action = menu.addAction("Pin selected lines")
+
+        action = menu.exec(event.globalPos())
+        if action == copy_action:
+            self._copy_selected_lines()
+        elif action == pin_action:
+            self._pin_selected_lines()

@@ -149,6 +149,11 @@ class LogStore:
         self.pinned_line_numbers.add(line_number)
         self._apply_filters()
 
+    def pin_lines(self, line_numbers: list[int]) -> None:
+        """Pin multiple lines at once."""
+        self.pinned_line_numbers.update(line_numbers)
+        self._apply_filters()
+
     def unpin_line(self, line_number: int) -> None:
         """Unpin a specific line."""
         self.pinned_line_numbers.discard(line_number)

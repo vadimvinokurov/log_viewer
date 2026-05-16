@@ -2,10 +2,11 @@
 
 import pytest
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtWidgets import QApplication
 
 from log_viewer.core.models import LogLine, LogLevel
-from log_viewer.gui.log_table import LogTableModel
+from log_viewer.gui.log_table import LogTableModel, LogTableView
 
 
 @pytest.fixture
@@ -117,3 +118,60 @@ def test_update_lines_different_triggers_reset(model):
     new = [LogLine(10, "2026-01-01T13:00:00", "sys", LogLevel.INFO, "CPU: 45%", 40, 15)]
     model.update_lines(new)
     assert counter[0] == 1
+
+
+# --- Multi-selection and context menu tests ---
+
+
+@pytest.fixture
+def table_view(qtbot, sample_lines):
+    view = LogTableView()
+    view.setModel(LogTableModel(sample_lines))
+    qtbot.addWidget(view)
+    return view
+
+
+def test_extended_selection_mode(table_view):
+    """Selection mode should allow multi-select via Ctrl/Shift."""
+    from PySide6.QtWidgets import QAbstractItemView
+    assert table_view.selectionMode() == QAbstractItemView.SelectionMode.ExtendedSelection
+
+
+def test_selected_lines_returns_all_selected(table_view):
+    """_selected_lines returns LogLine objects for all selected rows."""
+    table_view.selectRow(0)
+    table_view.selectionModel().select(
+        table_view.model().index(2, 0),
+        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+    )
+    lines = table_view._selected_lines()
+    assert len(lines) == 2
+    assert lines[0].line_number == 1
+    assert lines[1].line_number == 3
+
+
+def test_copy_selected_lines_puts_text_in_clipboard(table_view):
+    """_copy_selected_lines copies all selected line messages to clipboard."""
+    table_view.selectRow(0)
+    table_view.selectionModel().select(
+        table_view.model().index(1, 0),
+        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+    )
+    table_view._copy_selected_lines()
+    clipboard = QApplication.clipboard().text()
+    assert "GET /api/users 200" in clipboard
+    assert "POST /api/login 401" in clipboard
+    assert clipboard.count("\n") == 1
+
+
+def test_pin_selected_lines_emits_signal(table_view):
+    """_pin_selected_lines emits pin_lines_requested with line numbers."""
+    table_view.selectRow(0)
+    table_view.selectionModel().select(
+        table_view.model().index(2, 0),
+        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+    )
+    received = []
+    table_view.pin_lines_requested.connect(received.append)
+    table_view._pin_selected_lines()
+    assert received == [[1, 3]]

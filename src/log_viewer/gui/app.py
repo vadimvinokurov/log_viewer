@@ -87,6 +87,7 @@ class MainWindow(QMainWindow):
         self.log_table = LogTableView()
         self._table_model = LogTableModel(store=self.log_store)
         self.log_table.setModel(self._table_model)
+        self.log_table.pin_lines_requested.connect(self._on_pin_lines_requested)
 
         self.side_panel = SidePanel()
         self.bottom_bar = BottomBar()
@@ -416,6 +417,11 @@ class MainWindow(QMainWindow):
     def _on_pin_removed(self, line_number: int) -> None:
         """Unpin a line from the side panel and refresh."""
         self.log_store.unpin_line(line_number)
+        self._refresh_display()
+
+    def _on_pin_lines_requested(self, line_numbers: list[int]) -> None:
+        """Pin multiple lines from context menu and refresh."""
+        self.log_store.pin_lines(line_numbers)
         self._refresh_display()
 
     def _on_level_clicked(self, level: LogLevel) -> None:
