@@ -312,8 +312,8 @@ class LogTableView(QTableView):
     def contextMenuEvent(self, event):  # noqa: N802
         """Right-click context menu for selected rows."""
         menu = QMenu(self)
-        copy_action = menu.addAction("Copy selected lines")
-        pin_action = menu.addAction("Pin selected lines")
+        copy_action = menu.addAction("Copy lines")
+        pin_action = menu.addAction("Pin lines")
 
         action = menu.exec(event.globalPos())
         if action == copy_action:
