@@ -12,7 +12,7 @@ APP_VERSION = '2.0.0'
 block_cipher = None
 
 a = Analysis(
-    [str(ROOT / 'src' / 'log_viewer' / 'gui' / 'app.py')],
+    [str(ROOT / 'packaging' / 'entry.py')],
     pathex=[str(ROOT / 'src')],
     binaries=[],
     datas=[],

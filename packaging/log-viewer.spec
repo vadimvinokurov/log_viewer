@@ -14,7 +14,7 @@ BUNDLE_ID = 'com.logviewer.app'
 block_cipher = None
 
 a = Analysis(
-    [str(ROOT / 'src' / 'log_viewer' / 'gui' / 'app.py')],
+    [str(ROOT / 'packaging' / 'entry.py')],
     pathex=[str(ROOT / 'src')],
     binaries=[],
     datas=[],
