@@ -117,6 +117,7 @@ class LogTableView(QTableView):
     """Table view with vim-style key bindings for log navigation."""
 
     pin_lines_requested = Signal(list)
+    unpin_lines_requested = Signal(list)
 
     def __init__(self) -> None:
         super().__init__()
@@ -309,14 +310,39 @@ class LogTableView(QTableView):
         if lines:
             self.pin_lines_requested.emit([line.line_number for line in lines])
 
+    def _unpin_selected_lines(self) -> None:
+        """Emit unpin request for all selected line numbers."""
+        lines = self._selected_lines()
+        if lines:
+            self.unpin_lines_requested.emit([line.line_number for line in lines])
+
     def contextMenuEvent(self, event):  # noqa: N802
         """Right-click context menu for selected rows."""
+        lines = self._selected_lines()
+        pinned = {line.line_number for line in lines if line.line_number in self._pinned_line_numbers()}
+        unpinned_count = len(lines) - len(pinned)
+
         menu = QMenu(self)
         copy_action = menu.addAction("Copy")
-        pin_action = menu.addAction("Pin")
+        pin_action = None
+        unpin_action = None
+
+        if unpinned_count > 0:
+            pin_action = menu.addAction("Pin")
+        if len(pinned) > 0:
+            unpin_action = menu.addAction("Unpin")
 
         action = menu.exec(event.globalPos())
         if action == copy_action:
             self._copy_selected_lines()
         elif action == pin_action:
             self._pin_selected_lines()
+        elif action == unpin_action:
+            self._unpin_selected_lines()
+
+    def _pinned_line_numbers(self) -> set[int]:
+        """Get pinned line numbers from the model."""
+        model = self.model()
+        if model is not None and hasattr(model, '_pinned_line_numbers'):
+            return model._pinned_line_numbers
+        return set()
