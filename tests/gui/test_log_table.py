@@ -247,3 +247,54 @@ def test_selection_cleared_for_removed_rows(table_view):
     # Only row 0 (line_number 1) should be selected
     selected_rows = sorted({idx.row() for idx in sel.selectedIndexes()})
     assert selected_rows == [0]
+
+
+# --- Viewport position preservation ---
+
+
+@pytest.fixture
+def many_lines():
+    """50 lines to allow scrolling."""
+    return [
+        LogLine(i + 1, f"2026-01-01T12:30:{i % 60:02d}", "app", LogLevel.INFO, f"Message {i + 1}", i * 20, 20)
+        for i in range(50)
+    ]
+
+
+@pytest.fixture
+def scrollable_view(qtbot, many_lines):
+    view = LogTableView()
+    view.setModel(LogTableModel(many_lines))
+    view.resize(800, 400)
+    qtbot.addWidget(view)
+    view.show()
+    return view
+
+
+def test_viewport_position_preserved_after_update(scrollable_view):
+    """Selected row should keep its viewport position after lines are updated."""
+    model = scrollable_view.model()
+    sel = scrollable_view.selectionModel()
+
+    # Use a row deep enough that removing rows above still leaves enough
+    # content to maintain the same viewport position
+    target_row = 35
+    scrollable_view.scrollTo(model.index(target_row, 0))
+    scrollable_view.selectRow(target_row)
+
+    # Record viewport y of the selected row
+    y_before = scrollable_view.rowViewportPosition(target_row)
+
+    # Remove rows 0-4 (5 rows before the anchor area)
+    # Row 35 (line_number 36) becomes row 30 in new list
+    new_lines = [
+        LogLine(i + 1, f"2026-01-01T12:30:{i % 60:02d}", "app", LogLevel.INFO, f"Message {i + 1}", i * 20, 20)
+        for i in list(range(5, 50))
+    ]
+    model.update_lines(new_lines, selection_model=sel, table_view=scrollable_view)
+
+    # After update, line_number 36 should now be at row 30
+    new_row = 30
+    y_after = scrollable_view.rowViewportPosition(new_row)
+
+    assert y_before == y_after

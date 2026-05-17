@@ -96,17 +96,23 @@ class LogTableModel(QAbstractTableModel):
 
         return None
 
-    def update_lines(self, lines: list[LogLine], selection_model: object = None) -> None:
+    def update_lines(self, lines: list[LogLine], selection_model: object = None, table_view: object = None) -> None:
         if self._lines is lines or (len(self._lines) == len(lines) and all(a is b for a, b in zip(self._lines, lines))):
             return
-        # Save selected line numbers before reset
+        # Save selected line numbers and viewport offset before reset
         selected_line_numbers: set[int] = set()
+        anchor_line_number: int | None = None
+        anchor_viewport_y: int | None = None
         if selection_model is not None:
             from PySide6.QtCore import QItemSelectionModel
             if isinstance(selection_model, QItemSelectionModel):
-                for idx in selection_model.selectedIndexes():
-                    if idx.row() < len(self._lines):
-                        selected_line_numbers.add(self._lines[idx.row()].line_number)
+                selected_rows = sorted({idx.row() for idx in selection_model.selectedIndexes()})
+                for row in selected_rows:
+                    if row < len(self._lines):
+                        selected_line_numbers.add(self._lines[row].line_number)
+                if selected_rows and table_view is not None:
+                    anchor_line_number = self._lines[selected_rows[0]].line_number
+                    anchor_viewport_y = table_view.rowViewportPosition(selected_rows[0])
         self.beginResetModel()
         self._lines = lines
         self.endResetModel()
@@ -120,6 +126,18 @@ class LogTableModel(QAbstractTableModel):
                             self.index(row, 0),
                             QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
                         )
+        # Restore viewport position so anchor row stays at same visual position
+        if anchor_line_number is not None and anchor_viewport_y is not None and table_view is not None:
+            for row, line in enumerate(lines):
+                if line.line_number == anchor_line_number:
+                    # First make sure the row is within visible range
+                    table_view.scrollTo(self.index(row, 0))
+                    current_y = table_view.rowViewportPosition(row)
+                    diff = current_y - anchor_viewport_y
+                    if diff != 0:
+                        sb = table_view.verticalScrollBar()
+                        sb.setValue(max(sb.minimum(), min(sb.value() + diff, sb.maximum())))
+                    break
 
     def set_highlights(self, highlights: list[Highlight]) -> None:
         self._highlights = highlights

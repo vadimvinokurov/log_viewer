@@ -442,7 +442,7 @@ class MainWindow(QMainWindow):
         store = self.log_store
         store._apply_filters()
         visible_lines = [store.lines[i] for i in store.filtered_indices]
-        self._table_model.update_lines(visible_lines, selection_model=self.log_table.selectionModel())
+        self._table_model.update_lines(visible_lines, selection_model=self.log_table.selectionModel(), table_view=self.log_table)
         self._table_model.set_pinned_line_numbers(store.pinned_line_numbers)
         active_highlights = [h for h, e in zip(store.highlights, store.highlight_enabled) if e]
         self._table_model.set_highlights(active_highlights)
@@ -451,7 +451,7 @@ class MainWindow(QMainWindow):
     def _refresh_display(self) -> None:
         store = self.log_store
         visible_lines = [store.lines[i] for i in store.filtered_indices]
-        self._table_model.update_lines(visible_lines, selection_model=self.log_table.selectionModel())
+        self._table_model.update_lines(visible_lines, selection_model=self.log_table.selectionModel(), table_view=self.log_table)
         self._table_model.set_pinned_line_numbers(store.pinned_line_numbers)
         active_highlights = [h for h, e in zip(store.highlights, store.highlight_enabled) if e]
         self._table_model.set_highlights(active_highlights)
