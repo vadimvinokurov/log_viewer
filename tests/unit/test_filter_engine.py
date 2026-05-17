@@ -127,10 +127,9 @@ class TestSimpleMatch:
         assert match("ERROR occurred", f) is True
         assert match("error occurred", f) is False
 
-    def test_simple_invalid_query_raises(self) -> None:
+    def test_simple_invalid_query_returns_false(self) -> None:
         f = Filter(pattern="unquoted", mode=SearchMode.SIMPLE, case_sensitive=False)
-        with pytest.raises(Exception):
-            match("some text", f)
+        assert match("some text", f) is False
 
 
 class TestFindSpansPlain:

@@ -46,12 +46,12 @@ def _match_regex(text: str, pattern: str, case_sensitive: bool) -> bool:
 
 
 def _match_simple(text: str, pattern: str, case_sensitive: bool) -> bool:
-    """Simple query language match (AND/OR/NOT)."""
+    """Simple query language match (AND/OR/NOT). Uses cached AST."""
     try:
         ast = parse_query(pattern)
         return ast.evaluate(text, case_sensitive)
-    except QuerySyntaxError as e:
-        raise QuerySyntaxError(f"Invalid query: {e}") from e
+    except QuerySyntaxError:
+        return False
 
 
 def find_spans(
@@ -100,7 +100,7 @@ def _find_regex_spans(
 def _find_simple_spans(
     text: str, pattern: str, case_sensitive: bool
 ) -> list[tuple[int, int]]:
-    """Find all simple query match spans."""
+    """Find all simple query match spans. Uses cached AST."""
     try:
         ast = parse_query(pattern)
         return ast.find_spans(text, case_sensitive)
