@@ -436,8 +436,11 @@ class MainWindow(QMainWindow):
         """Refresh log table and status without rebuilding side panel."""
         store = self.log_store
         store._apply_filters()
-        visible_lines = [store.lines[i] for i in store.filtered_indices]
-        self._table_model.update_lines(visible_lines, selection_model=self.log_table.selectionModel(), table_view=self.log_table)
+        self._table_model.update_indices(
+            store.filtered_indices,
+            selection_model=self.log_table.selectionModel(),
+            table_view=self.log_table,
+        )
         self._table_model.set_pinned_line_numbers(store.pinned_line_numbers)
         active_highlights = [h for h, e in zip(store.highlights, store.highlight_enabled) if e]
         self._table_model.set_highlights(active_highlights)
@@ -445,8 +448,11 @@ class MainWindow(QMainWindow):
 
     def _refresh_display(self) -> None:
         store = self.log_store
-        visible_lines = [store.lines[i] for i in store.filtered_indices]
-        self._table_model.update_lines(visible_lines, selection_model=self.log_table.selectionModel(), table_view=self.log_table)
+        self._table_model.update_indices(
+            store.filtered_indices,
+            selection_model=self.log_table.selectionModel(),
+            table_view=self.log_table,
+        )
         self._table_model.set_pinned_line_numbers(store.pinned_line_numbers)
         active_highlights = [h for h, e in zip(store.highlights, store.highlight_enabled) if e]
         self._table_model.set_highlights(active_highlights)
@@ -468,14 +474,16 @@ class MainWindow(QMainWindow):
         )
 
     def _jump_to_search_match(self) -> None:
+        import bisect
         ss = self.log_store.search_state
         if not ss or not ss.matches:
             return
         matched_idx = ss.matches[ss.current_index]
-        if matched_idx in self.log_store.filtered_indices:
-            row = self.log_store.filtered_indices.index(matched_idx)
-            self.log_table.selectRow(row)
-            self.log_table.scrollTo(self._table_model.index(row, 0))
+        indices = self.log_store.filtered_indices
+        pos = bisect.bisect_left(indices, matched_idx)
+        if pos < len(indices) and indices[pos] == matched_idx:
+            self.log_table.selectRow(pos)
+            self.log_table.scrollTo(self._table_model.index(pos, 0))
 
     def eventFilter(self, obj, event) -> bool:  # type: ignore[override]
         if event.type() == event.Type.KeyPress:

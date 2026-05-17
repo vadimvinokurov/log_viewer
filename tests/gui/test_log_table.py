@@ -5,8 +5,16 @@ import pytest
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtWidgets import QApplication
 
+from log_viewer.core.log_store import LogStore
 from log_viewer.core.models import LogLine, LogLevel
 from log_viewer.gui.log_table import LogTableModel, LogTableView
+
+
+def _make_store_with_lines(lines: list[LogLine]) -> LogStore:
+    """Create a LogStore pre-loaded with the given lines."""
+    store = LogStore()
+    store.lines = lines
+    return store
 
 
 @pytest.fixture
@@ -20,7 +28,10 @@ def sample_lines():
 
 @pytest.fixture
 def model(sample_lines):
-    return LogTableModel(sample_lines)
+    store = _make_store_with_lines(sample_lines)
+    m = LogTableModel(store=store)
+    m.update_indices(list(range(len(sample_lines))))
+    return m
 
 
 def test_model_row_count(model, sample_lines):
@@ -125,8 +136,11 @@ def test_update_lines_different_triggers_reset(model):
 
 @pytest.fixture
 def table_view(qtbot, sample_lines):
+    store = _make_store_with_lines(sample_lines)
     view = LogTableView()
-    view.setModel(LogTableModel(sample_lines))
+    m = LogTableModel(store=store)
+    m.update_indices(list(range(len(sample_lines))))
+    view.setModel(m)
     qtbot.addWidget(view)
     return view
 
@@ -263,8 +277,11 @@ def many_lines():
 
 @pytest.fixture
 def scrollable_view(qtbot, many_lines):
+    store = _make_store_with_lines(many_lines)
     view = LogTableView()
-    view.setModel(LogTableModel(many_lines))
+    m = LogTableModel(store=store)
+    m.update_indices(list(range(len(many_lines))))
+    view.setModel(m)
     view.resize(800, 400)
     qtbot.addWidget(view)
     view.show()
