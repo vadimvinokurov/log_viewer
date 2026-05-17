@@ -887,9 +887,9 @@ class TestLogStoreGetRaw:
             "01-01-2024T08:00:00.100 my_lib/core version 5.18",
             "01-01-2024T08:00:00.200 my_app/storage LOG_ERROR Failed to open",
         ]
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False, encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".log", delete=False) as f:
             for line in lines:
-                f.write(line + "\n")
+                f.write(line.encode("utf-8") + b"\n")
             path = f.name
         try:
             store = LogStore()
@@ -897,6 +897,7 @@ class TestLogStoreGetRaw:
             assert store.get_raw(0) == "01-01-2024T08:00:00.100 my_lib/core version 5.18"
             assert store.get_raw(1) == "01-01-2024T08:00:00.200 my_app/storage LOG_ERROR Failed to open"
         finally:
+            store._close_mmap()
             os.unlink(path)
 
     def test_get_raw_returns_empty_without_file(self) -> None:
@@ -906,13 +907,14 @@ class TestLogStoreGetRaw:
 
     def test_get_raw_out_of_range_returns_empty(self) -> None:
         lines = ["01-01-2024T08:00:00.100 my_lib/core version 5.18"]
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False, encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".log", delete=False) as f:
             for line in lines:
-                f.write(line + "\n")
+                f.write(line.encode("utf-8") + b"\n")
             path = f.name
         try:
             store = LogStore()
             store.load_lines(lines, file_path=path)
             assert store.get_raw(99) == ""
         finally:
+            store._close_mmap()
             os.unlink(path)

@@ -92,7 +92,7 @@ class Typography:
         """Compact row height — tighter than font metrics."""
         from PySide6.QtGui import QFontMetrics
         metrics = QFontMetrics(cls.LOG_FONT)
-        return metrics.tightBoundingRect("Ag").height() + 3
+        return metrics.tightBoundingRect("Ag").height() + 6
 
     @classproperty
     def TABLE_HEADER_HEIGHT(cls) -> int:

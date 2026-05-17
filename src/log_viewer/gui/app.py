@@ -27,6 +27,7 @@ from log_viewer.core.models import Filter, Highlight, LogLevel, SearchDirection,
 from log_viewer.core.preset_manager import PresetManager
 from log_viewer.core.suggester import CommandSuggester
 
+from log_viewer.core.typography import Typography
 from log_viewer.gui.bottom_bar import BottomBar
 from log_viewer.gui.log_table import LogTableModel, LogTableView
 from log_viewer.gui.side_panel import SidePanel
@@ -537,6 +538,7 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication(sys.argv)
+    app.setFont(Typography.UI_FONT)
     app.setStyle(AppProxyStyle())
     app.setStyleSheet(styles.resolve(APP_BASE))
     file_path = sys.argv[1] if len(sys.argv) > 1 else None

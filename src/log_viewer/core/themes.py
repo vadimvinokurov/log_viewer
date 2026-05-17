@@ -1,7 +1,7 @@
-"""Apple-inspired theme tokens for Log Viewer.
+"""Light theme tokens for Log Viewer.
 
-Design system derived from Apple HIG — fog canvas, snow cards,
-ink text, and a single azure accent. No shadows; elevation by value.
+Color palette from the LogViewer Plugin UI/UX Design Specification.
+Gray-scale surfaces, warm-brown text, and blue accent for selections.
 """
 
 from __future__ import annotations
@@ -9,51 +9,51 @@ from __future__ import annotations
 from typing import Any
 
 
-# ── Light theme (Apple-inspired) ──────────────────────────────────────────────
+# ── Light theme (Design Specification) ────────────────────────────────────────
 
 LIGHT_THEME: dict[str, Any] = {
     "name": "light",
 
-    # Surfaces
-    "canvas":       "#f5f5f7",
-    "card":         "#ffffff",
-    "recessed":     "#f0f0f2",
-    "log_table":    "#fafafa",
-    "panel":        "#f5f5f7",
-    "tab_bg":       "#e8e8ed",
+    # Surfaces (Gray palette from spec)
+    "canvas":       "#E7E7E7",   # Gray5 — main background
+    "card":         "#F5F5F5",   # between Gray4/Gray5 — raised surfaces
+    "recessed":     "#D6D6D6",   # Gray4 — hover / recessed areas
+    "log_table":    "#E7E7E7",   # Gray5 — log list background
+    "panel":        "#E7E7E7",   # Gray5 — side panel background
+    "tab_bg":       "#D6D6D6",   # Gray4 — inactive tab / input background
 
     # Text
-    "ink":          "#1d1d1f",
-    "graphite":     "#707070",
-    "slate":        "#86868b",
+    "ink":          "#382F27",   # LogItemTextMouseOver — primary text
+    "graphite":     "#8491A3",   # BorderMouseOver — secondary text
+    "slate":        "#8491A3",   # BorderMouseOver — muted / placeholder text
 
     # Borders & dividers
-    "silver_mist":  "#e8e8ed",
-    "border_focus": "#0071e3",
+    "silver_mist":  "#D6D6D6",   # Gray4 — border color
+    "border_focus": "#0078D7",   # ContainerPanelHighlighted — focus ring
 
-    # Accent (sparingly — primary CTA only)
-    "azure":        "#0071e3",
-    "azure_hover":  "#0077ED",
+    # Accent
+    "azure":        "#0078D7",   # ContainerPanelHighlighted
+    "azure_hover":  "#2587CF",   # AutoScrollToEndMouseOver
 
     # Semantic / destructive
-    "caution":      "#b64400",
-    "destructive":  "#CC3333",
+    "caution":      "#6A5302",   # Warning color from spec
+    "destructive":  "#781111",   # Error color from spec
 
-    # Selection
-    "selection_bg": "#0071e3",
-    "selection_fg": "#ffffff",
+    # Selection (log item selected state)
+    "selection_bg": "#4a90e2",   # Blue selection background
+    "selection_fg": "#ffffff",   # White text on selection
 
     # Pinned row
-    "pinned_bg":    "#eef4ff",
+    "pinned_bg":    "#B7CFD5",   # LogItemSelected
 
-    # Level colors (used by bottom bar level buttons and log table foreground)
+    # Level colors (from spec §2.1.2)
     "level_colors": {
-        "CRITICAL": "#CC0000",
-        "ERROR":    "#CC0000",
-        "WARNING":  "#8A6D00",
-        "INFO":     "#1d1d1f",
-        "DEBUG":    "#7B61FF",
-        "TRACE":    "#30A14E",
+        "CRITICAL": "#781111",
+        "ERROR":    "#781111",
+        "WARNING":  "#6A5302",
+        "INFO":     "#382F27",
+        "DEBUG":    "#382F27",
+        "TRACE":    "#382F27",
     },
 }
 

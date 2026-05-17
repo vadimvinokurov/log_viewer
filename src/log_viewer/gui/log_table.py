@@ -38,7 +38,6 @@ class LogTableModel(QAbstractTableModel):
         self._lines: list[LogLine] = lines or []
         self._highlights: list[Highlight] = []
         self._pinned_line_numbers: set[int] = set()
-        self._monospace_font = Typography.LOG_FONT
         self._store = store
 
     @property
@@ -93,8 +92,6 @@ class LogTableModel(QAbstractTableModel):
             return line
 
         if role == Qt.ItemDataRole.FontRole:
-            if index.column() == 3:  # Message column
-                return self._monospace_font
             return None
 
         return None
@@ -129,7 +126,7 @@ class LogTableView(QTableView):
         self.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.setAlternatingRowColors(False)
         self.setShowGrid(False)
-        self.setFont(Typography.LOG_FONT)
+        self.setFont(Typography.UI_FONT)
         self.verticalHeader().setMinimumSectionSize(1)
         self.verticalHeader().setDefaultSectionSize(Typography.TABLE_ROW_HEIGHT)
         self.verticalHeader().hide()

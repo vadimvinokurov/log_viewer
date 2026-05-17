@@ -40,9 +40,6 @@ APP_BASE = """
 * {
     font-family: {{font_primary}};
 }
-QTableView {
-    font-family: {{font_mono}};
-}
 """
 
 LOG_TABLE = """
@@ -57,14 +54,12 @@ QTableView {
 LOG_TABLE_HEADER = """
 QHeaderView::section {
     background-color: {{log_table}};
-    color: {{graphite}};
+    color: {{ink}};
     padding: 0px 8px;
     border: none;
     border-bottom: 1px solid {{silver_mist}};
-    font-weight: 600;
+    font-weight: bold;
     font-size: 11px;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
 }
 """
 
@@ -75,18 +70,18 @@ QTabWidget::pane {
 }
 QTabBar::tab {
     background-color: {{tab_bg}};
-    color: {{graphite}};
+    color: {{ink}};
     padding: 6px 14px;
     border: none;
     border-radius: 8px;
     margin-right: 2px;
-    font-weight: 500;
+    font-weight: bold;
     font-size: 11px;
 }
 QTabBar::tab:selected {
     background-color: {{card}};
     color: {{ink}};
-    font-weight: 600;
+    font-weight: bold;
 }
 QTabBar::tab:hover:!selected {
     background-color: {{silver_mist}};
@@ -265,7 +260,7 @@ class AppProxyStyle(QProxyStyle):
 
         if checked or partial:
             bg = QColor("#b0b0b5") if not enabled else (
-                QColor("#0077ED") if pressed else QColor("#0071e3")
+                QColor("#2587CF") if pressed else QColor("#0078D7")
             )
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(bg)
@@ -291,11 +286,11 @@ class AppProxyStyle(QProxyStyle):
                 )
         else:
             if not enabled:
-                bg, border = QColor("#f0f0f2"), QColor("#d0d0d4")
+                bg, border = QColor("#E7E7E7"), QColor("#C8C8C8")
             elif hover:
-                bg, border = QColor("#ffffff"), QColor("#86868b")
+                bg, border = QColor("#F5F5F5"), QColor("#8491A3")
             else:
-                bg, border = QColor("#ffffff"), QColor("#e8e8ed")
+                bg, border = QColor("#F5F5F5"), QColor("#D6D6D6")
 
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(bg)
