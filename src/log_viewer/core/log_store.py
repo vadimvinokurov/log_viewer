@@ -23,6 +23,26 @@ from log_viewer.core.palette import HIGHLIGHT_PALETTE
 from log_viewer.core.parser import detect_format, parse_line, parse_plain_line
 
 
+def _merge_sorted(a: list[int], b: list[int]) -> list[int]:
+    """Merge two sorted lists, removing duplicates."""
+    result: list[int] = []
+    i = j = 0
+    while i < len(a) and j < len(b):
+        if a[i] < b[j]:
+            result.append(a[i])
+            i += 1
+        elif a[i] > b[j]:
+            result.append(b[j])
+            j += 1
+        else:
+            result.append(a[i])
+            i += 1
+            j += 1
+    result.extend(a[i:])
+    result.extend(b[j:])
+    return result
+
+
 class LogStore:
     """Holds parsed log lines, category tree, and computed stats."""
 
@@ -353,14 +373,17 @@ class LogStore:
         # Count per level before level filtering (used by level buttons)
         self._count_level_buttons(would_be_visible)
 
-        # Apply level toggle
-        level_enabled = {i for i in would_be_visible if self.lines[i].level not in self.disabled_levels}
+        # Build sorted list directly, skip intermediate set for level filtering
+        disabled = self.disabled_levels
+        if disabled:
+            result = sorted(i for i in would_be_visible if self.lines[i].level not in disabled)
+        else:
+            result = sorted(would_be_visible)
+        if self.pinned_line_numbers:
+            pinned_in_range = sorted(n - 1 for n in self.pinned_line_numbers if 0 <= n - 1 < len(self.lines))
+            result = _merge_sorted(result, pinned_in_range)
 
-        # Add pinned lines (always visible, bypassing all filters)
-        pinned_in_range = {n - 1 for n in self.pinned_line_numbers if 0 <= n - 1 < len(self.lines)}
-        visible = level_enabled | pinned_in_range
-
-        self.filtered_indices = sorted(visible)
+        self.filtered_indices = result
 
         self._count_visible_levels()
 
