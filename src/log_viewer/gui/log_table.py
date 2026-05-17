@@ -97,7 +97,13 @@ class LogTableModel(QAbstractTableModel):
         return None
 
     def update_lines(self, lines: list[LogLine], selection_model: object = None, table_view: object = None) -> None:
-        if self._lines is lines or (len(self._lines) == len(lines) and all(a is b for a, b in zip(self._lines, lines))):
+        if self._lines is lines:
+            return
+        if (len(self._lines) == len(lines)
+            and self._lines
+            and lines
+            and self._lines[0] is lines[0]
+            and self._lines[-1] is lines[-1]):
             return
         # Save selected line numbers and viewport offset before reset
         selected_line_numbers: set[int] = set()
@@ -174,6 +180,8 @@ class LogTableView(QTableView):
         self._default_widths_set = False
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollMode(QTableView.ScrollMode.ScrollPerPixel)
+        self.setHorizontalScrollMode(QTableView.ScrollMode.ScrollPerPixel)
 
         self._g_pressed: bool = False
         self._y_pressed: bool = False
