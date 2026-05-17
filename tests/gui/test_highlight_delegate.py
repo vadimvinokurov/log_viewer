@@ -7,6 +7,7 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import QStyleOptionViewItem
 
+from log_viewer.core.log_store import LogStore
 from log_viewer.core.models import Highlight, LogLine, LogLevel, SearchMode
 from log_viewer.core.typography import Typography
 from log_viewer.gui.highlight_delegate import HighlightDelegate
@@ -23,6 +24,13 @@ def _make_line(msg: str) -> LogLine:
         file_offset=0,
         line_length=0,
     )
+
+
+def _make_model(lines: list[LogLine]) -> LogTableModel:
+    store = LogStore()
+    store.lines = lines
+    store.filtered_indices = list(range(len(lines)))
+    return LogTableModel(store=store)
 
 
 @pytest.fixture
@@ -50,14 +58,14 @@ def _paint_cell(
 
 
 def test_delegate_paints_without_crash(delegate, qtbot):
-    model = LogTableModel([_make_line("hello world")])
+    model = _make_model([_make_line("hello world")])
     model.set_highlights([Highlight(pattern="hello", mode=SearchMode.PLAIN, color="#FF0000")])
     image = _paint_cell(delegate, model, 0, 3)
     assert not image.isNull()
 
 
 def test_delegate_highlights_matched_text(delegate, qtbot):
-    model = LogTableModel([_make_line("hello error world")])
+    model = _make_model([_make_line("hello error world")])
     model.set_highlights([Highlight(pattern="error", mode=SearchMode.PLAIN, color="#FF0000")])
     image = _paint_cell(delegate, model, 0, 3)
 
@@ -73,7 +81,7 @@ def test_delegate_highlights_matched_text(delegate, qtbot):
 
 
 def test_delegate_no_highlight_uniform_background(delegate, qtbot):
-    model = LogTableModel([_make_line("hello world")])
+    model = _make_model([_make_line("hello world")])
     model.set_highlights([])
     image = _paint_cell(delegate, model, 0, 3)
 
@@ -85,7 +93,7 @@ def test_delegate_no_highlight_uniform_background(delegate, qtbot):
 
 
 def test_delegate_multiple_highlights_different_colors(delegate, qtbot):
-    model = LogTableModel([_make_line("error timeout")])
+    model = _make_model([_make_line("error timeout")])
     model.set_highlights([
         Highlight(pattern="error", mode=SearchMode.PLAIN, color="#FF0000"),
         Highlight(pattern="timeout", mode=SearchMode.PLAIN, color="#0000FF"),
@@ -120,7 +128,7 @@ def test_delegate_caches_spans(delegate, qtbot, monkeypatch):
     # Patch in the delegate's module where it's actually used
     monkeypatch.setattr(hd_module, "find_spans", counting_find_spans)
 
-    model = LogTableModel([_make_line("hello error world")])
+    model = _make_model([_make_line("hello error world")])
     model.set_highlights([Highlight(pattern="error", mode=SearchMode.PLAIN, color="#FF0000")])
 
     # Paint the same cell twice
@@ -134,7 +142,7 @@ def test_delegate_caches_spans(delegate, qtbot, monkeypatch):
 
 def test_delegate_cache_invalidated_on_highlight_change(delegate, qtbot):
     """Cache is invalidated when highlights change."""
-    model = LogTableModel([_make_line("hello error world")])
+    model = _make_model([_make_line("hello error world")])
     model.set_highlights([Highlight(pattern="error", mode=SearchMode.PLAIN, color="#FF0000")])
 
     # First paint
