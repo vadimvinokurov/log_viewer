@@ -51,7 +51,7 @@ LIGHT_THEME: dict[str, Any] = {
         "CRITICAL": "#CC0000",
         "ERROR":    "#CC0000",
         "WARNING":  "#8A6D00",
-        "INFO":     "#86868b",
+        "INFO":     "#1d1d1f",
         "DEBUG":    "#7B61FF",
         "TRACE":    "#30A14E",
     },
