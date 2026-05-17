@@ -144,7 +144,7 @@ class LogTableView(QTableView):
 
         self._g_pressed: bool = False
         self._y_pressed: bool = False
-        self.setItemDelegateForColumn(3, HighlightDelegate())
+        self.setItemDelegate(HighlightDelegate())
 
     def scrollTo(self, index, hint=QTableView.ScrollHint.EnsureVisible):  # noqa: N802
         """Scroll to show the row but preserve horizontal scroll position."""

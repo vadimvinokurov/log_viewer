@@ -49,6 +49,8 @@ LOG_TABLE = """
 QTableView {
     background-color: {{log_table}};
     alternate-background-color: {{card}};
+    selection-background-color: {{selection_bg}};
+    selection-color: {{selection_fg}};
 }
 """
 
