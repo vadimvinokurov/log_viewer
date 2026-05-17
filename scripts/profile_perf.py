@@ -167,10 +167,57 @@ def bench_batch_match(store: LogStore) -> float:
 # Main
 # ---------------------------------------------------------------------------
 
+def load_baseline(path: str) -> dict[str, float]:
+    """Load baseline timings from a text file (handles pipe-delimited tables)."""
+    results = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("=") or line.startswith("-") or line.startswith("Operation") or line.startswith("+"):
+                continue
+            # Strip outer pipe characters
+            line = line.strip("|").strip()
+            if not line:
+                continue
+            # Split on pipe separator if present (pipe-delimited table format)
+            if "|" in line:
+                segs = line.rsplit("|", 1)
+                if len(segs) == 2:
+                    name = segs[0].strip()
+                    try:
+                        results[name] = float(segs[1].strip())
+                    except ValueError:
+                        pass
+            else:
+                parts = line.rsplit(None, 1)
+                if len(parts) == 2:
+                    try:
+                        results[parts[0].strip()] = float(parts[1])
+                    except ValueError:
+                        pass
+    return results
+
+
+def print_comparison(results: list[tuple[str, float]], baseline: dict[str, float]) -> None:
+    """Print comparison table with before/after and speedup."""
+    print("\n" + "=" * 85)
+    print(f"{'Operation':<35} {'Before (s)':>10} {'After (s)':>10} {'Speedup':>10}")
+    print("-" * 85)
+    for name, secs in results:
+        before = baseline.get(name)
+        if before is not None and secs > 0:
+            speedup = before / secs
+            print(f"{name:<35} {before:>10.4f} {secs:>10.4f} {speedup:>9.2f}x")
+        else:
+            print(f"{name:<35} {'N/A':>10} {secs:>10.4f} {'N/A':>10}")
+    print("=" * 85)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Profile log_viewer core ops")
     parser.add_argument("--file", default="d:/log.txt", help="Log file path (default: d:/log.txt)")
     parser.add_argument("--lines", type=int, default=6_000_000, help="Number of synthetic lines to generate (default: 6M)")
+    parser.add_argument("--compare", default=None, help="Path to baseline timings file for comparison")
     args = parser.parse_args()
 
     file_path = args.file
@@ -220,6 +267,14 @@ def main() -> None:
     for op, med in results:
         print(f"| {op:<{col_op}} | {med:>{col_time}.4f} |")
     print(sep)
+
+    # Comparison with baseline
+    if args.compare:
+        baseline = load_baseline(args.compare)
+        if baseline:
+            print_comparison(results, baseline)
+        else:
+            print(f"\nWarning: no valid timings found in {args.compare}")
 
 
 if __name__ == "__main__":

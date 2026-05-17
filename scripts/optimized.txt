@@ -1,0 +1,38 @@
+Reading existing file: d:/log.txt
+  Loaded 6,375,495 lines
+Loading LogStore for benchmark base...
+  6,375,495 parsed lines, 6,375,495 visible
+
+Running benchmarks (3 runs each, reporting median)...
+
++------------------------------------+------------+
+| Operation                          | Median (s) |
++------------------------------------+------------+
+| parse_line (all lines)             |    26.7990 |
+| LogStore.load_lines                |    36.6543 |
+| _apply_filters (0 filters)         |     1.6289 |
+| _apply_filters (1 filter)          |     6.0266 |
+| _apply_filters (3 filters)         |     5.8332 |
+| _apply_filters (5 filters)         |     5.8266 |
+| category toggle (disable+enable)   |     5.3512 |
+| search plain                       |     0.4769 |
+| search regex                       |     8.1000 |
+| search simple query                |    34.0652 |
+| batch_match (100K lines, 1 filter) |     0.0750 |
++------------------------------------+------------+
+
+=====================================================================================
+Operation                           Before (s)  After (s)    Speedup
+-------------------------------------------------------------------------------------
+parse_line (all lines)                 26.2294    26.7990      0.98x
+LogStore.load_lines                    40.0595    36.6543      1.09x
+_apply_filters (0 filters)              4.7861     1.6289      2.94x
+_apply_filters (1 filter)               6.3429     6.0266      1.05x
+_apply_filters (3 filters)              6.3654     5.8332      1.09x
+_apply_filters (5 filters)              6.4558     5.8266      1.11x
+category toggle (disable+enable)        9.4983     5.3512      1.77x
+search plain                            2.2248     0.4769      4.66x
+search regex                            8.2189     8.1000      1.01x
+search simple query                    34.4851    34.0652      1.01x
+batch_match (100K lines, 1 filter)      0.0839     0.0750      1.12x
+=====================================================================================
