@@ -200,10 +200,18 @@ class LogStore:
     ) -> SearchState:
         """Search within the filtered view and return a SearchState."""
         matches: list[int] = []
-        filt = Filter(pattern=pattern, mode=mode, case_sensitive=case_sensitive)
-        for idx in self.filtered_indices:
-            if filter_match(self.lines[idx].message, filt):
-                matches.append(idx)
+
+        # Fast path: plain case-insensitive — use pre-lowered message
+        if mode == SearchMode.PLAIN and not case_sensitive:
+            pat_lower = pattern.lower()
+            for idx in self.filtered_indices:
+                if pat_lower in self.lines[idx].message_lower:
+                    matches.append(idx)
+        else:
+            filt = Filter(pattern=pattern, mode=mode, case_sensitive=case_sensitive)
+            for idx in self.filtered_indices:
+                if filter_match(self.lines[idx].message, filt):
+                    matches.append(idx)
 
         start = 0
         if matches and direction == SearchDirection.BACKWARD:
