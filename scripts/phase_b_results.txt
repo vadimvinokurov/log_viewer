@@ -1,0 +1,41 @@
+Reading existing file: d:/log.txt
+  Loaded 6,375,495 lines
+Loading LogStore for benchmark base...
+  6,375,495 parsed lines, 6,375,495 visible
+
+Running benchmarks (3 runs each, reporting median)...
+
+Benchmarking parse_lines_batch (parallel)...
++------------------------------------+------------+
+| Operation                          | Median (s) |
++------------------------------------+------------+
+| parse_line (all lines)             |    26.6752 |
+| parse_lines_batch (parallel)       |    42.8953 |
+| LogStore.load_lines                |    51.5442 |
+| _apply_filters (0 filters)         |     1.9571 |
+| _apply_filters (1 filter)          |     6.6503 |
+| _apply_filters (3 filters)         |     6.6337 |
+| _apply_filters (5 filters)         |     6.6060 |
+| category toggle (disable+enable)   |     6.4259 |
+| search plain                       |     0.7760 |
+| search regex                       |     8.7155 |
+| search simple query                |     4.6745 |
+| batch_match (100K lines, 1 filter) |     0.0809 |
++------------------------------------+------------+
+
+=====================================================================================
+Operation                           Before (s)  After (s)    Speedup
+-------------------------------------------------------------------------------------
+parse_line (all lines)                 26.2294    26.6752      0.98x
+parse_lines_batch (parallel)               N/A    42.8953        N/A
+LogStore.load_lines                    40.0595    51.5442      0.78x
+_apply_filters (0 filters)              4.7861     1.9571      2.45x
+_apply_filters (1 filter)               6.3429     6.6503      0.95x
+_apply_filters (3 filters)              6.3654     6.6337      0.96x
+_apply_filters (5 filters)              6.4558     6.6060      0.98x
+category toggle (disable+enable)        9.4983     6.4259      1.48x
+search plain                            2.2248     0.7760      2.87x
+search regex                            8.2189     8.7155      0.94x
+search simple query                    34.4851     4.6745      7.38x
+batch_match (100K lines, 1 filter)      0.0839     0.0809      1.04x
+=====================================================================================

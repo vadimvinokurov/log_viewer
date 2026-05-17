@@ -84,6 +84,20 @@ def bench_parse(raw_lines: list[str]) -> float:
     return _bench(_run)
 
 
+def bench_parse_parallel(raw_lines: list[str]) -> float:
+    """Benchmark parallel parsing via parse_lines_batch."""
+    from log_viewer.core.parser import parse_lines_batch
+    offsets: list[tuple[int, int]] = []
+    offset = 0
+    for raw_line in raw_lines:
+        line_bytes = raw_line.encode("utf-8")
+        offsets.append((offset, len(line_bytes)))
+        offset += len(line_bytes) + 1
+    start = time.perf_counter()
+    parse_lines_batch(raw_lines, offsets)
+    return time.perf_counter() - start
+
+
 def bench_load(raw_lines: list[str]) -> float:
     """Benchmark LogStore.load_lines end-to-end (fresh store each run)."""
     def _run() -> None:
@@ -244,6 +258,12 @@ def main() -> None:
     print("\nRunning benchmarks (3 runs each, reporting median)...\n")
 
     results.append(("parse_line (all lines)", bench_parse(raw_lines)))
+
+    # Benchmark: parallel parse
+    print("Benchmarking parse_lines_batch (parallel)...")
+    times = [bench_parse_parallel(raw_lines) for _ in range(3)]
+    results.append(("parse_lines_batch (parallel)", statistics.median(times)))
+
     results.append(("LogStore.load_lines", bench_load(raw_lines)))
     results.append(("_apply_filters (0 filters)", bench_apply_filters(store, 0)))
     results.append(("_apply_filters (1 filter)", bench_apply_filters(store, 1)))
