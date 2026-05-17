@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QTableView
 from log_viewer.core.models import Highlight, LogLine
 from log_viewer.core.themes import _t
 from log_viewer.gui.highlight_delegate import HighlightDelegate
-from log_viewer.gui.scroll_utils import install_hover_scrollbar
+
 from log_viewer.gui.styles import LOG_TABLE, LOG_TABLE_HEADER, styles
 from log_viewer.core.typography import Typography
 
@@ -141,7 +141,6 @@ class LogTableView(QTableView):
         self._default_widths_set = False
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        install_hover_scrollbar(self)
 
         self._g_pressed: bool = False
         self._y_pressed: bool = False

@@ -229,10 +229,10 @@ COLOR_DOT = "border-radius: 6px; background-color: {color}; border: none;"
 # ── Cross-platform checkbox style ───────────────────────────────────────────
 
 class AppProxyStyle(QProxyStyle):
-    """Application proxy style wrapping Fusion.
+    """Application proxy style for cross-platform visual customisations.
 
-    Overrides only specific primitives to enforce cross-platform consistency.
-    Add future visual customisations here — Fusion handles everything else.
+    Delegates to the platform's default style and overrides only specific
+    primitives (e.g. checkbox drawing).
     """
 
     def drawPrimitive(self, element, option, painter, widget=None):

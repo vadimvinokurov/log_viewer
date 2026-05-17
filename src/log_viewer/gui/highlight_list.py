@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from log_viewer.core.models import Highlight, SearchMode
-from log_viewer.gui.scroll_utils import install_hover_scrollbar
+
 from log_viewer.gui.styles import LIST_ITEM, LIST_SCROLL_AREA, styles
 
 _MODE_PREFIX: dict[SearchMode, str] = {
@@ -112,7 +112,6 @@ class HighlightListWidget(QWidget):
         self._container_layout.addStretch()
 
         self._scroll.setWidget(self._container)
-        install_hover_scrollbar(self._scroll)
         outer.addWidget(self._scroll)
 
     def set_highlights(self, highlights: list[Highlight], enabled: list[bool] | None = None) -> None:

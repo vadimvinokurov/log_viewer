@@ -537,7 +537,7 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication(sys.argv)
-    app.setStyle(AppProxyStyle("Fusion"))
+    app.setStyle(AppProxyStyle())
     app.setStyleSheet(styles.resolve(APP_BASE))
     file_path = sys.argv[1] if len(sys.argv) > 1 else None
     window = MainWindow(file_path=file_path)

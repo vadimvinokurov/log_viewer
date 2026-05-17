@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from log_viewer.core.models import CategoryNode
-from log_viewer.gui.scroll_utils import install_hover_scrollbar
+
 from log_viewer.gui.styles import CATEGORY_TOGGLE_BTN, CATEGORY_TREE, CATEGORY_SEARCH, styles
 
 
@@ -47,7 +47,6 @@ class CategoryTreeWidget(QWidget):
         self._tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         styles.apply(self._tree, CATEGORY_TREE)
         self._tree.itemChanged.connect(self._on_item_changed)
-        install_hover_scrollbar(self._tree)
         layout.addWidget(self._tree)
 
         self._root: CategoryNode | None = None
