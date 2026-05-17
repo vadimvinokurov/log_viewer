@@ -54,11 +54,13 @@ class HighlightDelegate(QStyledItemDelegate):
             painter.restore()
             return
 
-        # 3. Highlight spans
+        # 3. Highlight spans — only on message column (col 3)
+        _MESSAGE_COL = 3
         model = index.model()
         highlights = model.highlights() if hasattr(model, "highlights") else []
+        do_highlight = highlights and index.column() == _MESSAGE_COL
 
-        if highlights:
+        if do_highlight:
             # Version tracks highlight changes for cache invalidation
             hl_sig = hash(frozenset((h.pattern, h.mode.value, h.case_sensitive, h.color) for h in highlights))
             metrics = QFontMetrics(option.font)
