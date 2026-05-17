@@ -46,6 +46,7 @@ class LogStore:
         self._file: Optional[IO] = None
         self._mmap: Optional[mmap.mmap] = None
         self._category_index: dict[str, set[int]] = {}
+        self._category_enabled_cache: dict[str, bool] = {}
 
     def load_lines(self, raw_lines: list[str], file_path: Optional[str] = None) -> None:
         """Parse raw lines and rebuild all indices."""
@@ -239,6 +240,7 @@ class LogStore:
         for node in self._match_categories(path):
             node.enabled = True
             self._set_enabled_recursive(node, True)
+        self._rebuild_category_cache()
         self._apply_filters()
 
     def disable_category(self, path: str) -> None:
@@ -246,16 +248,19 @@ class LogStore:
         for node in self._match_categories(path):
             node.enabled = False
             self._set_enabled_recursive(node, False)
+        self._rebuild_category_cache()
         self._apply_filters()
 
     def enable_all_categories(self) -> None:
         """Enable all categories in the tree."""
         self._set_enabled_recursive(self.category_tree, True)
+        self._rebuild_category_cache()
         self._apply_filters()
 
     def disable_all_categories(self) -> None:
         """Disable all categories in the tree."""
         self._set_enabled_recursive(self.category_tree, False)
+        self._rebuild_category_cache()
         self._apply_filters()
 
     def set_disabled_categories(self, paths: list[str]) -> None:
@@ -266,6 +271,7 @@ class LogStore:
             if node:
                 node.enabled = False
                 self._set_enabled_recursive(node, False)
+        self._rebuild_category_cache()
         self._apply_filters()
 
     def _find_category_node(self, path: str) -> Optional[CategoryNode]:
@@ -298,6 +304,13 @@ class LogStore:
         for child in node.children.values():
             self._set_enabled_recursive(child, enabled)
 
+    def _rebuild_category_cache(self) -> None:
+        """Rebuild flat cache of category path -> enabled state from tree."""
+        self._category_enabled_cache = {}
+        for path in self.category_counts:
+            node = self._find_category_node(path)
+            self._category_enabled_cache[path] = node.enabled if node else True
+
     def _is_category_enabled(self, category: str) -> bool:
         """Check if a category is visible.
 
@@ -308,10 +321,7 @@ class LogStore:
         """
         if not category:
             return True
-        node = self._find_category_node(category)
-        if node is None:
-            return True  # Unknown category defaults to visible
-        return node.enabled
+        return self._category_enabled_cache.get(category, True)
 
     def _apply_filters(self) -> None:
         """Recompute filtered_indices from category state + level state + enabled filters (OR combination)."""
@@ -368,6 +378,8 @@ class LogStore:
                     node.children[part] = CategoryNode(name=part, full_path=full)
                 node = node.children[part]
                 node.line_count += 1
+
+        self._rebuild_category_cache()
 
     def _count_levels(self) -> None:
         """Count log levels across all lines."""

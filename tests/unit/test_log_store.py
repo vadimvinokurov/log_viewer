@@ -918,3 +918,66 @@ class TestLogStoreGetRaw:
         finally:
             store._close_mmap()
             os.unlink(path)
+
+
+class TestCategoryEnabledCache:
+    """Test _category_enabled_cache is built and maintained correctly."""
+
+    def test_cache_populated_on_load(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        assert hasattr(store, "_category_enabled_cache")
+        assert store._category_enabled_cache != {}
+        # All categories enabled by default
+        for path in store.category_counts:
+            assert store._category_enabled_cache[path] is True
+
+    def test_cache_updated_after_disable(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        assert store._category_enabled_cache["my_app/storage/folder"] is False
+        assert store._category_enabled_cache["my_app/storage/db"] is False
+        # Unrelated categories still enabled
+        assert store._category_enabled_cache["my_lib/core"] is True
+
+    def test_cache_updated_after_enable(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        store.enable_category("my_app/storage/folder")
+        assert store._category_enabled_cache["my_app/storage/folder"] is True
+        assert store._category_enabled_cache["my_app/storage/db"] is False
+
+    def test_cache_updated_after_enable_all(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_all_categories()
+        store.enable_all_categories()
+        for path in store.category_counts:
+            assert store._category_enabled_cache[path] is True
+
+    def test_cache_updated_after_disable_all(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_all_categories()
+        for path in store.category_counts:
+            assert store._category_enabled_cache[path] is False
+
+    def test_cache_updated_after_set_disabled_categories(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.set_disabled_categories(["my_app/storage/folder"])
+        assert store._category_enabled_cache["my_app/storage/folder"] is False
+        assert store._category_enabled_cache["my_app/storage/db"] is True
+        assert store._category_enabled_cache["my_lib/core"] is True
+
+    def test_empty_category_returns_true(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        assert store._is_category_enabled("") is True
+
+    def test_unknown_category_returns_true(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        assert store._is_category_enabled("nonexistent/path") is True
