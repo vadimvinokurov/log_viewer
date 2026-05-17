@@ -40,8 +40,8 @@ LIGHT_THEME: dict[str, Any] = {
     "destructive":  "#781111",   # Error color from spec
 
     # Selection (log item selected state)
-    "selection_bg": "#4a90e2",   # Blue selection background
-    "selection_fg": "#ffffff",   # White text on selection
+    "selection_bg": "#B7CFD5",   # LogItemSelected — light teal selection
+    "selection_fg": "#382F27",   # Keep text color unchanged on selection
 
     # Pinned row
     "pinned_bg":    "#B7CFD5",   # LogItemSelected
