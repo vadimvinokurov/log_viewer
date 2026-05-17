@@ -127,7 +127,9 @@ class LogTableModel(QAbstractTableModel):
             and self._prev_indices[0] == filtered_indices[0]
             and self._prev_indices[-1] == filtered_indices[-1]):
             return
-        # Save selected line numbers and viewport offset before reset
+        # Save selected line numbers and viewport offset before reset.
+        # Use _prev_indices (old mapping) because store.filtered_indices may
+        # already point to the new list (set by _apply_filters before this call).
         selected_line_numbers: set[int] = set()
         anchor_line_number: int | None = None
         anchor_viewport_y: int | None = None
@@ -136,14 +138,14 @@ class LogTableModel(QAbstractTableModel):
             if isinstance(selection_model, QItemSelectionModel):
                 selected_rows = sorted({idx.row() for idx in selection_model.selectedIndexes()})
                 for row in selected_rows:
-                    line = self._line_at(row)
-                    if line is not None:
+                    if 0 <= row < len(self._prev_indices):
+                        line = self._store.lines[self._prev_indices[row]]
                         selected_line_numbers.add(line.line_number)
                 if selected_rows and table_view is not None:
-                    anchor_line = self._line_at(selected_rows[0])
-                    if anchor_line is not None:
-                        anchor_line_number = anchor_line.line_number
-                        anchor_viewport_y = table_view.rowViewportPosition(selected_rows[0])
+                    anchor_row = selected_rows[0]
+                    if 0 <= anchor_row < len(self._prev_indices):
+                        anchor_line_number = self._store.lines[self._prev_indices[anchor_row]].line_number
+                        anchor_viewport_y = table_view.rowViewportPosition(anchor_row)
         self.beginResetModel()
         self._prev_indices = filtered_indices
         if self._store.filtered_indices is not filtered_indices:

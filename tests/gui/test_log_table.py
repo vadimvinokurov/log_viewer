@@ -263,6 +263,55 @@ def test_selection_cleared_for_removed_rows(table_view):
     assert selected_rows == [0]
 
 
+# --- Selection preservation through _apply_filters path ---
+
+
+def test_selection_preserved_after_apply_filters(qtbot):
+    """Selection survives the _refresh_log_only path where _apply_filters
+    changes store.filtered_indices BEFORE update_indices is called."""
+    from log_viewer.core.models import Filter, SearchMode
+
+    lines = [
+        LogLine(1, "2026-01-01T12:30:01", "app", LogLevel.INFO, "alpha message", 0, 10),
+        LogLine(2, "2026-01-01T12:30:02", "app", LogLevel.ERROR, "beta error", 11, 20),
+        LogLine(3, "2026-01-01T12:30:03", "app", LogLevel.INFO, "gamma message", 31, 30),
+    ]
+    store = LogStore()
+    store.lines = lines
+    store.filtered_indices = [0, 1, 2]
+    store._build_category_tree()
+    store._rebuild_category_cache()
+
+    model = LogTableModel(store=store)
+    model.update_indices(list(range(3)))
+    view = LogTableView()
+    view.setModel(model)
+    view.resize(800, 400)
+    qtbot.addWidget(view)
+
+    # Select row 1 (line_number 2 — "beta error")
+    view.selectRow(1)
+    sel = view.selectionModel()
+
+    # Add a filter that hides "alpha" — same pattern as _refresh_log_only:
+    # _apply_filters runs first, then update_indices gets the new list.
+    store.filters = [Filter(pattern="beta", mode=SearchMode.PLAIN)]
+    store.filter_enabled = [True]
+    store._apply_filters()  # changes store.filtered_indices to [1] only
+
+    model.update_indices(
+        store.filtered_indices,
+        selection_model=sel,
+        table_view=view,
+    )
+
+    # line_number 2 ("beta error") should still be selected, now at row 0
+    selected_rows = sorted({idx.row() for idx in sel.selectedIndexes()})
+    assert selected_rows == [0]
+    line = model._line_at(0)
+    assert line is not None and line.line_number == 2
+
+
 # --- Viewport position preservation ---
 
 
