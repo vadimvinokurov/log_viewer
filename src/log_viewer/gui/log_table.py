@@ -40,25 +40,25 @@ class LogTableModel(QAbstractTableModel):
     def __init__(self, store: LogStore | None = None) -> None:
         super().__init__()
         self._store = store
-        self._filtered_indices: list[int] = []
         self._highlights: list[Highlight] = []
         self._pinned_line_numbers: set[int] = set()
+        self._prev_indices: list[int] = []
 
     @property
     def lines(self) -> list[LogLine]:
         """Compatibility property -- builds list on demand."""
         if self._store is None:
             return []
-        return [self._store.lines[i] for i in self._filtered_indices]
+        return [self._store.lines[i] for i in self._store.filtered_indices]
 
     def _line_at(self, row: int) -> LogLine | None:
         """Resolve a LogLine for a visible row. O(1)."""
-        if self._store is None or row < 0 or row >= len(self._filtered_indices):
+        if self._store is None or row < 0 or row >= len(self._store.filtered_indices):
             return None
-        return self._store.lines[self._filtered_indices[row]]
+        return self._store.lines[self._store.filtered_indices[row]]
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
-        return len(self._filtered_indices)
+        return len(self._store.filtered_indices) if self._store else 0
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         return len(_COLUMNS)
@@ -74,7 +74,7 @@ class LogTableModel(QAbstractTableModel):
         return None
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> object:
-        if not index.isValid() or index.row() >= len(self._filtered_indices):
+        if not index.isValid() or self._store is None or index.row() >= len(self._store.filtered_indices):
             return None
 
         line = self._line_at(index.row())
@@ -116,14 +116,16 @@ class LogTableModel(QAbstractTableModel):
         selection_model: object = None,
         table_view: object = None,
     ) -> None:
-        """Update visible rows via index list. No LogLine list creation needed."""
-        if self._filtered_indices is filtered_indices:
+        """Update visible rows. filtered_indices comes from store (shared reference)."""
+        if self._store is None:
             return
-        if (len(self._filtered_indices) == len(filtered_indices)
-            and self._filtered_indices
+        if self._prev_indices is filtered_indices:
+            return
+        if (len(self._prev_indices) == len(filtered_indices)
+            and self._prev_indices
             and filtered_indices
-            and self._filtered_indices[0] == filtered_indices[0]
-            and self._filtered_indices[-1] == filtered_indices[-1]):
+            and self._prev_indices[0] == filtered_indices[0]
+            and self._prev_indices[-1] == filtered_indices[-1]):
             return
         # Save selected line numbers and viewport offset before reset
         selected_line_numbers: set[int] = set()
@@ -143,13 +145,15 @@ class LogTableModel(QAbstractTableModel):
                         anchor_line_number = anchor_line.line_number
                         anchor_viewport_y = table_view.rowViewportPosition(selected_rows[0])
         self.beginResetModel()
-        self._filtered_indices = filtered_indices
+        self._prev_indices = filtered_indices
+        if self._store.filtered_indices is not filtered_indices:
+            self._store.filtered_indices = filtered_indices
         self.endResetModel()
         # Restore selection for lines that remain visible
         if selected_line_numbers and selection_model is not None:
             from PySide6.QtCore import QItemSelectionModel
             if isinstance(selection_model, QItemSelectionModel):
-                for row in range(len(self._filtered_indices)):
+                for row in range(len(self._store.filtered_indices)):
                     line = self._line_at(row)
                     if line is not None and line.line_number in selected_line_numbers:
                         selection_model.select(
@@ -158,7 +162,7 @@ class LogTableModel(QAbstractTableModel):
                         )
         # Restore viewport position
         if anchor_line_number is not None and anchor_viewport_y is not None and table_view is not None:
-            for row in range(len(self._filtered_indices)):
+            for row in range(len(self._store.filtered_indices)):
                 line = self._line_at(row)
                 if line is not None and line.line_number == anchor_line_number:
                     table_view.scrollTo(self.index(row, 0))
@@ -173,7 +177,6 @@ class LogTableModel(QAbstractTableModel):
         """Compatibility: accept a list of LogLine objects."""
         if self._store is None:
             self.beginResetModel()
-            self._filtered_indices = []
             self.endResetModel()
             return
         # Build index mapping: for lines already in store, use their index;
