@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -179,11 +179,6 @@ class MainWindow(QMainWindow):
 
     def _on_file_error(self, msg: str) -> None:
         self.bottom_bar.set_status(f"Error: {msg}")
-
-    def event(self, event: QEvent) -> bool:
-        if event.type() == QEvent.Type.PaletteChange:
-            self._apply_light_palette()
-        return super().event(event)
 
     def _apply_light_palette(self) -> None:
         from log_viewer.core.themes import _t
