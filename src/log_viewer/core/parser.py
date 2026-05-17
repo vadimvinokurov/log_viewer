@@ -138,3 +138,69 @@ def parse_plain_line(raw: str, line_number: int, file_offset: int = 0, line_leng
         message=message,
         file_offset=file_offset, line_length=line_length,
     )
+
+
+def _parse_chunk(args: tuple[list[str], int, list[tuple[int, int]]]) -> list[LogLine]:
+    """Parse a chunk of lines. Worker function for parallel parsing."""
+    raw_lines, start_idx, offsets = args
+    return [
+        parse_line(raw, start_idx + i + 1, offsets[i][0], offsets[i][1])
+        for i, raw in enumerate(raw_lines)
+    ]
+
+
+def _parse_plain_chunk(args: tuple[list[str], int, list[tuple[int, int]]]) -> list[LogLine]:
+    """Parse a chunk of plain-format lines. Worker function for parallel parsing."""
+    raw_lines, start_idx, offsets = args
+    return [
+        parse_plain_line(raw, start_idx + i + 1, offsets[i][0], offsets[i][1])
+        for i, raw in enumerate(raw_lines)
+    ]
+
+
+def parse_lines_batch(
+    raw_lines: list[str],
+    offsets: list[tuple[int, int]],
+    plain: bool = False,
+    chunk_size: int = 500_000,
+) -> list[LogLine]:
+    """Parse all lines using multiple processes.
+
+    Args:
+        raw_lines: Raw text lines to parse.
+        offsets: Pre-computed (file_offset, line_length) tuples.
+        plain: Use plain format parser if True, KSIVA format if False.
+        chunk_size: Lines per chunk.
+
+    Returns:
+        Flat list of LogLine objects in original order.
+    """
+    import concurrent.futures
+    import os
+
+    worker = _parse_plain_chunk if plain else _parse_chunk
+    n = len(raw_lines)
+    num_workers = min(os.cpu_count() or 4, max(1, n // chunk_size))
+
+    if num_workers <= 1 or n < chunk_size:
+        if plain:
+            return [
+                parse_plain_line(raw, i + 1, offsets[i][0], offsets[i][1])
+                for i, raw in enumerate(raw_lines)
+            ]
+        return [
+            parse_line(raw, i + 1, offsets[i][0], offsets[i][1])
+            for i, raw in enumerate(raw_lines)
+        ]
+
+    chunks: list[tuple[list[str], int, list[tuple[int, int]]]] = []
+    for start in range(0, n, chunk_size):
+        end = min(start + chunk_size, n)
+        chunks.append((raw_lines[start:end], start, offsets[start:end]))
+
+    results: list[LogLine] = []
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+        for chunk_result in executor.map(worker, chunks):
+            results.extend(chunk_result)
+
+    return results

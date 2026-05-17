@@ -20,7 +20,7 @@ from log_viewer.core.models import (
     SearchState,
 )
 from log_viewer.core.palette import HIGHLIGHT_PALETTE
-from log_viewer.core.parser import detect_format, parse_line, parse_plain_line
+from log_viewer.core.parser import detect_format
 
 
 def _merge_sorted(a: list[int], b: list[int]) -> list[int]:
@@ -83,16 +83,8 @@ class LogStore:
             offsets.append((offset, len(line_bytes)))
             offset += len(line_bytes) + 1  # +1 for newline
 
-        if fmt == LogFormat.PLAIN:
-            self.lines = [
-                parse_plain_line(raw, i + 1, offsets[i][0], offsets[i][1])
-                for i, raw in enumerate(raw_lines)
-            ]
-        else:
-            self.lines = [
-                parse_line(raw, i + 1, offsets[i][0], offsets[i][1])
-                for i, raw in enumerate(raw_lines)
-            ]
+        from log_viewer.core.parser import parse_lines_batch
+        self.lines = parse_lines_batch(raw_lines, offsets, plain=(fmt == LogFormat.PLAIN))
 
         self.current_file = file_path
         self._build_category_tree()

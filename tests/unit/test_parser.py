@@ -175,3 +175,28 @@ class TestParsePlainLine:
         assert line.category == "uncategorized"
         assert line.level == LogLevel.INFO
         assert line.message == ""
+
+
+def test_parse_lines_batch_matches_sequential():
+    """Batch parsing should produce identical results to sequential parsing."""
+    from log_viewer.core.parser import parse_lines_batch, parse_line
+    raw = [
+        "2024-01-01T00:00:00 app/main [LOG_INFO] hello",
+        "2024-01-01T00:00:01 net/http [LOG_ERROR] world",
+        "",
+        "2024-01-01T00:00:02 db/query [LOG_DEBUG] test message here",
+    ]
+    offsets = [(0, len(l.encode("utf-8"))) for l in raw]
+
+    batch_result = parse_lines_batch(raw, offsets, chunk_size=2)
+    sequential = [
+        parse_line(raw[i], i + 1, offsets[i][0], offsets[i][1])
+        for i in range(len(raw))
+    ]
+
+    assert len(batch_result) == len(sequential)
+    for b, s in zip(batch_result, sequential):
+        assert b.line_number == s.line_number
+        assert b.message == s.message
+        assert b.category == s.category
+        assert b.level == s.level
