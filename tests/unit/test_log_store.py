@@ -981,3 +981,42 @@ class TestCategoryEnabledCache:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         assert store._is_category_enabled("nonexistent/path") is True
+
+
+class TestCategoryVisibleSet:
+    """Test _category_visible_set is cached and correct."""
+
+    def test_populated_on_load(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        assert hasattr(store, "_category_visible_set")
+        # All categories enabled → all indices visible
+        assert store._category_visible_set == {0, 1, 2, 3, 4, 5}
+
+    def test_unchanged_after_filter_add(self) -> None:
+        """Adding a text filter must not change the category visible set."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        snapshot_before = store._category_visible_set.copy()
+        store.add_filter(Filter(pattern="Failed", mode=SearchMode.PLAIN))
+        assert store._category_visible_set == snapshot_before
+
+    def test_changes_after_category_disable(self) -> None:
+        """Disabling a category must update the visible set."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        # my_app lines: 1,2,3,5 removed → only 0,4 remain
+        assert store._category_visible_set == {0, 4}
+
+    def test_changes_after_category_enable(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        store.enable_category("my_app")
+        assert store._category_visible_set == {0, 1, 2, 3, 4, 5}
+
+    def test_empty_on_empty_load(self) -> None:
+        store = LogStore()
+        store.load_lines([])
+        assert store._category_visible_set == set()

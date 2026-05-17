@@ -47,6 +47,7 @@ class LogStore:
         self._mmap: Optional[mmap.mmap] = None
         self._category_index: dict[str, set[int]] = {}
         self._category_enabled_cache: dict[str, bool] = {}
+        self._category_visible_set: set[int] = set()
 
     def load_lines(self, raw_lines: list[str], file_path: Optional[str] = None) -> None:
         """Parse raw lines and rebuild all indices."""
@@ -310,6 +311,15 @@ class LogStore:
         for path in self.category_counts:
             node = self._find_category_node(path)
             self._category_enabled_cache[path] = node.enabled if node else True
+        self._rebuild_category_visible_set()
+
+    def _rebuild_category_visible_set(self) -> None:
+        """Compute union of line indices for all enabled categories."""
+        visible: set[int] = set()
+        for cat, indices in self._category_index.items():
+            if self._is_category_enabled(cat):
+                visible |= indices
+        self._category_visible_set = visible
 
     def _is_category_enabled(self, category: str) -> bool:
         """Check if a category is visible.
@@ -325,11 +335,8 @@ class LogStore:
 
     def _apply_filters(self) -> None:
         """Recompute filtered_indices from category state + level state + enabled filters (OR combination)."""
-        # Use pre-computed category index instead of scanning all lines
-        category_enabled: set[int] = set()
-        for cat, indices in self._category_index.items():
-            if self._is_category_enabled(cat):
-                category_enabled |= indices
+        # Use pre-computed category visible set (rebuilt only on category state change)
+        category_enabled = self._category_visible_set
 
         # Would-be-visible: category + text filters, ignoring level toggles
         active_filters = [f for f, e in zip(self.filters, self.filter_enabled) if e]
