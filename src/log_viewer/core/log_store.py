@@ -363,6 +363,18 @@ class LogStore:
 
     def _apply_filters(self) -> None:
         """Recompute filtered_indices from category state + level state + enabled filters (OR combination)."""
+        # Fast path: nothing is filtered — all lines visible
+        has_text_filters = any(self.filter_enabled)
+        has_level_filters = bool(self.disabled_levels)
+        has_pins = bool(self.pinned_line_numbers)
+        all_cats_enabled = all(self._category_enabled_cache.get(c, True) for c in self.category_counts)
+
+        if not has_text_filters and not has_level_filters and not has_pins and all_cats_enabled:
+            self.filtered_indices = list(range(len(self.lines)))
+            self._count_visible_levels()
+            self.level_button_counts = dict(self.level_counts)
+            return
+
         # Use pre-computed category visible set (rebuilt only on category state change)
         category_enabled = self._category_visible_set
 
