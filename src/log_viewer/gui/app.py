@@ -171,6 +171,7 @@ class MainWindow(QMainWindow):
 
     def _on_file_loaded(self, lines: list[str], path: str) -> None:
         self.log_store.load_lines(lines, file_path=path)
+        del lines  # Free raw string list immediately
         # Update window title with filename
         filename = Path(path).name if not path.startswith(("http://", "https://")) else path
         self.setWindowTitle(f"Log Viewer \u2014 {filename}")

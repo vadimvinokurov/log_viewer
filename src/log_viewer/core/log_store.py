@@ -96,6 +96,9 @@ class LogStore:
                 for i, raw in enumerate(raw_lines)
             ]
 
+        # Free raw lines — parsed LogLine objects hold all needed data
+        del raw_lines
+
         self.current_file = file_path
         self._build_category_tree()
         self.disabled_levels = set()
