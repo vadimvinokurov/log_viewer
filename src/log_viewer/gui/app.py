@@ -30,7 +30,7 @@ from log_viewer.core.suggester import CommandSuggester
 from log_viewer.gui.bottom_bar import BottomBar
 from log_viewer.gui.log_table import LogTableModel, LogTableView
 from log_viewer.gui.side_panel import SidePanel
-from log_viewer.gui.styles import APP_BASE, EMPTY_LABEL, styles
+from log_viewer.gui.styles import APP_BASE, EMPTY_LABEL, AppProxyStyle, styles
 
 
 class _FileLoadWorker(QThread):
@@ -537,7 +537,7 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
+    app.setStyle(AppProxyStyle("Fusion"))
     app.setStyleSheet(styles.resolve(APP_BASE))
     file_path = sys.argv[1] if len(sys.argv) > 1 else None
     window = MainWindow(file_path=file_path)

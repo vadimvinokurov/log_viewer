@@ -7,7 +7,9 @@ QSS that gets resolved against the current theme.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QProxyStyle, QStyle, QWidget
 
 from log_viewer.core.themes import _t
 from log_viewer.core.typography import Typography
@@ -222,6 +224,88 @@ _ActionButton:hover {{ background: {recessed}; }}
 EMPTY_LABEL = "color: {{slate}}; font-size: 15px; letter-spacing: -0.01em;"
 
 COLOR_DOT = "border-radius: 6px; background-color: {color}; border: none;"
+
+
+# ── Cross-platform checkbox style ───────────────────────────────────────────
+
+class AppProxyStyle(QProxyStyle):
+    """Application proxy style wrapping Fusion.
+
+    Overrides only specific primitives to enforce cross-platform consistency.
+    Add future visual customisations here — Fusion handles everything else.
+    """
+
+    def drawPrimitive(self, element, option, painter, widget=None):
+        if element == QStyle.PrimitiveElement.PE_IndicatorCheckBox:
+            self._draw_checkbox(option, painter)
+            return
+        super().drawPrimitive(element, option, painter, widget)
+
+    @staticmethod
+    def _draw_checkbox(option, painter):
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = QRectF(option.rect)
+        size = min(rect.width(), rect.height(), 16.0)
+        x = rect.x() + (rect.width() - size) / 2
+        y = rect.y() + (rect.height() - size) / 2
+        box = QRectF(x, y, size, size)
+
+        state = option.state
+        checked = bool(state & QStyle.StateFlag.State_On)
+        partial = bool(state & QStyle.StateFlag.State_NoChange)
+        enabled = bool(state & QStyle.StateFlag.State_Enabled)
+        hover = bool(state & QStyle.StateFlag.State_MouseOver)
+        pressed = bool(state & QStyle.StateFlag.State_Sunken)
+
+        radius = 4.0
+
+        if checked or partial:
+            bg = QColor("#b0b0b5") if not enabled else (
+                QColor("#0077ED") if pressed else QColor("#0071e3")
+            )
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(bg)
+            painter.drawRoundedRect(box, radius, radius)
+
+            pen = QPen(QColor("#ffffff"))
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen.setWidthF(2.0)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+
+            if checked:
+                path = QPainterPath()
+                path.moveTo(x + size * 0.22, y + size * 0.50)
+                path.lineTo(x + size * 0.40, y + size * 0.68)
+                path.lineTo(x + size * 0.78, y + size * 0.30)
+                painter.drawPath(path)
+            else:
+                painter.drawLine(
+                    QPointF(x + size * 0.25, y + size * 0.50),
+                    QPointF(x + size * 0.75, y + size * 0.50),
+                )
+        else:
+            if not enabled:
+                bg, border = QColor("#f0f0f2"), QColor("#d0d0d4")
+            elif hover:
+                bg, border = QColor("#ffffff"), QColor("#86868b")
+            else:
+                bg, border = QColor("#ffffff"), QColor("#e8e8ed")
+
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(bg)
+            painter.drawRoundedRect(box, radius, radius)
+
+            pen = QPen(border)
+            pen.setWidthF(1.5)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(box, radius, radius)
+
+        painter.restore()
 
 
 # ── StyleEngine ──────────────────────────────────────────────────────────────
