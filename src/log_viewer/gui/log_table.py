@@ -96,12 +96,30 @@ class LogTableModel(QAbstractTableModel):
 
         return None
 
-    def update_lines(self, lines: list[LogLine]) -> None:
+    def update_lines(self, lines: list[LogLine], selection_model: object = None) -> None:
         if self._lines is lines or (len(self._lines) == len(lines) and all(a is b for a, b in zip(self._lines, lines))):
             return
+        # Save selected line numbers before reset
+        selected_line_numbers: set[int] = set()
+        if selection_model is not None:
+            from PySide6.QtCore import QItemSelectionModel
+            if isinstance(selection_model, QItemSelectionModel):
+                for idx in selection_model.selectedIndexes():
+                    if idx.row() < len(self._lines):
+                        selected_line_numbers.add(self._lines[idx.row()].line_number)
         self.beginResetModel()
         self._lines = lines
         self.endResetModel()
+        # Restore selection for lines that remain visible
+        if selected_line_numbers and selection_model is not None:
+            from PySide6.QtCore import QItemSelectionModel
+            if isinstance(selection_model, QItemSelectionModel):
+                for row, line in enumerate(lines):
+                    if line.line_number in selected_line_numbers:
+                        selection_model.select(
+                            self.index(row, 0),
+                            QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+                        )
 
     def set_highlights(self, highlights: list[Highlight]) -> None:
         self._highlights = highlights

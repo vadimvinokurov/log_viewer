@@ -175,3 +175,75 @@ def test_pin_selected_lines_emits_signal(table_view):
     table_view.pin_lines_requested.connect(received.append)
     table_view._pin_selected_lines()
     assert received == [[1, 3]]
+
+
+# --- Selection preservation across model updates ---
+
+
+def test_selection_preserved_after_update_lines(table_view):
+    """Selected rows that remain visible should stay selected after update_lines."""
+    model = table_view.model()
+    sel = table_view.selectionModel()
+
+    # Select rows 0 and 2 (line_number 1 and 3)
+    table_view.selectRow(0)
+    sel.select(
+        model.index(2, 0),
+        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+    )
+
+    # Update lines: remove row 1 (line_number 2), keep 1 and 3
+    new_lines = [
+        LogLine(1, "2026-01-01T12:30:01", "app/api", LogLevel.INFO, "GET /api/users 200", 0, 10),
+        LogLine(3, "2026-01-01T12:30:03", "app/db", LogLevel.DEBUG, "Connection pool: 5/10", 31, 30),
+    ]
+    model.update_lines(new_lines, selection_model=sel)
+
+    # Rows for line_number 1 and 3 should still be selected (now at indices 0 and 1)
+    selected_rows = sorted({idx.row() for idx in sel.selectedIndexes()})
+    assert selected_rows == [0, 1]
+
+
+def test_selection_preserved_single_row(table_view):
+    """A single selected row that remains visible stays selected."""
+    model = table_view.model()
+    sel = table_view.selectionModel()
+
+    # Select row 1 (line_number 2)
+    table_view.selectRow(1)
+
+    # Update with only line_number 2 present
+    new_lines = [
+        LogLine(2, "2026-01-01T12:30:02", "app/api", LogLevel.ERROR, "POST /api/login 401", 11, 20),
+    ]
+    model.update_lines(new_lines, selection_model=sel)
+
+    selected_rows = sorted({idx.row() for idx in sel.selectedIndexes()})
+    assert selected_rows == [0]  # line_number 2 is now at row 0
+
+
+def test_selection_cleared_for_removed_rows(table_view):
+    """Rows that are filtered out should no longer be selected."""
+    model = table_view.model()
+    sel = table_view.selectionModel()
+
+    # Select all rows
+    table_view.selectRow(0)
+    sel.select(
+        model.index(1, 0),
+        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+    )
+    sel.select(
+        model.index(2, 0),
+        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+    )
+
+    # Update with only line_number 1
+    new_lines = [
+        LogLine(1, "2026-01-01T12:30:01", "app/api", LogLevel.INFO, "GET /api/users 200", 0, 10),
+    ]
+    model.update_lines(new_lines, selection_model=sel)
+
+    # Only row 0 (line_number 1) should be selected
+    selected_rows = sorted({idx.row() for idx in sel.selectedIndexes()})
+    assert selected_rows == [0]
