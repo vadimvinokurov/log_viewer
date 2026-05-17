@@ -286,3 +286,24 @@ class TestFindSpans:
     def test_not_find_spans_returns_empty(self) -> None:
         node = parse_query('NOT "warning"')
         assert node.find_spans("warning issued", case_sensitive=False) == []
+
+
+class TestParseQueryCache:
+    """Test that parse_query results are cached via lru_cache."""
+
+    def test_parse_query_is_cached(self) -> None:
+        """parse_query should return the same object for identical inputs."""
+        from log_viewer.core.simple_query import parse_query
+        parse_query.cache_clear()
+        ast1 = parse_query('"hello" AND "world"')
+        ast2 = parse_query('"hello" AND "world"')
+        assert ast1 is ast2
+        assert parse_query.cache_info().hits == 1
+
+    def test_parse_query_different_inputs_not_cached(self) -> None:
+        """Different inputs should produce different AST objects."""
+        from log_viewer.core.simple_query import parse_query
+        parse_query.cache_clear()
+        ast1 = parse_query('"hello"')
+        ast2 = parse_query('"world"')
+        assert ast1 is not ast2

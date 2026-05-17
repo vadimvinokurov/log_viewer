@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import lru_cache
 
 
 class QuerySyntaxError(Exception):
@@ -198,6 +199,7 @@ class _Parser:
             self.pos += 1
 
 
+@lru_cache(maxsize=256)
 def parse_query(source: str) -> QueryNode:
     """Parse a simple query expression into an AST."""
     parser = _Parser(source)
