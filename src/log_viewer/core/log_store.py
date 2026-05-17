@@ -83,8 +83,17 @@ class LogStore:
             offsets.append((offset, len(line_bytes)))
             offset += len(line_bytes) + 1  # +1 for newline
 
-        from log_viewer.core.parser import parse_lines_batch
-        self.lines = parse_lines_batch(raw_lines, offsets, plain=(fmt == LogFormat.PLAIN))
+        from log_viewer.core.parser import parse_line, parse_plain_line
+        if fmt == LogFormat.PLAIN:
+            self.lines = [
+                parse_plain_line(raw, i + 1, offsets[i][0], offsets[i][1])
+                for i, raw in enumerate(raw_lines)
+            ]
+        else:
+            self.lines = [
+                parse_line(raw, i + 1, offsets[i][0], offsets[i][1])
+                for i, raw in enumerate(raw_lines)
+            ]
 
         self.current_file = file_path
         self._build_category_tree()
