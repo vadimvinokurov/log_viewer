@@ -206,7 +206,7 @@ class LogStore:
         if mode == SearchMode.PLAIN and not case_sensitive:
             pat_lower = pattern.lower()
             for idx in self.filtered_indices:
-                if pat_lower in self.lines[idx].message_lower:
+                if pat_lower in self.lines[idx].message.lower():
                     matches.append(idx)
         else:
             filt = Filter(pattern=pattern, mode=mode, case_sensitive=case_sensitive)
@@ -387,7 +387,7 @@ class LogStore:
             # Build lists for batch_match: only category-enabled lines
             cat_list = sorted(category_enabled)
             messages = [self.lines[i].message for i in cat_list]
-            lowered = [self.lines[i].message_lower for i in cat_list]
+            lowered = [self.lines[i].message.lower() for i in cat_list]
             matched_positions = batch_match(messages, active_filters, pre_lowered=lowered)
             would_be_visible = {cat_list[p] for p in matched_positions}
 

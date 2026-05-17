@@ -85,7 +85,7 @@ class InputMode(Enum):
     SEARCH_BACKWARD = "search_backward"
 
 
-@dataclass
+@dataclass(slots=True)
 class LogLine:
     line_number: int
     timestamp: str
@@ -94,11 +94,6 @@ class LogLine:
     message: str
     file_offset: int
     line_length: int
-    message_lower: str = ""
-
-    def __post_init__(self) -> None:
-        if not self.message_lower:
-            self.message_lower = self.message.lower()
 
     @property
     def time_only(self) -> str:

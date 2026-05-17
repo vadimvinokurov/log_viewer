@@ -47,10 +47,6 @@ class TestParseLineWithLevel:
         line = parse_line(raw, 1)
         assert line.message == "Failed to open file for reading, internal error"
 
-    def test_message_lower_populated(self) -> None:
-        raw = "01-01-2024T08:00:00.100 Cat LOG_ERROR Something Went Wrong"
-        line = parse_line(raw, 1)
-        assert line.message_lower == "something went wrong"
 
 
 class TestParseLineWithoutLevel:

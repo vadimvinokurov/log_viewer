@@ -119,43 +119,6 @@ class TestLogLine:
         )
         assert line.time_only == "08:00:00.200"
 
-    def test_message_lower_auto_computed(self) -> None:
-        line = LogLine(
-            line_number=1,
-            timestamp="",
-            category="test",
-            level=LogLevel.INFO,
-            message="Failed to Open File",
-            file_offset=0,
-            line_length=0,
-        )
-        assert line.message_lower == "failed to open file"
-
-    def test_message_lower_empty(self) -> None:
-        line = LogLine(
-            line_number=1,
-            timestamp="",
-            category="test",
-            level=LogLevel.INFO,
-            message="",
-            file_offset=0,
-            line_length=0,
-        )
-        assert line.message_lower == ""
-
-    def test_message_lower_backwards_compatible(self) -> None:
-        """LogLine constructed without message_lower should still work."""
-        line = LogLine(
-            line_number=1,
-            timestamp="",
-            category="test",
-            level=LogLevel.INFO,
-            message="Hello World",
-            file_offset=0,
-            line_length=0,
-        )
-        assert line.message_lower == "hello world"
-
 
 class TestSearchEnums:
     def test_search_modes(self) -> None:
