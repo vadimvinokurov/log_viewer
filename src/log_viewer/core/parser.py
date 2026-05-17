@@ -9,6 +9,7 @@ Otherwise → level defaults to INFO, positions 2+ become message.
 from __future__ import annotations
 
 import re
+import sys
 
 from log_viewer.core.models import LogFormat, LogLevel, LogLine
 
@@ -45,13 +46,13 @@ def parse_line(raw: str, line_number: int, file_offset: int = 0, line_length: in
             file_offset=file_offset, line_length=line_length,
         )
 
-    timestamp = parts[0]
+    timestamp = sys.intern(parts[0])
 
     if len(parts) == 2:
         # Timestamp + one more field → category + message (no level)
         return LogLine(
             line_number=line_number,
-            timestamp=timestamp,
+            timestamp=sys.intern(timestamp),
             category=UNCATEGORIZED,
             level=LogLevel.INFO,
             message=parts[1],
@@ -59,7 +60,7 @@ def parse_line(raw: str, line_number: int, file_offset: int = 0, line_length: in
         )
 
     # 3 or 4 parts: [timestamp, category, level_or_message, rest?]
-    category = parts[1]
+    category = sys.intern(parts[1])
     maybe_level = parts[2]
     level_match = LogLevel.from_log_prefix(maybe_level)
 
@@ -117,17 +118,17 @@ def parse_plain_line(raw: str, line_number: int, file_offset: int = 0, line_leng
     if len(parts) < 5:
         return LogLine(
             line_number=line_number,
-            timestamp=parts[0] if parts else "",
+            timestamp=sys.intern(parts[0]) if parts else "",
             category=UNCATEGORIZED,
             level=LogLevel.INFO,
             message=" ".join(parts[1:]) if len(parts) > 1 else "",
             file_offset=file_offset, line_length=line_length,
         )
 
-    timestamp = parts[0]
+    timestamp = sys.intern(parts[0])
     # parts[1] = elapsed, dropped
     level = LogLevel.from_short_code(parts[2]) or LogLevel.INFO
-    category = parts[3]
+    category = sys.intern(parts[3])
     message = parts[4]
 
     return LogLine(

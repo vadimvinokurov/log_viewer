@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mmap
 import re
+import sys
 from collections import defaultdict
 from typing import IO, Optional
 
@@ -416,8 +417,8 @@ class LogStore:
 
         for i, line in enumerate(self.lines):
             path = line.category
-            self.category_counts[path] = self.category_counts.get(path, 0) + 1
-            self._category_index[path].add(i)
+            self.category_counts[sys.intern(path)] = self.category_counts.get(path, 0) + 1
+            self._category_index[sys.intern(path)].add(i)
 
             parts = path.split("/")
             node = self.category_tree
