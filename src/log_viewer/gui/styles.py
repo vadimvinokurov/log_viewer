@@ -57,6 +57,7 @@ QHeaderView::section {
     color: {{ink}};
     padding: 0px 8px;
     border: none;
+    border-right: 1px solid {{silver_mist}};
     border-bottom: 1px solid {{silver_mist}};
     font-weight: bold;
     font-size: 11px;
