@@ -1,0 +1,22 @@
+Reading existing file: d:/log.txt
+  Loaded 6,375,495 lines
+Loading LogStore for benchmark base...
+  6,375,495 parsed lines, 6,375,495 visible
+
+Running benchmarks (3 runs each, reporting median)...
+
++------------------------------------+------------+
+| Operation                          | Median (s) |
++------------------------------------+------------+
+| parse_line (all lines)             |    26.2294 |
+| LogStore.load_lines                |    40.0595 |
+| _apply_filters (0 filters)         |     4.7861 |
+| _apply_filters (1 filter)          |     6.3429 |
+| _apply_filters (3 filters)         |     6.3654 |
+| _apply_filters (5 filters)         |     6.4558 |
+| category toggle (disable+enable)   |     9.4983 |
+| search plain                       |     2.2248 |
+| search regex                       |     8.2189 |
+| search simple query                |    34.4851 |
+| batch_match (100K lines, 1 filter) |     0.0839 |
++------------------------------------+------------+
