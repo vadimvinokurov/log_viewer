@@ -52,7 +52,7 @@ def parse_line(raw: str, line_number: int, file_offset: int = 0, line_length: in
         # Timestamp + one more field → category + message (no level)
         return LogLine(
             line_number=line_number,
-            timestamp=sys.intern(timestamp),
+            timestamp=timestamp,
             category=UNCATEGORIZED,
             level=LogLevel.INFO,
             message=parts[1],
