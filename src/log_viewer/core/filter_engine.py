@@ -137,10 +137,14 @@ def batch_match(
     # Batch-match all plain CI filters with one compiled regex
     if plain_ci:
         combined = re.compile("|".join(plain_ci), re.IGNORECASE)
-        lowered = pre_lowered if pre_lowered is not None else [t.lower() for t in texts]
-        for i, text in enumerate(texts):
-            if combined.search(lowered[i] if pre_lowered is not None else text):
-                matching.add(i)
+        if pre_lowered is not None:
+            for i, low in enumerate(pre_lowered):
+                if combined.search(low):
+                    matching.add(i)
+        else:
+            for i, text in enumerate(texts):
+                if combined.search(text):
+                    matching.add(i)
 
     # Handle remaining filters individually
     for f in other_filters:
