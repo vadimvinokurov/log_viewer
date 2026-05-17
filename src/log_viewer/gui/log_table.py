@@ -12,6 +12,7 @@ from log_viewer.core.models import Highlight, LogLine
 from log_viewer.core.themes import _t
 from log_viewer.gui.highlight_delegate import HighlightDelegate
 from log_viewer.gui.scroll_utils import install_hover_scrollbar
+from log_viewer.gui.styles import LOG_TABLE, LOG_TABLE_HEADER, styles
 from log_viewer.core.typography import Typography
 
 if TYPE_CHECKING:
@@ -23,6 +24,9 @@ _LEVEL_COLORS: dict[str, str] = {
     "CRITICAL": _t("level_colors")["CRITICAL"],
     "ERROR":    _t("level_colors")["ERROR"],
     "WARNING":  _t("level_colors")["WARNING"],
+    "INFO":     _t("level_colors")["INFO"],
+    "DEBUG":    _t("level_colors")["DEBUG"],
+    "TRACE":    _t("level_colors")["TRACE"],
 }
 
 
@@ -130,31 +134,10 @@ class LogTableView(QTableView):
         self.verticalHeader().setDefaultSectionSize(Typography.TABLE_ROW_HEIGHT)
         self.verticalHeader().hide()
 
-        self.horizontalHeader().setStyleSheet(
-            f"""
-            QHeaderView::section {{
-                background-color: {_t('log_table')};
-                color: {_t('graphite')};
-                padding: 0px 8px;
-                border: none;
-                border-bottom: 1px solid {_t('silver_mist')};
-                font-weight: 600;
-                font-size: 11px;
-                letter-spacing: 0.02em;
-                text-transform: uppercase;
-            }}
-            """
-        )
+        styles.apply(self.horizontalHeader(), LOG_TABLE_HEADER)
         self.horizontalHeader().setFixedHeight(Typography.TABLE_ROW_HEIGHT)
 
-        self.setStyleSheet(
-            f"""
-            QTableView {{
-                background-color: {_t('log_table')};
-                alternate-background-color: {_t('card')};
-            }}
-            """
-        )
+        styles.apply(self, LOG_TABLE)
         self._default_widths_set = False
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)

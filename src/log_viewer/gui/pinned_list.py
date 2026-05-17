@@ -14,27 +14,8 @@ from PySide6.QtWidgets import (
 )
 
 from log_viewer.core.models import LogLine
-from log_viewer.core.themes import _t
 from log_viewer.gui.scroll_utils import install_hover_scrollbar
-
-_ITEM_STYLE = f"""
-QLabel {{
-    color: {_t('ink')};
-    font-size: 12px;
-}}
-QPushButton {{
-    background-color: transparent;
-    border: none;
-    color: {_t('slate')};
-    font-size: 11px;
-    padding: 0px;
-    border-radius: 4px;
-}}
-QPushButton:hover {{
-    color: {_t('destructive')};
-    background-color: {_t('recessed')};
-}}
-"""
+from log_viewer.gui.styles import LIST_SCROLL_AREA, PINNED_LIST_ITEM, styles
 
 
 class PinnedItemWidget(QWidget):
@@ -68,7 +49,7 @@ class PinnedItemWidget(QWidget):
         delete_btn.clicked.connect(lambda: on_delete(index))
         layout.addWidget(delete_btn)
 
-        self.setStyleSheet(_ITEM_STYLE)
+        styles.apply(self, PINNED_LIST_ITEM)
 
 
 class PinnedListWidget(QWidget):
@@ -87,14 +68,7 @@ class PinnedListWidget(QWidget):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setStyleSheet(
-            f"""
-            QScrollArea {{
-                border: none;
-                background-color: {_t('panel')};
-            }}
-            """
-        )
+        styles.apply(self._scroll, LIST_SCROLL_AREA)
 
         self._container = QWidget()
         self._container_layout = QVBoxLayout(self._container)

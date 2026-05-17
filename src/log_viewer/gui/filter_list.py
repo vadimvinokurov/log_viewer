@@ -15,36 +15,14 @@ from PySide6.QtWidgets import (
 )
 
 from log_viewer.core.models import Filter, SearchMode
-from log_viewer.core.themes import _t
 from log_viewer.gui.scroll_utils import install_hover_scrollbar
+from log_viewer.gui.styles import LIST_ITEM, LIST_SCROLL_AREA, styles
 
 _MODE_PREFIX: dict[SearchMode, str] = {
     SearchMode.PLAIN: ":f",
     SearchMode.REGEX: ":fr",
     SearchMode.SIMPLE: ":fs",
 }
-
-_ITEM_STYLE = f"""
-QLabel {{
-    color: {_t('ink')};
-    font-size: 12px;
-}}
-QLabel[disabled="true"] {{
-    color: {_t('slate')};
-}}
-QPushButton {{
-    background-color: transparent;
-    border: none;
-    color: {_t('slate')};
-    font-size: 11px;
-    padding: 0px;
-    border-radius: 4px;
-}}
-QPushButton:hover {{
-    color: {_t('destructive')};
-    background-color: {_t('recessed')};
-}}
-"""
 
 
 class FilterItemWidget(QWidget):
@@ -81,7 +59,7 @@ class FilterItemWidget(QWidget):
         delete_btn.clicked.connect(lambda: on_delete(index))
         layout.addWidget(delete_btn)
 
-        self.setStyleSheet(_ITEM_STYLE)
+        styles.apply(self, LIST_ITEM)
 
 
 class FilterListWidget(QWidget):
@@ -102,14 +80,7 @@ class FilterListWidget(QWidget):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setStyleSheet(
-            f"""
-            QScrollArea {{
-                border: none;
-                background-color: {_t('panel')};
-            }}
-            """
-        )
+        styles.apply(self._scroll, LIST_SCROLL_AREA)
 
         self._container = QWidget()
         self._container_layout = QVBoxLayout(self._container)

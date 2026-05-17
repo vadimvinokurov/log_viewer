@@ -30,6 +30,7 @@ from log_viewer.core.suggester import CommandSuggester
 from log_viewer.gui.bottom_bar import BottomBar
 from log_viewer.gui.log_table import LogTableModel, LogTableView
 from log_viewer.gui.side_panel import SidePanel
+from log_viewer.gui.styles import APP_BASE, EMPTY_LABEL, styles
 
 
 class _FileLoadWorker(QThread):
@@ -206,7 +207,7 @@ class MainWindow(QMainWindow):
         palette.setColor(QPalette.ColorRole.Midlight, silver)
         palette.setColor(QPalette.ColorRole.Dark, silver)
         palette.setColor(QPalette.ColorRole.Highlight, azure)
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(_t("selection_fg")))
         QApplication.setPalette(palette)
 
     def _on_command_submitted(self, raw: str) -> None:
@@ -512,9 +513,7 @@ class MainWindow(QMainWindow):
             return
         self._empty_label = QLabel("Drop a log file here or click Open")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_label.setStyleSheet(
-            "color: #86868b; font-size: 15px; letter-spacing: -0.01em;"
-        )
+        self._empty_label.setStyleSheet(styles.resolve(EMPTY_LABEL))
         self._splitter.replaceWidget(0, self._empty_label)
 
     def _hide_empty_state(self) -> None:
@@ -538,6 +537,8 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    app.setStyleSheet(styles.resolve(APP_BASE))
     file_path = sys.argv[1] if len(sys.argv) > 1 else None
     window = MainWindow(file_path=file_path)
     window.show()

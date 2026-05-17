@@ -9,14 +9,15 @@ from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 from log_viewer.core.models import LogLevel
 from log_viewer.core.themes import _t
 from log_viewer.gui.command_input import CommandInput
+from log_viewer.gui.styles import BOTTOM_BAR, styles
 
 _LEVEL_CONFIG: list[tuple[LogLevel, str, str]] = [
-    (LogLevel.CRITICAL, "\u26d4", "#CC0000"),  # ⛔
-    (LogLevel.ERROR, "\U0001f6d1", "#CC0000"),  # 🛑
-    (LogLevel.WARNING, "\u26a0\ufe0f", "#8A6D00"),  # ⚠️
-    (LogLevel.INFO, "\u2139\ufe0f", "#86868b"),  # ℹ️
-    (LogLevel.DEBUG, "\U0001f7ea", "#7B61FF"),  # 🟪
-    (LogLevel.TRACE, "\U0001f7e9", "#30A14E"),  # 🟩
+    (LogLevel.CRITICAL, "\u26d4", _t("level_colors")["CRITICAL"]),  # ⛔
+    (LogLevel.ERROR, "\U0001f6d1", _t("level_colors")["ERROR"]),      # 🛑
+    (LogLevel.WARNING, "\u26a0\ufe0f", _t("level_colors")["WARNING"]),  # ⚠️
+    (LogLevel.INFO, "\u2139\ufe0f", _t("level_colors")["INFO"]),      # ℹ️
+    (LogLevel.DEBUG, "\U0001f7ea", _t("level_colors")["DEBUG"]),      # 🟪
+    (LogLevel.TRACE, "\U0001f7e9", _t("level_colors")["TRACE"]),      # 🟩
 ]
 
 
@@ -41,18 +42,10 @@ class LevelButton(QPushButton):
         self._update_text()
 
     def _active_style(self) -> str:
-        return (
-            f"LevelButton {{ color: {self._color}; background: transparent; "
-            "border: none; border-radius: 6px; padding: 2px 6px; font-size: 12px; }"
-            f"LevelButton:hover {{ background: {_t('recessed')}; }}"
-        )
+        return styles.level_button_active(self._color)
 
     def _inactive_style(self) -> str:
-        return (
-            f"LevelButton {{ color: {_t('slate')}; background: transparent; "
-            "border: none; border-radius: 6px; padding: 2px 6px; font-size: 12px; }"
-            f"LevelButton:hover {{ background: {_t('recessed')}; }}"
-        )
+        return styles.level_button_inactive()
 
     def set_count(self, count: int) -> None:
         self._count = count
@@ -110,11 +103,7 @@ class _ActionButton(QPushButton):
         self.setFlat(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(24)
-        self.setStyleSheet(
-            f"_ActionButton {{ color: {_t('ink')}; background: transparent; "
-            f"border: none; border-radius: 6px; padding: 2px 8px; font-size: 12px; }}"
-            f"_ActionButton:hover {{ background: {_t('recessed')}; }}"
-        )
+        self.setStyleSheet(styles.action_button())
 
 
 class BottomBar(QWidget):
@@ -148,27 +137,7 @@ class BottomBar(QWidget):
 
         self.setFixedHeight(32)
 
-        self.setStyleSheet(
-            f"""
-            BottomBar {{
-                background-color: {_t('canvas')};
-                border-top: 1px solid {_t('silver_mist')};
-            }}
-            QLineEdit {{
-                color: {_t('ink')};
-                background-color: {_t('card')};
-                border: 1px solid {_t('silver_mist')};
-                border-radius: 8px;
-                padding: 3px 10px;
-                selection-background-color: {_t('selection_bg')};
-                selection-color: {_t('selection_fg')};
-                font-size: 12px;
-            }}
-            QLineEdit:focus {{
-                border-color: {_t('border_focus')};
-            }}
-            """
-        )
+        styles.apply(self, BOTTOM_BAR)
 
     def set_status(self, text: str) -> None:
         """Kept for backward compatibility. No-op — level bar replaces status label."""

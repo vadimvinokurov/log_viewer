@@ -46,11 +46,14 @@ LIGHT_THEME: dict[str, Any] = {
     # Pinned row
     "pinned_bg":    "#eef4ff",
 
-    # Level colors
+    # Level colors (used by bottom bar level buttons and log table foreground)
     "level_colors": {
         "CRITICAL": "#CC0000",
         "ERROR":    "#CC0000",
         "WARNING":  "#8A6D00",
+        "INFO":     "#86868b",
+        "DEBUG":    "#7B61FF",
+        "TRACE":    "#30A14E",
     },
 }
 

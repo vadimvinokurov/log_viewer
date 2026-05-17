@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import sys
-
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QStyleFactory, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from log_viewer.core.models import CategoryNode
-from log_viewer.core.themes import _t
 from log_viewer.gui.scroll_utils import install_hover_scrollbar
+from log_viewer.gui.styles import CATEGORY_TOGGLE_BTN, CATEGORY_TREE, CATEGORY_SEARCH, styles
 
 
 class CategoryTreeWidget(QWidget):
@@ -31,20 +29,7 @@ class CategoryTreeWidget(QWidget):
         self._toggle_btn.setFixedSize(26, 26)
         self._toggle_btn.setToolTip("Collapse/expand all categories")
         self._toggle_btn.setText("\u25B2")
-        self._toggle_btn.setStyleSheet(
-            f"""
-            QPushButton {{
-                background-color: {_t('tab_bg')};
-                border: none;
-                border-radius: 8px;
-                color: {_t('ink')};
-                font-size: 12px;
-            }}
-            QPushButton:hover {{
-                background-color: {_t('silver_mist')};
-            }}
-            """
-        )
+        styles.apply(self._toggle_btn, CATEGORY_TOGGLE_BTN)
         self._toggle_btn.clicked.connect(self._toggle_expand)
         self._expanded = False
         search_row.addWidget(self._toggle_btn)
@@ -52,22 +37,7 @@ class CategoryTreeWidget(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search categories...")
         self._search.textChanged.connect(self._on_search)
-        self._search.setStyleSheet(
-            f"""
-            QLineEdit {{
-                background-color: {_t('tab_bg')};
-                border: none;
-                border-radius: 8px;
-                padding: 5px 10px;
-                color: {_t('ink')};
-                font-size: 12px;
-            }}
-            QLineEdit:focus {{
-                background-color: {_t('card')};
-                border: 1px solid {_t('border_focus')};
-            }}
-            """
-        )
+        styles.apply(self._search, CATEGORY_SEARCH)
         search_row.addWidget(self._search)
 
         layout.addLayout(search_row)
@@ -75,24 +45,7 @@ class CategoryTreeWidget(QWidget):
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
         self._tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        if sys.platform == "win32":
-            self._tree.setStyle(QStyleFactory.create("Fusion"))
-        self._tree.setStyleSheet(
-            f"""
-            QTreeWidget {{
-                background-color: {_t('panel')};
-                border: none;
-                outline: none;
-            }}
-            QTreeWidget::item {{
-                outline: none;
-            }}
-            QTreeWidget::item:selected {{
-                background-color: transparent;
-                color: {_t('ink')};
-            }}
-            """
-        )
+        styles.apply(self._tree, CATEGORY_TREE)
         self._tree.itemChanged.connect(self._on_item_changed)
         install_hover_scrollbar(self._tree)
         layout.addWidget(self._tree)

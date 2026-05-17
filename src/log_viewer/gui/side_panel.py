@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QTabWidget, QWidget
 
-from log_viewer.core.themes import _t
 from log_viewer.gui.category_tree import CategoryTreeWidget
 from log_viewer.gui.filter_list import FilterListWidget
 from log_viewer.gui.highlight_list import HighlightListWidget
 from log_viewer.gui.pinned_list import PinnedListWidget
+from log_viewer.gui.styles import SIDE_PANEL, styles
 
 
 class SidePanel(QTabWidget):
@@ -27,30 +27,4 @@ class SidePanel(QTabWidget):
         self.addTab(self.highlight_list, "Highlights")
         self.addTab(self.pinned_list, "Pinned")
 
-        self.setStyleSheet(
-            f"""
-            QTabWidget::pane {{
-                border: none;
-                background-color: {_t('panel')};
-            }}
-            QTabBar::tab {{
-                background-color: {_t('tab_bg')};
-                color: {_t('graphite')};
-                padding: 6px 14px;
-                border: none;
-                border-radius: 8px;
-                margin-right: 2px;
-                font-weight: 500;
-                font-size: 11px;
-            }}
-            QTabBar::tab:selected {{
-                background-color: {_t('card')};
-                color: {_t('ink')};
-                font-weight: 600;
-            }}
-            QTabBar::tab:hover:!selected {{
-                background-color: {_t('silver_mist')};
-                color: {_t('ink')};
-            }}
-            """
-        )
+        styles.apply(self, SIDE_PANEL)

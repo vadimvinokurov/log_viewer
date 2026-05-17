@@ -177,6 +177,7 @@ src/log_viewer/
     themes.py        # Dark/Light theme color definitions
   gui/               # Qt widgets
     app.py           # MainWindow — coordinator, menus, file loading, command dispatch
+    styles.py        # All QSS stylesheets and StyleEngine (single source of truth for widget styling)
     log_table.py     # LogTableView + LogTableModel — main table, vim-style navigation (j/k/g/G/Ctrl-U/Ctrl-D)
     side_panel.py    # QTabWidget: Categories | Filters | Highlights
     bottom_bar.py    # Status label + command input bar
@@ -214,6 +215,7 @@ Typed in the bottom bar with `:` prefix. Grammar: `name[/flags/]text`
 - LogStore is the single source of truth for all log data
 - Filters combine with OR logic; categories filter independently
 - Simple query language supports: `"error" AND "timeout"`, `NOT "info"`, `("a" OR "b") AND "c"`
+- All QSS stylesheets live in `gui/styles.py` — no inline styles in widgets. Use `styles.apply(widget, TEMPLATE)` or `styles.resolve(TEMPLATE)`. Theme tokens come from `core/themes.py`.
 
 ### Conventions
 - `from __future__ import annotations` at top of every file
