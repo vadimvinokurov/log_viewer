@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+import numpy as np
+
 
 class LogLevel(Enum):
     CRITICAL = "LOG_CRITICAL"
@@ -135,3 +137,100 @@ class CategoryNode:
     enabled: bool = True
     line_count: int = 0
     children: dict[str, "CategoryNode"] = field(default_factory=dict)
+
+
+# --- SoA mapping tables ---
+
+_LEVEL_LIST: list[LogLevel] = [
+    LogLevel.CRITICAL,  # 0
+    LogLevel.ERROR,     # 1
+    LogLevel.WARNING,   # 2
+    LogLevel.INFO,      # 3
+    LogLevel.DEBUG,     # 4
+    LogLevel.TRACE,     # 5
+]
+
+_LEVEL_NAMES: dict[str, int] = {
+    "LOG_CRITICAL": 0,
+    "crt": 0,
+    "LOG_ERROR": 1,
+    "err": 1,
+    "LOG_WARNING": 2,
+    "wrn": 2,
+    "LOG_INFO": 3,
+    "msg": 3,
+    "LOG_DEBUG": 4,
+    "dbg": 4,
+    "LOG_TRACE": 5,
+    "trc": 5,
+}
+
+# Numpy structured dtype for file offsets (file_offset and line_length stored contiguously)
+OFFSET_DTYPE = np.dtype([("file_offset", np.uint64), ("line_length", np.uint32)])
+
+
+def format_timestamp(ms: int) -> str:
+    """Convert milliseconds-from-midnight to 'HH:MM:SS.mmm' string."""
+    h = ms // 3_600_000 % 24
+    m = ms // 60_000 % 60
+    s = ms // 1_000 % 60
+    mmm = ms % 1_000
+    return f"{h:02d}:{m:02d}:{s:02d}.{mmm:03d}"
+
+
+class RowRef:
+    """Lightweight read-only proxy for a single log row.
+
+    Created on-the-fly for visible rows (~50). Not stored in bulk.
+    Provides the same attribute interface as LogLine for backward-compatible
+    consumer code (table model, copy, pin/unpin).
+    """
+
+    __slots__ = ("_idx", "_store")
+
+    def __init__(self, idx: int, store: object) -> None:
+        self._idx = idx
+        self._store = store
+
+    @property
+    def line_number(self) -> int:
+        return self._idx + 1
+
+    @property
+    def timestamp(self) -> str:
+        from log_viewer.core.models import format_timestamp
+        return format_timestamp(self._store.timestamps[self._idx])
+
+    @property
+    def time_only(self) -> str:
+        return self.timestamp
+
+    @property
+    def category(self) -> str:
+        return self._store._category_names[self._store.category_ids[self._idx]]
+
+    @property
+    def level(self) -> "LogLevel":
+        from log_viewer.core.models import _LEVEL_LIST
+        return _LEVEL_LIST[self._store.levels[self._idx]]
+
+    @property
+    def message(self) -> str:
+        return self._store.messages[self._idx]
+
+    @property
+    def file_offset(self) -> int:
+        return int(self._store.offsets[self._idx]["file_offset"])
+
+    @property
+    def line_length(self) -> int:
+        return int(self._store.offsets[self._idx]["line_length"])
+
+    def __repr__(self) -> str:
+        return (
+            f"RowRef(line={self.line_number}, "
+            f"time={self.time_only}, "
+            f"cat={self.category}, "
+            f"lvl={self.level.name}, "
+            f"msg={self.message[:40]!r}...)"
+        )

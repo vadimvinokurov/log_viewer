@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import pytest
+
+import numpy as np
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import QStyleOptionViewItem
 
 from log_viewer.core.log_store import LogStore
-from log_viewer.core.models import Highlight, LogLine, LogLevel, SearchMode
+from log_viewer.core.models import Highlight, LogLine, LogLevel, OFFSET_DTYPE, SearchMode, _LEVEL_LIST
 from log_viewer.core.typography import Typography
 from log_viewer.gui.highlight_delegate import HighlightDelegate
 from log_viewer.gui.log_table import LogTableModel
@@ -27,9 +29,39 @@ def _make_line(msg: str) -> LogLine:
 
 
 def _make_model(lines: list[LogLine]) -> LogTableModel:
+    from log_viewer.core.parser import _parse_time_to_ms
+
     store = LogStore()
-    store.lines = lines
-    store.filtered_indices = list(range(len(lines)))
+    n = len(lines)
+    store.n = n
+    if n > 0:
+        store.timestamps = np.array(
+            [_parse_time_to_ms(l.timestamp) for l in lines], dtype=np.uint64
+        )
+        cat_name_to_id: dict[str, int] = {"uncategorized": 0}
+        cat_names: list[str] = ["uncategorized"]
+        cat_ids: list[int] = []
+        for l in lines:
+            cat = l.category
+            if cat not in cat_name_to_id:
+                cat_name_to_id[cat] = len(cat_names)
+                cat_names.append(cat)
+            cat_ids.append(cat_name_to_id[cat])
+        store.category_ids = np.array(cat_ids, dtype=np.uint16)
+        store._category_names = cat_names
+        store._category_name_to_id = cat_name_to_id
+
+        level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
+        store.levels = np.array(
+            [level_map.get(l.level, 3) for l in lines], dtype=np.uint8
+        )
+        store.messages = [l.message for l in lines]
+        store.offsets = np.array(
+            [(l.file_offset, l.line_length) for l in lines], dtype=OFFSET_DTYPE
+        )
+        store._build_category_tree()
+        store._count_levels()
+    store._apply_filters()
     return LogTableModel(store=store)
 
 

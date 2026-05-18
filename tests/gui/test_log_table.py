@@ -2,18 +2,62 @@
 
 import pytest
 
+import numpy as np
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtWidgets import QApplication
 
 from log_viewer.core.log_store import LogStore
-from log_viewer.core.models import LogLine, LogLevel
+from log_viewer.core.models import LogLine, LogLevel, OFFSET_DTYPE, _LEVEL_LIST, RowRef
 from log_viewer.gui.log_table import LogTableModel, LogTableView
 
 
+def _populate_store(store: LogStore, lines: list[LogLine]) -> None:
+    """Populate SoA arrays on an existing LogStore from LogLine objects."""
+    from log_viewer.core.parser import _parse_time_to_ms
+
+    n = len(lines)
+    store.n = n
+    if n == 0:
+        store._apply_filters()
+        return
+
+    store.timestamps = np.array(
+        [_parse_time_to_ms(l.timestamp) for l in lines], dtype=np.uint64
+    )
+
+    cat_name_to_id: dict[str, int] = {"uncategorized": 0}
+    cat_names: list[str] = ["uncategorized"]
+    cat_ids: list[int] = []
+    for l in lines:
+        cat = l.category
+        if cat not in cat_name_to_id:
+            cat_name_to_id[cat] = len(cat_names)
+            cat_names.append(cat)
+        cat_ids.append(cat_name_to_id[cat])
+    store.category_ids = np.array(cat_ids, dtype=np.uint16)
+    store._category_names = cat_names
+    store._category_name_to_id = cat_name_to_id
+
+    level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
+    store.levels = np.array(
+        [level_map.get(l.level, 3) for l in lines], dtype=np.uint8
+    )
+
+    store.messages = [l.message for l in lines]
+
+    store.offsets = np.array(
+        [(l.file_offset, l.line_length) for l in lines], dtype=OFFSET_DTYPE
+    )
+
+    store._build_category_tree()
+    store._count_levels()
+    store._apply_filters()
+
+
 def _make_store_with_lines(lines: list[LogLine]) -> LogStore:
-    """Create a LogStore pre-loaded with the given lines."""
+    """Create a LogStore pre-loaded with the given lines (converted to SoA)."""
     store = LogStore()
-    store.lines = lines
+    _populate_store(store, lines)
     return store
 
 
@@ -30,7 +74,7 @@ def sample_lines():
 def model(sample_lines):
     store = _make_store_with_lines(sample_lines)
     m = LogTableModel(store=store)
-    m.update_indices(list(range(len(sample_lines))))
+    m.update_indices(np.arange(len(sample_lines), dtype=np.uint32))
     return m
 
 
@@ -54,7 +98,7 @@ def test_model_data_line_number(model):
 
 
 def test_model_data_time(model):
-    assert model.data(model.index(0, 1)) == "12:30:01"
+    assert model.data(model.index(0, 1)) == "12:30:01.000"
 
 
 def test_model_data_category(model):
@@ -71,10 +115,13 @@ def test_model_data_error_row_has_foreground(model):
 
 
 def test_model_update_lines(model):
-    new = [LogLine(10, "2026-01-01T13:00:00", "sys", LogLevel.INFO, "CPU: 45%", 40, 15)]
+    """update_lines with LogLine objects repopulates the store."""
+    new = [LogLine(1, "2026-01-01T13:00:00", "sys", LogLevel.INFO, "CPU: 45%", 40, 15)]
     model.update_lines(new)
     assert model.rowCount() == 1
-    assert model.data(model.index(0, 0)) == "10"
+    # Line number is idx+1 = 0+1 = 1 in SoA model
+    assert model.data(model.index(0, 0)) == "1"
+    assert model.data(model.index(0, 3)) == "CPU: 45%"
 
 
 def test_pinned_row_has_background(model):
@@ -90,7 +137,7 @@ def test_non_pinned_row_has_no_background(model):
 
 
 def test_update_lines_same_skips_reset(model):
-    """update_lines with identical content should not trigger a model reset."""
+    """update_indices with identical indices should not trigger a model reset."""
     counter = [0]
     original_reset = model.beginResetModel
 
@@ -100,23 +147,22 @@ def test_update_lines_same_skips_reset(model):
 
     model.beginResetModel = counting_reset
 
-    # Pass same content (different list, same LogLine objects) — should skip
-    same_lines = list(model.lines)
-    model.update_lines(same_lines)
+    # Pass same indices — should skip
+    same_indices = model._store.filtered_indices.copy()
+    model.update_indices(same_indices)
     assert counter[0] == 0
 
-    # Pass same object again — should also skip
-    model.update_lines(same_lines)
+    # Pass same indices again — should also skip
+    model.update_indices(same_indices)
     assert counter[0] == 0
 
-    # Different content — should reset
-    new = [LogLine(10, "2026-01-01T13:00:00", "sys", LogLevel.INFO, "CPU: 45%", 40, 15)]
-    model.update_lines(new)
+    # Different indices — should reset
+    model.update_indices(np.array([0], dtype=np.uint32))
     assert counter[0] == 1
 
 
 def test_update_lines_different_triggers_reset(model):
-    """update_lines with different lines should trigger a model reset."""
+    """update_indices with different indices should trigger a model reset."""
     counter = [0]
     original_reset = model.beginResetModel
 
@@ -126,8 +172,7 @@ def test_update_lines_different_triggers_reset(model):
 
     model.beginResetModel = counting_reset
 
-    new = [LogLine(10, "2026-01-01T13:00:00", "sys", LogLevel.INFO, "CPU: 45%", 40, 15)]
-    model.update_lines(new)
+    model.update_indices(np.array([0], dtype=np.uint32))
     assert counter[0] == 1
 
 
@@ -139,7 +184,7 @@ def table_view(qtbot, sample_lines):
     store = _make_store_with_lines(sample_lines)
     view = LogTableView()
     m = LogTableModel(store=store)
-    m.update_indices(list(range(len(sample_lines))))
+    m.update_indices(np.arange(len(sample_lines), dtype=np.uint32))
     view.setModel(m)
     qtbot.addWidget(view)
     return view
@@ -152,7 +197,7 @@ def test_extended_selection_mode(table_view):
 
 
 def test_selected_lines_returns_all_selected(table_view):
-    """_selected_lines returns LogLine objects for all selected rows."""
+    """_selected_lines returns RowRef objects for all selected rows."""
     table_view.selectRow(0)
     table_view.selectionModel().select(
         table_view.model().index(2, 0),
@@ -194,8 +239,8 @@ def test_pin_selected_lines_emits_signal(table_view):
 # --- Selection preservation across model updates ---
 
 
-def test_selection_preserved_after_update_lines(table_view):
-    """Selected rows that remain visible should stay selected after update_lines."""
+def test_selection_preserved_after_update_indices(table_view):
+    """Selected rows that remain visible should stay selected after update_indices."""
     model = table_view.model()
     sel = table_view.selectionModel()
 
@@ -206,14 +251,13 @@ def test_selection_preserved_after_update_lines(table_view):
         QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
     )
 
-    # Update lines: remove row 1 (line_number 2), keep 1 and 3
-    new_lines = [
-        LogLine(1, "2026-01-01T12:30:01", "app/api", LogLevel.INFO, "GET /api/users 200", 0, 10),
-        LogLine(3, "2026-01-01T12:30:03", "app/db", LogLevel.DEBUG, "Connection pool: 5/10", 31, 30),
-    ]
-    model.update_lines(new_lines, selection_model=sel)
+    # Remove row 1 (line_number 2): show only indices 0 and 2
+    model.update_indices(
+        np.array([0, 2], dtype=np.uint32),
+        selection_model=sel,
+    )
 
-    # Rows for line_number 1 and 3 should still be selected (now at indices 0 and 1)
+    # Rows for line_number 1 and 3 should still be selected (now at rows 0 and 1)
     selected_rows = sorted({idx.row() for idx in sel.selectedIndexes()})
     assert selected_rows == [0, 1]
 
@@ -226,11 +270,11 @@ def test_selection_preserved_single_row(table_view):
     # Select row 1 (line_number 2)
     table_view.selectRow(1)
 
-    # Update with only line_number 2 present
-    new_lines = [
-        LogLine(2, "2026-01-01T12:30:02", "app/api", LogLevel.ERROR, "POST /api/login 401", 11, 20),
-    ]
-    model.update_lines(new_lines, selection_model=sel)
+    # Show only index 1 (line_number 2)
+    model.update_indices(
+        np.array([1], dtype=np.uint32),
+        selection_model=sel,
+    )
 
     selected_rows = sorted({idx.row() for idx in sel.selectedIndexes()})
     assert selected_rows == [0]  # line_number 2 is now at row 0
@@ -252,11 +296,11 @@ def test_selection_cleared_for_removed_rows(table_view):
         QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
     )
 
-    # Update with only line_number 1
-    new_lines = [
-        LogLine(1, "2026-01-01T12:30:01", "app/api", LogLevel.INFO, "GET /api/users 200", 0, 10),
-    ]
-    model.update_lines(new_lines, selection_model=sel)
+    # Show only index 0 (line_number 1)
+    model.update_indices(
+        np.array([0], dtype=np.uint32),
+        selection_model=sel,
+    )
 
     # Only row 0 (line_number 1) should be selected
     selected_rows = sorted({idx.row() for idx in sel.selectedIndexes()})
@@ -276,14 +320,10 @@ def test_selection_preserved_after_apply_filters(qtbot):
         LogLine(2, "2026-01-01T12:30:02", "app", LogLevel.ERROR, "beta error", 11, 20),
         LogLine(3, "2026-01-01T12:30:03", "app", LogLevel.INFO, "gamma message", 31, 30),
     ]
-    store = LogStore()
-    store.lines = lines
-    store.filtered_indices = [0, 1, 2]
-    store._build_category_tree()
-    store._rebuild_category_cache()
+    store = _make_store_with_lines(lines)
 
     model = LogTableModel(store=store)
-    model.update_indices(list(range(3)))
+    model.update_indices(np.arange(3, dtype=np.uint32))
     view = LogTableView()
     view.setModel(model)
     view.resize(800, 400)
@@ -329,7 +369,7 @@ def scrollable_view(qtbot, many_lines):
     store = _make_store_with_lines(many_lines)
     view = LogTableView()
     m = LogTableModel(store=store)
-    m.update_indices(list(range(len(many_lines))))
+    m.update_indices(np.arange(len(many_lines), dtype=np.uint32))
     view.setModel(m)
     view.resize(800, 400)
     qtbot.addWidget(view)
@@ -338,7 +378,7 @@ def scrollable_view(qtbot, many_lines):
 
 
 def test_viewport_position_preserved_after_update(scrollable_view):
-    """Selected row should keep its viewport position after lines are updated."""
+    """Selected row should keep its viewport position after indices are updated."""
     model = scrollable_view.model()
     sel = scrollable_view.selectionModel()
 
@@ -353,11 +393,8 @@ def test_viewport_position_preserved_after_update(scrollable_view):
 
     # Remove rows 0-4 (5 rows before the anchor area)
     # Row 35 (line_number 36) becomes row 30 in new list
-    new_lines = [
-        LogLine(i + 1, f"2026-01-01T12:30:{i % 60:02d}", "app", LogLevel.INFO, f"Message {i + 1}", i * 20, 20)
-        for i in list(range(5, 50))
-    ]
-    model.update_lines(new_lines, selection_model=sel, table_view=scrollable_view)
+    new_indices = np.arange(5, 50, dtype=np.uint32)
+    model.update_indices(new_indices, selection_model=sel, table_view=scrollable_view)
 
     # After update, line_number 36 should now be at row 30
     new_row = 30

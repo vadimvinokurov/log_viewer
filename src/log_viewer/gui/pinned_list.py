@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from log_viewer.core.models import LogLine
+from log_viewer.core.models import LogLine, RowRef
 
 from log_viewer.gui.styles import LIST_SCROLL_AREA, PINNED_LIST_ITEM, styles
 
@@ -80,13 +80,7 @@ class PinnedListWidget(QWidget):
         self._scroll.setWidget(self._container)
         outer.addWidget(self._scroll)
 
-    def set_pins(self, line_numbers: list[int], lines: dict[int, LogLine]) -> None:
-        """Update display with current pinned lines.
-
-        Args:
-            line_numbers: 1-based line numbers that are pinned.
-            lines: Dict mapping line_number to LogLine for message preview.
-        """
+    def set_pins(self, line_numbers: list[int], lines: dict[int, LogLine | RowRef]) -> None:
         self._line_numbers = list(line_numbers)
         self._rebuild(lines)
 
@@ -99,7 +93,7 @@ class PinnedListWidget(QWidget):
     def count(self) -> int:
         return len(self._line_numbers)
 
-    def _rebuild(self, lines: dict[int, LogLine]) -> None:
+    def _rebuild(self, lines: dict[int, LogLine | RowRef]) -> None:
         self._clear_items()
         for i, ln in enumerate(self._line_numbers):
             line = lines.get(ln)

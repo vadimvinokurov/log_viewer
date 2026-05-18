@@ -6,6 +6,8 @@ import os
 import sys
 from pathlib import Path
 
+import numpy as np
+
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
@@ -23,7 +25,7 @@ from PySide6.QtWidgets import (
 from log_viewer.core.command_parser import ParseError, parse_command
 from log_viewer.core.config import ConfigManager
 from log_viewer.core.log_store import LogStore
-from log_viewer.core.models import Filter, Highlight, LogLevel, SearchDirection, SearchMode
+from log_viewer.core.models import Filter, Highlight, LogLevel, RowRef, SearchDirection, SearchMode, _LEVEL_LIST
 from log_viewer.core.preset_manager import PresetManager
 from log_viewer.core.suggester import CommandSuggester
 
@@ -465,24 +467,24 @@ class MainWindow(QMainWindow):
         self.side_panel.category_tree.rebuild(store.category_tree)
         self.side_panel.filter_list.set_filters(store.filters, store.filter_enabled)
         self.side_panel.highlight_list.set_highlights(store.highlights, store.highlight_enabled)
-        pinned_lines = {ln: store.lines[ln - 1] for ln in store.pinned_line_numbers if 0 <= ln - 1 < len(store.lines)}
+        pinned_lines = {ln: RowRef(ln - 1, store) for ln in store.pinned_line_numbers if 0 <= ln - 1 < store.n}
         self.side_panel.pinned_list.set_pins(sorted(store.pinned_line_numbers), pinned_lines)
 
     def _update_status(self) -> None:
         store = self.log_store
+        disabled = {_LEVEL_LIST[lid] for lid in store.disabled_levels}
         self.bottom_bar.level_bar.sync_from_store(
-            store.disabled_levels, store.level_button_counts
+            disabled, store.level_button_counts
         )
 
     def _jump_to_search_match(self) -> None:
-        import bisect
         ss = self.log_store.search_state
         if not ss or not ss.matches:
             return
         matched_idx = ss.matches[ss.current_index]
         indices = self.log_store.filtered_indices
-        pos = bisect.bisect_left(indices, matched_idx)
-        if pos < len(indices) and indices[pos] == matched_idx:
+        pos = int(np.searchsorted(indices, matched_idx))
+        if pos < len(indices) and int(indices[pos]) == matched_idx:
             self.log_table.selectRow(pos)
             self.log_table.scrollTo(self._table_model.index(pos, 0))
 

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication, QMenu, QTableView
 
-from log_viewer.core.models import Highlight, LogLine
+from log_viewer.core.models import Highlight, RowRef, _LEVEL_LIST, format_timestamp
 from log_viewer.core.themes import _t
 from log_viewer.gui.highlight_delegate import HighlightDelegate
 
@@ -31,31 +32,35 @@ _LEVEL_COLORS: dict[str, str] = {
 
 
 class LogTableModel(QAbstractTableModel):
-    """Table model that resolves rows via index mapping into store.lines.
-
-    Holds filtered_indices and resolves store.lines[idx] on demand in data().
-    Avoids creating a 6M-element list of LogLine references on every filter change.
-    """
+    """Table model that resolves rows via index mapping into SoA store arrays."""
 
     def __init__(self, store: LogStore | None = None) -> None:
         super().__init__()
         self._store = store
         self._highlights: list[Highlight] = []
         self._pinned_line_numbers: set[int] = set()
-        self._prev_indices: list[int] = []
+        self._prev_len: int = 0
+        self._prev_indices: np.ndarray = np.empty(0, dtype=np.uint32)
 
     @property
-    def lines(self) -> list[LogLine]:
+    def lines(self) -> list[RowRef]:
         """Compatibility property -- builds list on demand."""
         if self._store is None:
             return []
-        return [self._store.lines[i] for i in self._store.filtered_indices]
+        return [RowRef(int(idx), self._store) for idx in self._store.filtered_indices]
 
-    def _line_at(self, row: int) -> LogLine | None:
-        """Resolve a LogLine for a visible row. O(1)."""
+    def _idx_at(self, row: int) -> int | None:
+        """Resolve a raw array index for a visible row. O(1)."""
         if self._store is None or row < 0 or row >= len(self._store.filtered_indices):
             return None
-        return self._store.lines[self._store.filtered_indices[row]]
+        return int(self._store.filtered_indices[row])
+
+    def _line_at(self, row: int) -> RowRef | None:
+        """Resolve a RowRef for a visible row."""
+        idx = self._idx_at(row)
+        if idx is None:
+            return None
+        return RowRef(idx, self._store)
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         return len(self._store.filtered_indices) if self._store else 0
@@ -77,33 +82,35 @@ class LogTableModel(QAbstractTableModel):
         if not index.isValid() or self._store is None or index.row() >= len(self._store.filtered_indices):
             return None
 
-        line = self._line_at(index.row())
-        if line is None:
-            return None
+        store = self._store
+        idx = int(store.filtered_indices[index.row()])
 
         if role == Qt.ItemDataRole.DisplayRole:
             col = index.column()
             if col == 0:
-                return str(line.line_number)
+                return str(idx + 1)  # line_number = idx + 1
             if col == 1:
-                return line.time_only
+                return format_timestamp(int(store.timestamps[idx]))
             if col == 2:
-                return line.category
+                return store._category_names[store.category_ids[idx]]
             if col == 3:
-                return line.message
+                return store.messages[idx]
             return None
 
         if role == Qt.ItemDataRole.ForegroundRole:
-            color_name = _LEVEL_COLORS.get(line.level.name)
-            return QColor(color_name) if color_name else None
+            level_id = int(store.levels[idx])
+            if 0 <= level_id < len(_LEVEL_LIST):
+                color_name = _LEVEL_COLORS.get(_LEVEL_LIST[level_id].name)
+                return QColor(color_name) if color_name else None
+            return None
 
         if role == Qt.ItemDataRole.BackgroundRole:
-            if line.line_number in self._pinned_line_numbers:
+            if (idx + 1) in self._pinned_line_numbers:
                 return QColor(_t("pinned_bg"))
             return None
 
         if role == Qt.ItemDataRole.UserRole:
-            return line
+            return RowRef(idx, store)
 
         if role == Qt.ItemDataRole.FontRole:
             return None
@@ -112,24 +119,27 @@ class LogTableModel(QAbstractTableModel):
 
     def update_indices(
         self,
-        filtered_indices: list[int],
+        filtered_indices: np.ndarray,
         selection_model: object = None,
         table_view: object = None,
     ) -> None:
-        """Update visible rows. filtered_indices comes from store (shared reference)."""
+        """Update visible rows. filtered_indices comes from store."""
         if self._store is None:
             return
-        if self._prev_indices is filtered_indices:
+        new_len = len(filtered_indices)
+        if new_len == 0 and self._prev_len == 0:
             return
-        if (len(self._prev_indices) == len(filtered_indices)
-            and self._prev_indices
-            and filtered_indices
-            and self._prev_indices[0] == filtered_indices[0]
-            and self._prev_indices[-1] == filtered_indices[-1]):
+        # Short-circuit when indices are identical (avoids unnecessary reset)
+        if (
+            new_len == self._prev_len
+            and new_len > 0
+            and len(self._store.filtered_indices) == new_len
+            and np.array_equal(filtered_indices, self._store.filtered_indices)
+            and selection_model is None
+        ):
             return
-        # Save selected line numbers and viewport offset before reset.
-        # Use _prev_indices (old mapping) because store.filtered_indices may
-        # already point to the new list (set by _apply_filters before this call).
+
+        # Save selected line numbers and viewport offset before reset
         selected_line_numbers: set[int] = set()
         anchor_line_number: int | None = None
         anchor_viewport_y: int | None = None
@@ -137,36 +147,40 @@ class LogTableModel(QAbstractTableModel):
             from PySide6.QtCore import QItemSelectionModel
             if isinstance(selection_model, QItemSelectionModel):
                 selected_rows = sorted({idx.row() for idx in selection_model.selectedIndexes()})
+                old_indices = self._prev_indices
                 for row in selected_rows:
-                    if 0 <= row < len(self._prev_indices):
-                        line = self._store.lines[self._prev_indices[row]]
-                        selected_line_numbers.add(line.line_number)
+                    if 0 <= row < len(old_indices):
+                        selected_line_numbers.add(int(old_indices[row]) + 1)
                 if selected_rows and table_view is not None:
                     anchor_row = selected_rows[0]
-                    if 0 <= anchor_row < len(self._prev_indices):
-                        anchor_line_number = self._store.lines[self._prev_indices[anchor_row]].line_number
+                    if 0 <= anchor_row < len(old_indices):
+                        anchor_line_number = int(old_indices[anchor_row]) + 1
                         anchor_viewport_y = table_view.rowViewportPosition(anchor_row)
+
         self.beginResetModel()
-        self._prev_indices = filtered_indices
         if self._store.filtered_indices is not filtered_indices:
             self._store.filtered_indices = filtered_indices
+        self._prev_len = len(filtered_indices)
+        self._prev_indices = self._store.filtered_indices.copy()
         self.endResetModel()
-        # Restore selection for lines that remain visible
+
+        # Restore selection
         if selected_line_numbers and selection_model is not None:
             from PySide6.QtCore import QItemSelectionModel
             if isinstance(selection_model, QItemSelectionModel):
                 for row in range(len(self._store.filtered_indices)):
-                    line = self._line_at(row)
-                    if line is not None and line.line_number in selected_line_numbers:
+                    line_num = int(self._store.filtered_indices[row]) + 1
+                    if line_num in selected_line_numbers:
                         selection_model.select(
                             self.index(row, 0),
                             QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
                         )
+
         # Restore viewport position
         if anchor_line_number is not None and anchor_viewport_y is not None and table_view is not None:
             for row in range(len(self._store.filtered_indices)):
-                line = self._line_at(row)
-                if line is not None and line.line_number == anchor_line_number:
+                line_num = int(self._store.filtered_indices[row]) + 1
+                if line_num == anchor_line_number:
                     table_view.scrollTo(self.index(row, 0))
                     current_y = table_view.rowViewportPosition(row)
                     diff = current_y - anchor_viewport_y
@@ -175,28 +189,67 @@ class LogTableModel(QAbstractTableModel):
                         sb.setValue(max(sb.minimum(), min(sb.value() + diff, sb.maximum())))
                     break
 
-    def update_lines(self, lines: list[LogLine], selection_model: object = None, table_view: object = None) -> None:
-        """Compatibility: accept a list of LogLine objects."""
+    def update_lines(self, lines: list, selection_model: object = None, table_view: object = None) -> None:
+        """Accept a list of RowRef or LogLine objects.
+
+        RowRef: extract index and call update_indices.
+        LogLine: repopulate store SoA arrays, then show all indices.
+        """
         if self._store is None:
             self.beginResetModel()
             self.endResetModel()
             return
-        # Build index mapping: for lines already in store, use their index;
-        # for lines not in store, append them and use the new index.
-        line_num_to_idx: dict[int, int] = {}
-        for i, l in enumerate(self._store.lines):
-            line_num_to_idx[l.line_number] = i
-        indices: list[int] = []
-        for l in lines:
-            idx = line_num_to_idx.get(l.line_number)
-            if idx is not None:
-                indices.append(idx)
-            else:
-                idx = len(self._store.lines)
-                self._store.lines.append(l)
-                line_num_to_idx[l.line_number] = idx
-                indices.append(idx)
-        self.update_indices(indices, selection_model, table_view)
+
+        if lines and hasattr(lines[0], "_idx"):
+            # RowRef path
+            indices = np.array([r._idx for r in lines], dtype=np.uint32)
+            self.update_indices(indices, selection_model, table_view)
+        else:
+            # LogLine path — repopulate store from scratch
+            from log_viewer.core.models import OFFSET_DTYPE, _LEVEL_LIST
+            from log_viewer.core.parser import _parse_time_to_ms
+
+            n = len(lines)
+            store = self._store
+            store.n = n
+            if n == 0:
+                store.timestamps = np.empty(0, dtype=np.uint64)
+                store.category_ids = np.empty(0, dtype=np.uint16)
+                store.levels = np.empty(0, dtype=np.uint8)
+                store.messages = []
+                store.offsets = np.empty(0, dtype=OFFSET_DTYPE)
+                store._apply_filters()
+                self.update_indices(store.filtered_indices, selection_model, table_view)
+                return
+
+            store.timestamps = np.array(
+                [_parse_time_to_ms(ln.timestamp) for ln in lines], dtype=np.uint64
+            )
+            cat_name_to_id: dict[str, int] = {"uncategorized": 0}
+            cat_names: list[str] = ["uncategorized"]
+            cat_ids: list[int] = []
+            for ln in lines:
+                cat = ln.category
+                if cat not in cat_name_to_id:
+                    cat_name_to_id[cat] = len(cat_names)
+                    cat_names.append(cat)
+                cat_ids.append(cat_name_to_id[cat])
+            store.category_ids = np.array(cat_ids, dtype=np.uint16)
+            store._category_names = cat_names
+            store._category_name_to_id = cat_name_to_id
+
+            level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
+            store.levels = np.array(
+                [level_map.get(ln.level, 3) for ln in lines], dtype=np.uint8
+            )
+            store.messages = [ln.message for ln in lines]
+            store.offsets = np.array(
+                [(ln.file_offset, ln.line_length) for ln in lines], dtype=OFFSET_DTYPE
+            )
+            store._build_category_tree()
+            store._count_levels()
+            store._apply_filters()
+            self.update_indices(store.filtered_indices, selection_model, table_view)
 
     def set_highlights(self, highlights: list[Highlight]) -> None:
         self._highlights = highlights
@@ -206,7 +259,6 @@ class LogTableModel(QAbstractTableModel):
 
     def highlights(self) -> list[Highlight]:
         return self._highlights
-
 
 
 class LogTableView(QTableView):
@@ -353,22 +405,22 @@ class LogTableView(QTableView):
         if model is None:
             return
         line = model.data(self.currentIndex(), Qt.ItemDataRole.UserRole)
-        if isinstance(line, LogLine):
+        if isinstance(line, RowRef):
             raw = ""
             if hasattr(model, '_store') and model._store is not None:
-                raw = model._store.get_raw(line.line_number - 1)
+                raw = model._store.get_raw(line._idx)
             QApplication.clipboard().setText(raw if raw else line.message)
 
-    def _selected_lines(self) -> list[LogLine]:
-        """Return LogLine objects for all selected rows, sorted by row index."""
+    def _selected_lines(self) -> list[RowRef]:
+        """Return RowRef objects for all selected rows, sorted by row index."""
         model = self.model()
         if model is None:
             return []
         rows = sorted({idx.row() for idx in self.selectionModel().selectedIndexes()})
-        lines: list[LogLine] = []
+        lines: list[RowRef] = []
         for row in rows:
             line = model.data(model.index(row, 0), Qt.ItemDataRole.UserRole)
-            if isinstance(line, LogLine):
+            if isinstance(line, RowRef):
                 lines.append(line)
         return lines
 
@@ -382,7 +434,7 @@ class LogTableView(QTableView):
         for line in lines:
             raw = ""
             if model is not None and hasattr(model, '_store') and model._store is not None:
-                raw = model._store.get_raw(line.line_number - 1)
+                raw = model._store.get_raw(line._idx)
             parts.append(raw if raw else line.message)
         QApplication.clipboard().setText("\n".join(parts))
 

@@ -205,3 +205,121 @@ def parse_lines_batch(
             results.extend(chunk_result)
 
     return results
+
+
+# --- SoA parsing functions ---
+
+
+def _parse_time_to_ms(ts: str) -> int:
+    """Convert a time string to milliseconds from midnight.
+
+    Accepts 'HH:MM:SS.mmm' or ISO 'YYYY-MM-DDTHH:MM:SS.mmm'.
+    Returns milliseconds from midnight (0 .. 86_399_999).
+    """
+    # Extract time portion after 'T' if present
+    time_part = ts.split("T")[-1] if "T" in ts else ts
+    parts = time_part.split(":")
+    if len(parts) < 3:
+        return 0
+    try:
+        h = int(parts[0])
+        m = int(parts[1])
+        sec_parts = parts[2].split(".")
+        s = int(sec_parts[0])
+        ms = int(sec_parts[1]) if len(sec_parts) > 1 else 0
+        # Pad/truncate ms to 3 digits
+        if len(sec_parts) > 1:
+            ms_str = sec_parts[1]
+            if len(ms_str) < 3:
+                ms = int(ms_str.ljust(3, "0"))
+            else:
+                ms = int(ms_str[:3])
+        return h * 3_600_000 + m * 60_000 + s * 1_000 + ms
+    except (ValueError, IndexError):
+        return 0
+
+
+def parse_line_soa(
+    raw: str,
+    cat_name_to_id: dict[str, int],
+    cat_names: list[str],
+) -> tuple[int, int, int, str]:
+    """Parse a KSIVA-format log line into SoA tuple.
+
+    Returns (timestamp_ms, category_id, level_id, message).
+    """
+    from log_viewer.core.models import _LEVEL_NAMES
+
+    stripped = raw.strip()
+
+    if not stripped:
+        return (0, 0, 3, "")  # level 3 = INFO
+
+    parts = _SPLIT_RE.split(stripped, maxsplit=3)
+
+    if len(parts) == 1:
+        return (0, 0, 3, raw)
+
+    ts_ms = _parse_time_to_ms(parts[0])
+
+    if len(parts) == 2:
+        return (ts_ms, 0, 3, parts[1])
+
+    # Category
+    cat_str = parts[1]
+    if cat_str not in cat_name_to_id:
+        cat_name_to_id[cat_str] = len(cat_names)
+        cat_names.append(cat_str)
+    cat_id = cat_name_to_id[cat_str]
+
+    # Level
+    maybe_level = parts[2]
+    level_id = _LEVEL_NAMES.get(maybe_level, 3)  # default INFO=3
+
+    if level_id != 3 or maybe_level in _LEVEL_NAMES:
+        # Level found at position 2
+        message = parts[3] if len(parts) == 4 else ""
+        return (ts_ms, cat_id, level_id, message)
+
+    # No LOG_* found — merge position 2+ into message
+    message = parts[2] if len(parts) == 3 else f"{parts[2]} {parts[3]}"
+    return (ts_ms, cat_id, 3, message)
+
+
+def parse_plain_line_soa(
+    raw: str,
+    cat_name_to_id: dict[str, int],
+    cat_names: list[str],
+) -> tuple[int, int, int, str]:
+    """Parse a plain-format log line into SoA tuple.
+
+    Plain format: time elapsed level_short category message
+    Returns (timestamp_ms, category_id, level_id, message).
+    """
+    from log_viewer.core.models import _LEVEL_NAMES
+
+    stripped = raw.strip()
+
+    if not stripped:
+        return (0, 0, 3, "")
+
+    parts = _SPLIT_RE.split(stripped, maxsplit=4)
+
+    if len(parts) < 5:
+        ts_ms = _parse_time_to_ms(parts[0]) if parts else 0
+        cat_id = 0
+        msg = " ".join(parts[1:]) if len(parts) > 1 else ""
+        return (ts_ms, cat_id, 3, msg)
+
+    ts_ms = _parse_time_to_ms(parts[0])
+    # parts[1] = elapsed, dropped
+    level_id = _LEVEL_NAMES.get(parts[2], 3)
+
+    cat_str = parts[3]
+    if cat_str not in cat_name_to_id:
+        cat_name_to_id[cat_str] = len(cat_names)
+        cat_names.append(cat_str)
+    cat_id = cat_name_to_id[cat_str]
+
+    message = parts[4]
+    return (ts_ms, cat_id, level_id, message)

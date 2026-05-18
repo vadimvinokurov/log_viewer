@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import tempfile
 
+import numpy as np
+
 from log_viewer.core.models import (
     Filter,
     Highlight,
@@ -80,17 +82,26 @@ class TestLogStoreLoad:
         assert store.category_counts["my_lib/core"] == 1
         assert store.category_counts["SYSTEM"] == 1
 
-    def test_category_index_built_at_load(self) -> None:
-        """Category index maps category name to set of line indices."""
+    def test_category_ids_and_names_built_at_load(self) -> None:
+        """Category data stored in category_ids array and _category_names list."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        assert hasattr(store, "_category_index")
+        # _category_names contains all category names including "uncategorized"
+        assert "my_app/storage/folder" in store._category_names
+        assert "my_app/storage/db" in store._category_names
+        assert "my_lib/core" in store._category_names
+        assert "SYSTEM" in store._category_names
+        # category_ids maps each row to its category id
+        folder_id = store._category_name_to_id["my_app/storage/folder"]
+        db_id = store._category_name_to_id["my_app/storage/db"]
+        core_id = store._category_name_to_id["my_lib/core"]
+        system_id = store._category_name_to_id["SYSTEM"]
         # my_app/storage/folder has lines at indices 1 and 3
-        assert store._category_index["my_app/storage/folder"] == {1, 3}
+        assert set(np.where(store.category_ids == folder_id)[0].tolist()) == {1, 3}
         # my_app/storage/db has lines at indices 2 and 5
-        assert store._category_index["my_app/storage/db"] == {2, 5}
-        assert store._category_index["my_lib/core"] == {0}
-        assert store._category_index["SYSTEM"] == {4}
+        assert set(np.where(store.category_ids == db_id)[0].tolist()) == {2, 5}
+        assert set(np.where(store.category_ids == core_id)[0].tolist()) == {0}
+        assert set(np.where(store.category_ids == system_id)[0].tolist()) == {4}
 
     def test_level_counts(self) -> None:
         store = LogStore()
@@ -108,25 +119,25 @@ class TestLogStoreLoad:
     def test_filtered_indices_initially_all(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        assert store.filtered_indices == list(range(len(store.lines)))
+        assert store.filtered_indices.tolist() == list(range(store.n))
 
 
 class TestLogStoreEmpty:
     def test_empty_load(self) -> None:
         store = LogStore()
         store.load_lines([])
-        assert len(store.lines) == 0
+        assert store.n == 0
         assert store.category_counts == {}
         assert store.level_counts == {}
-        assert store.filtered_indices == []
+        assert store.filtered_indices.tolist() == []
 
     def test_load_replaces_previous(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES[:2])
-        assert len(store.lines) == 2
+        assert store.n == 2
 
         store.load_lines(SAMPLE_LINES[3:])
-        assert len(store.lines) == 3
+        assert store.n == 3
 
 
 class TestLogStoreCurrentFile:
@@ -359,7 +370,7 @@ class TestLogStoreSearch:
         store.load_lines(SAMPLE_LINES)
         # Filter to show only lines with "Failed" in message (indices 1, 2)
         store.add_filter(Filter(pattern="Failed", mode=SearchMode.PLAIN))
-        assert store.filtered_indices == [1, 2]
+        assert store.filtered_indices.tolist() == [1, 2]
         # Search within filtered view
         state = store.search("Failed", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.FORWARD)
         # Only indices 1 and 2 are visible, both contain "Failed"
@@ -709,7 +720,8 @@ class TestLogStoreLevelToggle:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.toggle_level(LogLevel.ERROR)
-        assert LogLevel.ERROR in store.disabled_levels
+        # disabled_levels now stores int level IDs (ERROR=1)
+        assert 1 in store.disabled_levels
         store.load_lines(SAMPLE_LINES)
         assert store.disabled_levels == set()
         assert len(store.filtered_indices) == 6
@@ -830,7 +842,7 @@ class TestLogStorePinnedLines:
         store.add_filter(Filter(pattern="NONEXISTENT", mode=SearchMode.PLAIN))
         store.pin_line(2)  # line_number=2 → index 1
         store.pin_line(5)  # line_number=5 → index 4
-        assert store.filtered_indices == [1, 4]
+        assert store.filtered_indices.tolist() == [1, 4]
 
     def test_pin_nonexistent_line_is_noop(self) -> None:
         """Pinning a line number that doesn't exist in the file should still add it,
@@ -920,103 +932,122 @@ class TestLogStoreGetRaw:
             os.unlink(path)
 
 
-class TestCategoryEnabledCache:
-    """Test _category_enabled_cache is built and maintained correctly."""
+class TestCategoryEnabledState:
+    """Test category enabled/disabled state via disabled_categories and tree nodes."""
 
-    def test_cache_populated_on_load(self) -> None:
+    def test_all_enabled_on_load(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        assert hasattr(store, "_category_enabled_cache")
-        assert store._category_enabled_cache != {}
-        # All categories enabled by default
+        # No categories disabled by default
+        assert store.disabled_categories == set()
+        # All tree nodes enabled
         for path in store.category_counts:
-            assert store._category_enabled_cache[path] is True
+            node = store._find_category_node(path)
+            assert node is not None
+            assert node.enabled is True
 
-    def test_cache_updated_after_disable(self) -> None:
+    def test_disabled_after_disable(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.disable_category("my_app")
-        assert store._category_enabled_cache["my_app/storage/folder"] is False
-        assert store._category_enabled_cache["my_app/storage/db"] is False
+        # my_app category ids should be in disabled_categories
+        folder_id = store._category_name_to_id["my_app/storage/folder"]
+        db_id = store._category_name_to_id["my_app/storage/db"]
+        assert folder_id in store.disabled_categories
+        assert db_id in store.disabled_categories
         # Unrelated categories still enabled
-        assert store._category_enabled_cache["my_lib/core"] is True
+        core_id = store._category_name_to_id["my_lib/core"]
+        assert core_id not in store.disabled_categories
 
-    def test_cache_updated_after_enable(self) -> None:
+    def test_re_enabled_after_enable(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.disable_category("my_app")
         store.enable_category("my_app/storage/folder")
-        assert store._category_enabled_cache["my_app/storage/folder"] is True
-        assert store._category_enabled_cache["my_app/storage/db"] is False
+        folder_id = store._category_name_to_id["my_app/storage/folder"]
+        db_id = store._category_name_to_id["my_app/storage/db"]
+        assert folder_id not in store.disabled_categories
+        assert db_id in store.disabled_categories
 
-    def test_cache_updated_after_enable_all(self) -> None:
+    def test_all_enabled_after_enable_all(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.disable_all_categories()
         store.enable_all_categories()
+        assert store.disabled_categories == set()
         for path in store.category_counts:
-            assert store._category_enabled_cache[path] is True
+            node = store._find_category_node(path)
+            assert node is not None
+            assert node.enabled is True
 
-    def test_cache_updated_after_disable_all(self) -> None:
+    def test_all_disabled_after_disable_all(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.disable_all_categories()
         for path in store.category_counts:
-            assert store._category_enabled_cache[path] is False
+            cat_id = store._category_name_to_id[path]
+            assert cat_id in store.disabled_categories
 
-    def test_cache_updated_after_set_disabled_categories(self) -> None:
+    def test_set_disabled_categories(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.set_disabled_categories(["my_app/storage/folder"])
-        assert store._category_enabled_cache["my_app/storage/folder"] is False
-        assert store._category_enabled_cache["my_app/storage/db"] is True
-        assert store._category_enabled_cache["my_lib/core"] is True
+        folder_id = store._category_name_to_id["my_app/storage/folder"]
+        db_id = store._category_name_to_id["my_app/storage/db"]
+        core_id = store._category_name_to_id["my_lib/core"]
+        assert folder_id in store.disabled_categories
+        assert db_id not in store.disabled_categories
+        assert core_id not in store.disabled_categories
 
-    def test_empty_category_returns_true(self) -> None:
+    def test_empty_path_find_returns_root(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        assert store._is_category_enabled("") is True
+        assert store._find_category_node("") is store.category_tree
 
-    def test_unknown_category_returns_true(self) -> None:
+    def test_unknown_path_find_returns_none(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        assert store._is_category_enabled("nonexistent/path") is True
+        assert store._find_category_node("nonexistent/path") is None
 
 
-class TestCategoryVisibleSet:
-    """Test _category_visible_set is cached and correct."""
+class TestCategoryDisabledSet:
+    """Test disabled_categories set reflects category filter state."""
 
-    def test_populated_on_load(self) -> None:
+    def test_empty_on_load(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        assert hasattr(store, "_category_visible_set")
-        # All categories enabled → all indices visible
-        assert store._category_visible_set == {0, 1, 2, 3, 4, 5}
+        # No categories disabled by default
+        assert store.disabled_categories == set()
 
-    def test_unchanged_after_filter_add(self) -> None:
-        """Adding a text filter must not change the category visible set."""
+    def test_unchanged_after_text_filter_add(self) -> None:
+        """Adding a text filter must not change the disabled categories set."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        snapshot_before = store._category_visible_set.copy()
         store.add_filter(Filter(pattern="Failed", mode=SearchMode.PLAIN))
-        assert store._category_visible_set == snapshot_before
+        assert store.disabled_categories == set()
 
-    def test_changes_after_category_disable(self) -> None:
-        """Disabling a category must update the visible set."""
+    def test_populated_after_category_disable(self) -> None:
+        """Disabling a category must add its ids to disabled_categories."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.disable_category("my_app")
-        # my_app lines: 1,2,3,5 removed → only 0,4 remain
-        assert store._category_visible_set == {0, 4}
+        # my_app categories: folder and db should be disabled
+        folder_id = store._category_name_to_id["my_app/storage/folder"]
+        db_id = store._category_name_to_id["my_app/storage/db"]
+        assert folder_id in store.disabled_categories
+        assert db_id in store.disabled_categories
+        # filtered_indices should only contain non-my_app lines
+        assert set(store.filtered_indices.tolist()) == {0, 4}
 
-    def test_changes_after_category_enable(self) -> None:
+    def test_cleared_after_category_enable(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.disable_category("my_app")
         store.enable_category("my_app")
-        assert store._category_visible_set == {0, 1, 2, 3, 4, 5}
+        assert store.disabled_categories == set()
+        assert set(store.filtered_indices.tolist()) == {0, 1, 2, 3, 4, 5}
 
     def test_empty_on_empty_load(self) -> None:
         store = LogStore()
         store.load_lines([])
-        assert store._category_visible_set == set()
+        assert store.disabled_categories == set()
