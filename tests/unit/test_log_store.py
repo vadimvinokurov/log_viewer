@@ -1134,3 +1134,27 @@ class TestReloadStatePreservation:
         store.load_lines(SAMPLE_LINES)
         # my_app lines (1,2,3,5) hidden, only my_lib/core (0) and SYSTEM (4)
         assert set(store.filtered_indices.tolist()) == {0, 4}
+
+    def test_leaf_priority_survives_reload(self) -> None:
+        """A child re-enabled under a disabled parent stays enabled after reload."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        store.enable_category("my_app/storage/folder")
+        # folder explicitly re-enabled under disabled my_app
+        folder_node = (
+            store.category_tree.children["my_app"]
+            .children["storage"]
+            .children["folder"]
+        )
+        assert folder_node.enabled is True
+        store.load_lines(SAMPLE_LINES)
+        # After reload, folder should still be enabled
+        folder_node = (
+            store.category_tree.children["my_app"]
+            .children["storage"]
+            .children["folder"]
+        )
+        assert folder_node.enabled is True
+        # Parent still disabled
+        assert store.category_tree.children["my_app"].enabled is False
