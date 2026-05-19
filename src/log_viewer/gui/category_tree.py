@@ -144,9 +144,9 @@ class CategoryTreeWidget(QWidget):
         self._update_parent_check_direct(item)
 
     def _update_parent_check_direct(self, item: QTreeWidgetItem) -> None:
-        """Like _update_parent_check but without emitting signals or recursing up."""
+        """Set parent checkstate from children counts. No signals, no recursion."""
         parent = item.parent()
-        if parent is None:
+        if parent is None or parent is self._tree.invisibleRootItem():
             return
         checked = 0
         partially = 0
@@ -163,8 +163,6 @@ class CategoryTreeWidget(QWidget):
             parent.setCheckState(0, Qt.CheckState.Checked)
         else:
             parent.setCheckState(0, Qt.CheckState.Unchecked)
-
-        self.category_changed.emit()
 
     def _set_children_checkstate(
         self, parent: QTreeWidgetItem, state: Qt.CheckState
