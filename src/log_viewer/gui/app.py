@@ -26,7 +26,6 @@ from log_viewer.core.command_parser import ParseError, parse_command
 from log_viewer.core.config import ConfigManager
 from log_viewer.core.log_store import LogStore
 from log_viewer.core.models import Filter, Highlight, LogLevel, RowRef, SearchDirection, SearchMode, _LEVEL_LIST
-from log_viewer.core.preset_manager import PresetManager
 from log_viewer.core.suggester import CommandSuggester
 
 from log_viewer.core.typography import Typography
@@ -84,7 +83,6 @@ class MainWindow(QMainWindow):
         self.log_store = LogStore()
         self._config = ConfigManager()
         self._config.load()
-        self._presets = PresetManager(self._config)
         self._suggester = CommandSuggester()
         self._suggester.log_store = self.log_store
 
@@ -270,9 +268,6 @@ class MainWindow(QMainWindow):
             else:
                 self.log_store.remove_filter(parsed.text)
             self._refresh_display()
-        elif name == "lsf":
-            self._toggle_side_panel()
-            self.side_panel.setCurrentIndex(1)
         elif name in ("s", "sr", "ss"):
             mode = {"s": SearchMode.PLAIN, "sr": SearchMode.REGEX, "ss": SearchMode.SIMPLE}[name]
             self._do_search(parsed.text, mode, SearchDirection.FORWARD)
@@ -288,8 +283,6 @@ class MainWindow(QMainWindow):
             else:
                 self.log_store.disable_category(parsed.text)
             self._refresh_display()
-        elif name == "lscat":
-            self._toggle_side_panel()
         elif name in ("h", "hr", "hs"):
             mode = {"h": SearchMode.PLAIN, "hr": SearchMode.REGEX, "hs": SearchMode.SIMPLE}[name]
             self.log_store.add_highlight(
@@ -305,28 +298,6 @@ class MainWindow(QMainWindow):
                 self.log_store.highlights = [h for h, _ in kept]
                 self.log_store.highlight_enabled = [e for _, e in kept]
             self._refresh_display()
-        elif name == "lsh":
-            self._toggle_side_panel()
-            self.side_panel.setCurrentIndex(2)
-        elif name == "preset":
-            parts = parsed.text.strip().split(None, 1)
-            if len(parts) == 2:
-                action, pname = parts
-                if action == "save":
-                    self._save_preset(pname)
-                elif action == "load":
-                    self._load_preset(pname)
-            self._refresh_display()
-        elif name == "rmpreset":
-            try:
-                self._presets.delete(parsed.text)
-            except FileNotFoundError:
-                self.bottom_bar.set_status(f"Preset not found: {parsed.text}")
-        elif name == "lspreset":
-            names = self._presets.list_presets()
-            self.bottom_bar.set_status(
-                "Presets: " + ", ".join(names) if names else "No presets"
-            )
         elif name == "reload":
             if self.log_store.current_file:
                 self._open_file(self.log_store.current_file)
@@ -360,49 +331,6 @@ class MainWindow(QMainWindow):
         self.log_store.search(pattern, mode, direction=direction)
         self._update_status()
         self._jump_to_search_match()
-
-    def _save_preset(self, name: str) -> None:
-        disabled = [
-            path for path, node in self._iter_category_nodes() if not node.enabled
-        ]
-        state = {
-            "filters": self.log_store.filters,
-            "highlights": self.log_store.highlights,
-            "disabled_categories": disabled,
-        }
-        self._presets.save(name, state)
-
-    def _load_preset(self, name: str) -> None:
-        try:
-            data = self._presets.load(name)
-        except FileNotFoundError:
-            self.bottom_bar.set_status(f"Preset not found: {name}")
-            return
-        existing = {(f.pattern, f.mode.value) for f in self.log_store.filters}
-        for fd in data.get("filters", []):
-            if (fd["pattern"], fd["mode"]) not in existing:
-                self.log_store.add_filter(
-                    Filter(fd["pattern"], SearchMode(fd["mode"]))
-                )
-        existing_hl_patterns = {h.pattern for h in self.log_store.highlights}
-        for hd in data.get("highlights", []):
-            if hd["pattern"] not in existing_hl_patterns:
-                self.log_store.add_highlight(
-                    Highlight(
-                        hd["pattern"],
-                        SearchMode(hd["mode"]),
-                    )
-                )
-        for cat in data.get("disabled_categories", []):
-            self.log_store.disable_category(cat)
-
-    def _iter_category_nodes(self):
-        def _walk(node):
-            for child in node.children.values():
-                yield child.full_path, child
-                yield from _walk(child)
-
-        yield from _walk(self.log_store.category_tree)
 
     def _on_category_changed(self) -> None:
         """Sync category tree checkboxes back to LogStore and refresh."""

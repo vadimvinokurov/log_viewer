@@ -55,12 +55,12 @@ class TestBasicParsing:
         assert result.text == '"Failed" AND "config"'
 
     def test_zero_arg_command(self) -> None:
-        result = parse_command("lsf")
+        result = parse_command("reload")
         assert result == ParsedCommand(
-            name="lsf",
+            name="reload",
             flags={},
             text="",
-            raw="lsf",
+            raw="reload",
         )
 
     def test_quit_command(self) -> None:
@@ -145,30 +145,6 @@ class TestCategoryCommands:
     def test_catd_without_args(self) -> None:
         result = parse_command("catd")
         assert result.name == "catd"
-        assert result.text == ""
-
-
-class TestPresetCommands:
-    """Test preset commands."""
-
-    def test_preset_save(self) -> None:
-        result = parse_command("preset save my-debug")
-        assert result.name == "preset"
-        assert result.text == "save my-debug"
-
-    def test_preset_load(self) -> None:
-        result = parse_command("preset load my-debug")
-        assert result.name == "preset"
-        assert result.text == "load my-debug"
-
-    def test_rmpreset(self) -> None:
-        result = parse_command("rmpreset my-debug")
-        assert result.name == "rmpreset"
-        assert result.text == "my-debug"
-
-    def test_lspreset(self) -> None:
-        result = parse_command("lspreset")
-        assert result.name == "lspreset"
         assert result.text == ""
 
 

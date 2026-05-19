@@ -9,7 +9,6 @@ from typing import Any, Optional
 
 _DEFAULTS: dict[str, Any] = {
     "history_size": 100,
-    "presets_path": "~/.logviewer/presets",
     "default_categories_enabled": True,
     "last_open_dir": "",
 }
@@ -25,10 +24,6 @@ class ConfigManager:
     @property
     def config_path(self) -> Path:
         return self._dir / "settings.json"
-
-    @property
-    def presets_dir(self) -> Path:
-        return Path(self.config.get("presets_path", _DEFAULTS["presets_path"])).expanduser()
 
     @property
     def history_path(self) -> Path:

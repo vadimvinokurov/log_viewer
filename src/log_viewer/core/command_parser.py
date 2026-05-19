@@ -23,19 +23,16 @@ _VALID_COMMANDS: set[str] = {
     "f", "fr", "fs",
     "h", "hr", "hs",
     "rmf", "rmh",
-    "lsf", "lsh", "lscat",
     "cate", "catd",
     "open", "reload",
     "pin", "unpin",
-    "preset", "presetl", "rmpreset", "lspreset",
     "q", "n", "N",
 }
 
 _ZERO_ARG_COMMANDS: set[str] = {
-    "lsf", "lsh", "lscat",
     "cate", "catd",
     "q", "n", "N",
-    "reload", "lspreset", "presetl",
+    "reload",
     "rmf", "rmh",
     "unpin",
 }
