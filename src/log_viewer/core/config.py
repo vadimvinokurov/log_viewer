@@ -8,7 +8,6 @@ from typing import Any, Optional
 
 
 _DEFAULTS: dict[str, Any] = {
-    "theme": "dark",
     "history_size": 100,
     "presets_path": "~/.logviewer/presets",
     "default_categories_enabled": True,

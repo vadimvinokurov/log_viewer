@@ -175,11 +175,6 @@ class TestPresetCommands:
 class TestMiscCommands:
     """Test misc commands."""
 
-    def test_theme_command(self) -> None:
-        result = parse_command("theme light")
-        assert result.name == "theme"
-        assert result.text == "light"
-
     def test_reload_command(self) -> None:
         result = parse_command("reload")
         assert result.name == "reload"

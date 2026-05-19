@@ -28,7 +28,7 @@ _VALID_COMMANDS: set[str] = {
     "open", "reload",
     "pin", "unpin",
     "preset", "presetl", "rmpreset", "lspreset",
-    "theme", "q", "n", "N",
+    "q", "n", "N",
 }
 
 _ZERO_ARG_COMMANDS: set[str] = {

@@ -1,4 +1,4 @@
-"""Light theme tokens for Log Viewer.
+"""Theme tokens for Log Viewer.
 
 Color palette from the LogViewer Plugin UI/UX Design Specification.
 Gray-scale surfaces, warm-brown text, and blue accent for selections.
@@ -9,9 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 
-# ── Light theme (Design Specification) ────────────────────────────────────────
-
-LIGHT_THEME: dict[str, Any] = {
+THEME: dict[str, Any] = {
     "name": "light",
 
     # Surfaces (Gray palette from spec)
@@ -58,30 +56,8 @@ LIGHT_THEME: dict[str, Any] = {
 }
 
 
-DARK_THEME: dict[str, Any] = {
-    "name": "dark",
-    "background": "#1E1E1E",
-    "foreground": "#D4D4D4",
-    "level_colors": {
-        "CRITICAL": "bold red",
-        "ERROR": "red",
-        "WARNING": "yellow",
-        "INFO": "white",
-        "DEBUG": "cyan",
-        "TRACE": "#7BC47B",
-    },
-}
-
-
-def get_theme(name: str) -> dict[str, Any]:
-    """Get theme by name. Returns light theme for unknown names."""
-    if name == "dark":
-        return DARK_THEME
-    return LIGHT_THEME
-
-
-# ── Convenience accessors ─────────────────────────────────────────────────────
+# ── Convenience accessor ──────────────────────────────────────────────────────
 
 def _t(key: str) -> str:
-    """Get a light-theme token value by key."""
-    return LIGHT_THEME[key]
+    """Get a theme token value by key."""
+    return THEME[key]

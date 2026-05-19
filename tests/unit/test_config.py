@@ -28,36 +28,33 @@ class TestConfigManagerLoad:
 
     def test_load_returns_defaults_when_no_file(self, cm: ConfigManager):
         cfg = cm.load()
-        assert cfg["theme"] == "dark"
         assert cfg["history_size"] == 100
         assert cfg["default_categories_enabled"] is True
 
-
     def test_load_reads_existing_file(self, config_dir: Path, cm: ConfigManager):
         config_dir.mkdir(parents=True, exist_ok=True)
-        data = {"theme": "light", "history_size": 50}
+        data = {"history_size": 50}
         (config_dir / "settings.json").write_text(json.dumps(data))
         cfg = cm.load()
-        assert cfg["theme"] == "light"
         assert cfg["history_size"] == 50
 
     def test_load_merges_missing_keys_with_defaults(self, config_dir: Path, cm: ConfigManager):
         config_dir.mkdir(parents=True, exist_ok=True)
-        data = {"theme": "light"}
+        data = {"history_size": 50}
         (config_dir / "settings.json").write_text(json.dumps(data))
         cfg = cm.load()
-        assert cfg["theme"] == "light"
-        assert cfg["history_size"] == 100  # default preserved
+        assert cfg["history_size"] == 50
+        assert cfg["default_categories_enabled"] is True  # default preserved
 
 
 class TestConfigManagerSave:
     def test_save_writes_file(self, config_dir: Path, cm: ConfigManager):
         cm.load()
-        cm.set("theme", "light")
+        cm.set("history_size", 200)
         cm.save()
         raw = (config_dir / "settings.json").read_text()
         data = json.loads(raw)
-        assert data["theme"] == "light"
+        assert data["history_size"] == 200
 
     def test_save_preserves_all_keys(self, config_dir: Path, cm: ConfigManager):
         cm.load()
@@ -65,19 +62,19 @@ class TestConfigManagerSave:
         cm.save()
         raw = (config_dir / "settings.json").read_text()
         data = json.loads(raw)
-        assert data["theme"] == "dark"
         assert data["history_size"] == 200
+        assert data["default_categories_enabled"] is True
 
 
 class TestConfigManagerGetSet:
     def test_get_after_load(self, cm: ConfigManager):
         cm.load()
-        assert cm.get("theme") == "dark"
+        assert cm.get("history_size") == 100
 
     def test_set_and_get(self, cm: ConfigManager):
         cm.load()
-        cm.set("theme", "light")
-        assert cm.get("theme") == "light"
+        cm.set("history_size", 200)
+        assert cm.get("history_size") == 200
 
     def test_get_returns_default_for_unknown_key(self, cm: ConfigManager):
         cm.load()

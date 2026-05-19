@@ -19,7 +19,7 @@ def _resolve(template: str) -> str:
     """Replace {{token}} placeholders with theme values."""
     import re
 
-    # Virtual tokens not in LIGHT_THEME — resolved from Typography
+    # Virtual tokens not in THEME — resolved from Typography
     _VIRTUAL = {
         "font_primary": Typography.PRIMARY,
         "font_mono": Typography.MONOSPACE,
