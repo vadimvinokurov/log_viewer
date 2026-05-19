@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor, QKeySequence, QPalette, QShortcut
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Log Viewer")
         self.resize(1200, 800)
+        self._set_app_icon()
         self._apply_light_palette()
 
         # Core state
@@ -182,6 +183,19 @@ class MainWindow(QMainWindow):
 
     def _on_file_error(self, msg: str) -> None:
         self.bottom_bar.set_status(f"Error: {msg}")
+
+    def _set_app_icon(self) -> None:
+        """Find and set the app icon (works in dev and PyInstaller bundle)."""
+        candidates = []
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass) / "assets" / "icon.png")
+        candidates.append(Path(__file__).resolve().parents[2] / "assets" / "icon.png")
+        candidates.append(Path.cwd() / "assets" / "icon.png")
+        for p in candidates:
+            if p.is_file():
+                self.setWindowIcon(QIcon(str(p)))
+                return
 
     def _apply_light_palette(self) -> None:
         from log_viewer.core.themes import _t

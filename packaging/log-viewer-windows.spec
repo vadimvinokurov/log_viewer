@@ -15,7 +15,7 @@ a = Analysis(
     [str(ROOT / 'packaging' / 'entry.py')],
     pathex=[str(ROOT / 'src')],
     binaries=[],
-    datas=[],
+    datas=[(str(ROOT / 'assets' / 'icon.png'), 'assets')],
     hiddenimports=[
         'log_viewer',
         'log_viewer.core',
@@ -61,9 +61,8 @@ pyz = PYZ(a.pure, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name=APP_NAME,
     debug=False,
     bootloader_ignore_signals=False,
@@ -71,4 +70,13 @@ exe = EXE(
     upx=False,
     console=False,
     icon=str(ROOT / 'assets' / 'icon.ico'),
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name=APP_NAME,
 )
