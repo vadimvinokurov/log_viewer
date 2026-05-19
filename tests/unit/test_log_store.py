@@ -854,13 +854,13 @@ class TestLogStorePinnedLines:
         # But 999 is not a valid index, so it won't appear
         assert 999 not in store.filtered_indices
 
-    def test_load_lines_does_not_reset_pins(self) -> None:
-        """Pinned lines survive file reload."""
+    def test_load_lines_clears_pins(self) -> None:
+        """Pinned lines are cleared on file reload."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.pin_line(2)
         store.load_lines(SAMPLE_LINES)
-        assert 2 in store.pinned_line_numbers
+        assert store.pinned_line_numbers == set()
 
     def test_pin_lines_batch(self) -> None:
         """pin_lines pins multiple lines at once."""
