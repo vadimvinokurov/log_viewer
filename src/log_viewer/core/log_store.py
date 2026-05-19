@@ -152,12 +152,12 @@ class LogStore:
         self._build_category_tree()
 
         # Sync tree node.enabled flags with restored disabled set.
-        # Walk the tree and disable any node whose full_path is in
-        # disabled_cat_names, then propagate to children recursively.
+        # Set each node directly (not recursive) to preserve leaf-priority
+        # re-enables (a child explicitly enabled under a disabled parent).
         for name in disabled_cat_names:
             node = self._find_category_node(name)
             if node:
-                self._set_enabled_recursive(node, False)
+                node.enabled = False
 
         self._count_levels()
         self._apply_filters()
