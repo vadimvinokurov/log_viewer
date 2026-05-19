@@ -90,8 +90,6 @@ class LogStore:
 
     def load_lines(self, raw_lines: list[str], file_path: Optional[str] = None) -> None:
         """Parse raw lines and rebuild all indices."""
-        self._close_mmap()
-
         n = len(raw_lines)
         self.n = n
 
@@ -144,37 +142,20 @@ class LogStore:
         self._count_levels()
         self._apply_filters()
 
-        # Open mmap for raw reading
-        if file_path:
-            from pathlib import Path
-
-            p = Path(file_path)
-            if p.exists() and p.is_file():
-                self._file = open(file_path, "rb")
-                self._mmap = mmap.mmap(self._file.fileno(), 0, access=mmap.ACCESS_READ)
-
     # ------------------------------------------------------------------ #
     #  Raw line access                                                     #
     # ------------------------------------------------------------------ #
 
-    def _close_mmap(self) -> None:
-        if self._mmap is not None:
-            self._mmap.close()
-            self._mmap = None
-        if self._file is not None:
-            self._file.close()
-            self._file = None
-
     def get_raw(self, index: int) -> str:
-        """Read raw line from mmap by index."""
-        if self._mmap is None or index < 0 or index >= self.n:
+        """Read raw line from file by index (opens file on each call)."""
+        if self.current_file is None or index < 0 or index >= self.n:
             return ""
         off = self.offsets[index]
         try:
-            return self._mmap[off["file_offset"]: off["file_offset"] + off["line_length"]].decode(
-                "utf-8", errors="replace"
-            )
-        except (ValueError, IndexError):
+            with open(self.current_file, "rb") as f:
+                f.seek(int(off["file_offset"]))
+                return f.read(int(off["line_length"])).decode("utf-8", errors="replace")
+        except (OSError, ValueError):
             return ""
 
     # ------------------------------------------------------------------ #

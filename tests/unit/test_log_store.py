@@ -892,7 +892,7 @@ class TestLogStorePlainFormat:
 
 
 class TestLogStoreGetRaw:
-    """Test get_raw reads original line from file via mmap."""
+    """Test get_raw reads original line from file on demand."""
 
     def test_get_raw_returns_original_line(self) -> None:
         lines = [
@@ -909,7 +909,6 @@ class TestLogStoreGetRaw:
             assert store.get_raw(0) == "01-01-2024T08:00:00.100 my_lib/core version 5.18"
             assert store.get_raw(1) == "01-01-2024T08:00:00.200 my_app/storage LOG_ERROR Failed to open"
         finally:
-            store._close_mmap()
             os.unlink(path)
 
     def test_get_raw_returns_empty_without_file(self) -> None:
@@ -928,7 +927,6 @@ class TestLogStoreGetRaw:
             store.load_lines(lines, file_path=path)
             assert store.get_raw(99) == ""
         finally:
-            store._close_mmap()
             os.unlink(path)
 
 
