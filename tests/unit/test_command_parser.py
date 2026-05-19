@@ -182,7 +182,7 @@ class TestErrors:
 
 
 class TestPinCommands:
-    """Test pin and unpin commands."""
+    """Test pin and rmpin commands."""
 
     def test_pin_with_line_number(self) -> None:
         result = parse_command("pin 42")
@@ -197,14 +197,14 @@ class TestPinCommands:
         with pytest.raises(ParseError, match="[Tt]ext"):
             parse_command("pin")
 
-    def test_unpin_with_line_number(self) -> None:
-        result = parse_command("unpin 42")
-        assert result.name == "unpin"
+    def test_rmpin_with_line_number(self) -> None:
+        result = parse_command("rmpin 42")
+        assert result.name == "rmpin"
         assert result.text == "42"
 
-    def test_unpin_without_args_clears_all(self) -> None:
-        result = parse_command("unpin")
-        assert result.name == "unpin"
+    def test_rmpin_without_args_clears_all(self) -> None:
+        result = parse_command("rmpin")
+        assert result.name == "rmpin"
         assert result.text == ""
 
 

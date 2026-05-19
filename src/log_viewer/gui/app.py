@@ -232,10 +232,6 @@ class MainWindow(QMainWindow):
     def _on_command_submitted(self, raw: str) -> None:
         if raw.startswith(":"):
             self._handle_command(raw[1:].strip())
-        elif raw.startswith("/"):
-            self._do_search(raw[1:], SearchMode.PLAIN, SearchDirection.FORWARD)
-        elif raw.startswith("?"):
-            self._do_search(raw[1:], SearchMode.PLAIN, SearchDirection.BACKWARD)
         self.log_table.setFocus()
 
     def _on_command_text_changed(self, text: str) -> None:
@@ -311,14 +307,14 @@ class MainWindow(QMainWindow):
                 return
             self.log_store.pin_line(line_num)
             self._refresh_display()
-        elif name == "unpin":
+        elif name == "rmpin":
             if not parsed.text:
                 self.log_store.unpin_all()
             else:
                 try:
                     line_num = int(parsed.text.strip())
                 except ValueError:
-                    self.bottom_bar.set_status("Error: unpin requires a line number")
+                    self.bottom_bar.set_status("Error: rmpin requires a line number")
                     return
                 self.log_store.unpin_line(line_num)
             self._refresh_display()

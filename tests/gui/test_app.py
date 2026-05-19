@@ -95,14 +95,6 @@ def test_command_submitted_colon_prefix(main_window):
     assert len(main_window.log_store.filters) == 1
 
 
-def test_command_submitted_slash_search(main_window):
-    main_window.log_store.load_lines(
-        ["2025-01-01T10:00:00 LOG_INFO app/main hello world"]
-    )
-    main_window._on_command_submitted("/hello")
-    assert main_window.log_store.search_state is not None
-    assert main_window.log_store.search_state.pattern == "hello"
-
 
 def test_update_status_does_not_crash(main_window):
     main_window.log_store.load_lines(
@@ -137,7 +129,7 @@ def test_command_pin_adds_pinned_line(main_window):
     assert 2 in main_window.log_store.pinned_line_numbers
 
 
-def test_command_unpin_clears_all(main_window):
+def test_command_rmpin_clears_all(main_window):
     main_window.log_store.load_lines(
         [
             "2025-01-01T10:00:00 LOG_INFO app/main first",
@@ -148,11 +140,11 @@ def test_command_unpin_clears_all(main_window):
     main_window._refresh_display()
     main_window._handle_command("pin 1")
     main_window._handle_command("pin 2")
-    main_window._handle_command("unpin")
+    main_window._handle_command("rmpin")
     assert main_window.log_store.pinned_line_numbers == set()
 
 
-def test_command_unpin_specific_line(main_window):
+def test_command_rmpin_specific_line(main_window):
     main_window.log_store.load_lines(
         [
             "2025-01-01T10:00:00 LOG_INFO app/main first",
@@ -163,6 +155,6 @@ def test_command_unpin_specific_line(main_window):
     main_window._refresh_display()
     main_window._handle_command("pin 1")
     main_window._handle_command("pin 2")
-    main_window._handle_command("unpin 1")
+    main_window._handle_command("rmpin 1")
     assert 1 not in main_window.log_store.pinned_line_numbers
     assert 2 in main_window.log_store.pinned_line_numbers

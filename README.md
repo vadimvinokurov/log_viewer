@@ -59,8 +59,6 @@ Both accept `--clean` to remove previous build artifacts.
 | `Ctrl+B` | Toggle side panel |
 | `Ctrl+Q` | Quit |
 | `:` | Activate command bar |
-| `/` | Quick forward search |
-| `?` | Quick backward search |
 | `n` | Next search match |
 | `N` | Previous search match |
 
@@ -96,8 +94,6 @@ Simple query examples:
 | `:ss query` | Search with simple query |
 | `:n` | Go to next match |
 | `:N` | Go to previous match |
-| `/text` | Quick forward search (no `:` prefix) |
-| `?text` | Quick backward search (no `:` prefix) |
 
 ### Filters
 
@@ -141,8 +137,8 @@ Pin specific line numbers to keep them visible regardless of filters.
 | Command | Description |
 |---------|-------------|
 | `:pin number` | Pin a line by line number |
-| `:unpin` | Unpin all lines |
-| `:unpin number` | Unpin a specific line |
+| `:rmpin` | Unpin all lines |
+| `:rmpin number` | Unpin a specific line |
 
 ### File
 
