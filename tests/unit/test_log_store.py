@@ -1049,3 +1049,88 @@ class TestCategoryDisabledSet:
         store = LogStore()
         store.load_lines([])
         assert store.disabled_categories == set()
+
+
+class TestReloadStatePreservation:
+    """Test that filters, highlights, and disabled categories survive reload."""
+
+    def test_preserves_filters_on_reload(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.add_filter(Filter(pattern="Failed", mode=SearchMode.PLAIN))
+        store.load_lines(SAMPLE_LINES)
+        assert len(store.filters) == 1
+        assert store.filters[0].pattern == "Failed"
+
+    def test_preserves_highlights_on_reload(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.add_highlight(Highlight(pattern="ERROR", mode=SearchMode.PLAIN))
+        store.load_lines(SAMPLE_LINES)
+        assert len(store.highlights) == 1
+        assert store.highlights[0].pattern == "ERROR"
+
+    def test_preserves_disabled_categories_on_reload(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        assert len(store.disabled_categories) > 0
+        store.load_lines(SAMPLE_LINES)
+        folder_id = store._category_name_to_id["my_app/storage/folder"]
+        db_id = store._category_name_to_id["my_app/storage/db"]
+        assert folder_id in store.disabled_categories
+        assert db_id in store.disabled_categories
+
+    def test_disabled_category_skipped_if_removed_on_reload(self) -> None:
+        """Category that no longer exists after reload is silently skipped."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        store.load_lines(["01-01-2024T08:00:00.100 other LOG_INFO hello"])
+        assert store.disabled_categories == set()
+
+    def test_new_category_enabled_by_default_on_reload(self) -> None:
+        """Category not in disabled set is enabled after reload."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES[:2])
+        store.disable_category("my_lib/core")
+        store.load_lines(SAMPLE_LINES)
+        core_id = store._category_name_to_id["my_lib/core"]
+        assert core_id in store.disabled_categories
+        system_id = store._category_name_to_id["SYSTEM"]
+        assert system_id not in store.disabled_categories
+
+    def test_clears_pins_on_reload(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.pin_line(1)
+        store.pin_line(3)
+        store.load_lines(SAMPLE_LINES)
+        assert store.pinned_line_numbers == set()
+
+    def test_clears_search_on_reload(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.search("Failed", SearchMode.PLAIN, direction=SearchDirection.FORWARD)
+        assert store.search_state is not None
+        store.load_lines(SAMPLE_LINES)
+        assert store.search_state is None
+
+    def test_disabled_category_tree_nodes_match_set_on_reload(self) -> None:
+        """Category tree node.enabled flags match disabled_categories after reload."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        store.load_lines(SAMPLE_LINES)
+        my_app_node = store.category_tree.children["my_app"]
+        assert my_app_node.enabled is False
+        assert my_app_node.children["storage"].enabled is False
+
+    def test_filtered_indices_correct_after_reload(self) -> None:
+        """Filtered indices reflect preserved disabled categories."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.disable_category("my_app")
+        store.load_lines(SAMPLE_LINES)
+        # my_app lines (1,2,3,5) hidden, only my_lib/core (0) and SYSTEM (4)
+        assert set(store.filtered_indices.tolist()) == {0, 4}
