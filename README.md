@@ -9,9 +9,7 @@ Desktop log file viewer with filtering, highlighting, and search. Built with Pyt
 - Hide non-matching lines with filters, color matching text with highlights
 - Category tree with checkboxes to show or hide log sources
 - Log level toggles (CRITICAL, ERROR, WARNING, INFO, DEBUG, TRACE) with per-level counts
-- Vim-style keyboard navigation (j/k/g/G/Ctrl-U/Ctrl-D)
 - Pin important lines to keep them visible
-- Save and load filter + highlight combos as presets
 - Persistent settings across sessions
 - Command bar with tab-autocomplete
 
@@ -49,21 +47,13 @@ Both accept `--clean` to remove previous build artifacts.
 ## Quick start
 
 1. Open a file — press `Ctrl+O` or type `:open /path/to/file.log` in the command bar
-2. Navigate — use `j`/`k` to move, `gg` to jump to top, `G` to jump to bottom
-3. Filter — type `:f debug` to hide lines containing "debug"
-4. Highlight — type `:h ERROR` to highlight all lines containing "ERROR"
+2. Filter — type `:f debug` to hide lines containing "debug"
+3. Highlight — type `:h ERROR` to highlight all lines containing "ERROR"
 
 ## Keyboard shortcuts
 
 | Key | Action |
 |-----|--------|
-| `j` | Move down one row |
-| `k` | Move up one row |
-| `gg` | Jump to first row |
-| `G` | Jump to last row |
-| `Ctrl+D` | Scroll down half a page |
-| `Ctrl+U` | Scroll up half a page |
-| `yy` | Copy current line to clipboard |
 | `Ctrl+O` | Open file dialog |
 | `Ctrl+R` | Reload current file |
 | `Ctrl+B` | Toggle side panel |
@@ -120,7 +110,6 @@ Filters hide lines that do **not** match the pattern. Multiple filters combine w
 | `:fs query` | Add simple query filter |
 | `:rmf` | Remove all filters |
 | `:rmf text` | Remove a specific filter |
-| `:lsf` | Open filter panel |
 
 ### Highlights
 
@@ -133,7 +122,6 @@ Highlights apply a background color to matching text. Colors cycle through a bui
 | `:hs query` | Add simple query highlight |
 | `:rmh` | Remove all highlights |
 | `:rmh text` | Remove a specific highlight |
-| `:lsh` | Open highlight panel |
 
 ### Categories
 
@@ -145,18 +133,6 @@ Categories are extracted from log lines automatically. Enable or disable them by
 | `:cate name` | Enable a specific category |
 | `:catd` | Disable all categories |
 | `:catd name` | Disable a specific category |
-| `:lscat` | Open category panel |
-
-### Presets
-
-Save and restore the current combination of filters, highlights, and disabled categories.
-
-| Command | Description |
-|---------|-------------|
-| `:preset save name` | Save current state as a preset |
-| `:preset load name` | Load a saved preset |
-| `:rmpreset name` | Delete a preset |
-| `:lspreset` | List all saved presets |
 
 ### Pins
 
@@ -211,6 +187,5 @@ All configuration is stored in `~/.logviewer/`:
 
 | File | Purpose |
 |------|---------|
-| `settings.json` | Window size, theme, last open directory |
+| `settings.json` | Window size, last open directory |
 | `history.json` | Command history |
-| `presets/*.yaml` | Saved filter + highlight presets |
