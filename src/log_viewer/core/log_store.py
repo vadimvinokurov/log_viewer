@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import mmap
 import re
-from typing import IO, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -75,8 +74,6 @@ class LogStore:
         self.disabled_categories: set[int] = set()  # category_ids
         self._highlight_color_index: int = 0
         self.pinned_line_numbers: set[int] = set()
-        self._file: Optional[IO] = None
-        self._mmap: Optional[mmap.mmap] = None
 
     # ------------------------------------------------------------------ #
     #  Backward-compatible property: `lines`                              #
@@ -459,7 +456,7 @@ class LogStore:
             messages = [self.messages[i] for i in cat_level_list]
             lowered = [self.messages[i].lower() for i in cat_level_list]
             matched_positions = batch_match(messages, active_filters, pre_lowered=lowered)
-            would_be_visible = cat_level_indices[np.array(list(matched_positions), dtype=np.intp)].astype(np.uint32)
+            would_be_visible = cat_level_indices[np.array(sorted(matched_positions), dtype=np.intp)].astype(np.uint32)
 
         # Count per level for buttons (category + text filtering, ignoring level toggles)
         if has_text_filters:
