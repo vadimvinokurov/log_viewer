@@ -53,6 +53,10 @@ class CategoryTreeWidget(QWidget):
 
     def rebuild(self, root: CategoryNode) -> None:
         """Rebuild the tree from the given CategoryNode hierarchy."""
+        # Snapshot expanded state before clearing
+        expanded_paths: set[str] = set()
+        self._collect_expanded_paths(self._tree.invisibleRootItem(), expanded_paths)
+
         self._tree.blockSignals(True)
         self._tree.clear()
         self._root = root
@@ -73,7 +77,13 @@ class CategoryTreeWidget(QWidget):
             )
             self._add_children(child_item, child_node)
 
+        # Fix parent checkbox states (partially checked when some children enabled)
+        self._fix_parent_checkstates(all_item)
+
+        # Restore expanded state
         all_item.setExpanded(True)
+        self._restore_expanded(all_item, expanded_paths)
+
         self._tree.blockSignals(False)
 
     def _add_children(self, parent_item: QTreeWidgetItem, node: CategoryNode) -> None:
@@ -106,6 +116,53 @@ class CategoryTreeWidget(QWidget):
         # Propagate upward
         if item.parent() is not None:
             self._update_parent_check(item)
+
+    def _collect_expanded_paths(
+        self, item: QTreeWidgetItem, out: set[str]
+    ) -> None:
+        """Collect full_path values of all expanded items."""
+        role_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(role_data, str) and item.isExpanded():
+            out.add(role_data)
+        for i in range(item.childCount()):
+            self._collect_expanded_paths(item.child(i), out)
+
+    def _restore_expanded(
+        self, item: QTreeWidgetItem, expanded: set[str]
+    ) -> None:
+        """Restore expanded state from previously collected paths."""
+        role_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(role_data, str) and role_data in expanded:
+            item.setExpanded(True)
+        for i in range(item.childCount()):
+            self._restore_expanded(item.child(i), expanded)
+
+    def _fix_parent_checkstates(self, item: QTreeWidgetItem) -> None:
+        """Bottom-up fix: set parent to PartiallyChecked when children are mixed."""
+        for i in range(item.childCount()):
+            self._fix_parent_checkstates(item.child(i))
+        self._update_parent_check_direct(item)
+
+    def _update_parent_check_direct(self, item: QTreeWidgetItem) -> None:
+        """Like _update_parent_check but without emitting signals or recursing up."""
+        parent = item.parent()
+        if parent is None:
+            return
+        checked = 0
+        partially = 0
+        total = parent.childCount()
+        for i in range(total):
+            state = parent.child(i).checkState(0)
+            if state == Qt.CheckState.Checked:
+                checked += 1
+            elif state == Qt.CheckState.PartiallyChecked:
+                partially += 1
+        if partially > 0 or (0 < checked < total):
+            parent.setCheckState(0, Qt.CheckState.PartiallyChecked)
+        elif checked == total:
+            parent.setCheckState(0, Qt.CheckState.Checked)
+        else:
+            parent.setCheckState(0, Qt.CheckState.Unchecked)
 
         self.category_changed.emit()
 
