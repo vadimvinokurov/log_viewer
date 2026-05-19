@@ -117,6 +117,8 @@ class CategoryTreeWidget(QWidget):
         if item.parent() is not None:
             self._update_parent_check(item)
 
+        self.category_changed.emit()
+
     def _collect_expanded_paths(
         self, item: QTreeWidgetItem, out: set[str]
     ) -> None:
