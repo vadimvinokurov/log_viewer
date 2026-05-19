@@ -53,7 +53,7 @@ LIGHT_THEME: dict[str, Any] = {
         "WARNING":  "#6A5302",
         "INFO":     "#382F27",
         "DEBUG":    "#382F27",
-        "TRACE":    "#382F27",
+        "TRACE":    "#5E8C5E",
     },
 }
 
@@ -68,7 +68,7 @@ DARK_THEME: dict[str, Any] = {
         "WARNING": "yellow",
         "INFO": "white",
         "DEBUG": "cyan",
-        "TRACE": "dim",
+        "TRACE": "#7BC47B",
     },
 }
 
