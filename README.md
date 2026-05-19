@@ -92,8 +92,6 @@ Simple query examples:
 | `:s text` | Search for plain text |
 | `:sr regex` | Search with regex |
 | `:ss query` | Search with simple query |
-| `:n` | Go to next match |
-| `:N` | Go to previous match |
 
 ### Filters
 
