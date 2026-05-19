@@ -132,13 +132,33 @@ class LogStore:
         del ts_list, cat_list, lvl_list, offsets_data
         del raw_lines
 
+        # Snapshot disabled category paths from tree (includes intermediate nodes)
+        disabled_cat_names: set[str] = set()
+        self._collect_disabled_paths(self.category_tree, disabled_cat_names)
+
         self._category_names = cat_names
         self._category_name_to_id = cat_name_to_id
         self.current_file = file_path
         self.disabled_levels = set()
         self.disabled_categories = set()
+        self.pinned_line_numbers = set()
+        self.search_state = None
+
+        # Restore disabled categories by name (new IDs)
+        for name in disabled_cat_names:
+            if name in self._category_name_to_id:
+                self.disabled_categories.add(self._category_name_to_id[name])
 
         self._build_category_tree()
+
+        # Sync tree node.enabled flags with restored disabled set.
+        # Walk the tree and disable any node whose full_path is in
+        # disabled_cat_names, then propagate to children recursively.
+        for name in disabled_cat_names:
+            node = self._find_category_node(name)
+            if node:
+                self._set_enabled_recursive(node, False)
+
         self._count_levels()
         self._apply_filters()
 
@@ -343,6 +363,14 @@ class LogStore:
             if node:
                 self._set_enabled_recursive(node, False)
         self._apply_filters()
+
+    def _collect_disabled_paths(
+        self, node: CategoryNode, out: set[str]
+    ) -> None:
+        if not node.enabled and node.full_path:
+            out.add(node.full_path)
+        for child in node.children.values():
+            self._collect_disabled_paths(child, out)
 
     def _find_category_node(self, path: str) -> Optional[CategoryNode]:
         if not path:
