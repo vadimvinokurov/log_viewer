@@ -90,3 +90,7 @@ class TestConfigManagerGetSet:
     def test_presets_path_default(self, cm: ConfigManager):
         cm.load()
         assert "presets_path" in cm.config
+
+    def test_last_open_dir_defaults_to_empty(self, cm: ConfigManager):
+        cm.load()
+        assert cm.get("last_open_dir") == ""

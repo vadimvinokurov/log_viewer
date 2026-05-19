@@ -12,6 +12,7 @@ _DEFAULTS: dict[str, Any] = {
     "history_size": 100,
     "presets_path": "~/.logviewer/presets",
     "default_categories_enabled": True,
+    "last_open_dir": "",
 }
 
 
