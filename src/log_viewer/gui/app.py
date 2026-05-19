@@ -173,6 +173,12 @@ class MainWindow(QMainWindow):
         self._load_worker.error.connect(self._on_file_error)
         self._load_worker.start()
 
+    def _save_last_open_dir(self, path: str) -> None:
+        """Persist the directory of an opened file for next dialog start."""
+        if not path.startswith(("http://", "https://")):
+            self._config.set("last_open_dir", os.path.dirname(path))
+            self._config.save()
+
     def _on_file_loaded(self, lines: list[str], path: str) -> None:
         self.log_store.load_lines(lines, file_path=path)
         del lines  # Free raw string list immediately
@@ -181,6 +187,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"Log Viewer \u2014 {filename}")
         self._hide_empty_state()
         self._refresh_display()
+        self._save_last_open_dir(path)
 
     def _on_file_error(self, msg: str) -> None:
         self.bottom_bar.set_status(f"Error: {msg}")
