@@ -716,15 +716,15 @@ class TestLogStoreLevelToggle:
         store.toggle_level(LogLevel.INFO)
         assert len(store.filtered_indices) == 0
 
-    def test_load_lines_resets_disabled_levels(self) -> None:
+    def test_load_lines_preserves_disabled_levels(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.toggle_level(LogLevel.ERROR)
-        # disabled_levels now stores int level IDs (ERROR=1)
         assert 1 in store.disabled_levels
         store.load_lines(SAMPLE_LINES)
-        assert store.disabled_levels == set()
-        assert len(store.filtered_indices) == 6
+        # disabled_levels preserved across reload
+        assert 1 in store.disabled_levels
+        assert len(store.filtered_indices) == 4
 
 
 class TestLevelButtonCounts:

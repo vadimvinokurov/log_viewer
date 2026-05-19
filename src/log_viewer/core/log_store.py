@@ -139,7 +139,7 @@ class LogStore:
         self._category_names = cat_names
         self._category_name_to_id = cat_name_to_id
         self.current_file = file_path
-        self.disabled_levels = set()
+        # disabled_levels intentionally not reset — preserved across reload
         self.disabled_categories = set()
         self.pinned_line_numbers = set()
         self.search_state = None
