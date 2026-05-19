@@ -152,7 +152,8 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+B"), self, activated=self._toggle_side_panel)
 
     def _file_open_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Open Log File")
+        last_dir = self._config.get("last_open_dir", "")
+        path, _ = QFileDialog.getOpenFileName(self, "Open Log File", last_dir)
         if path:
             self._open_file(path)
 
