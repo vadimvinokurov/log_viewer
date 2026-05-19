@@ -1,4 +1,4 @@
-"""Log table model and view with vim-style navigation."""
+"""Log table model and view."""
 
 from __future__ import annotations
 
@@ -262,7 +262,7 @@ class LogTableModel(QAbstractTableModel):
 
 
 class LogTableView(QTableView):
-    """Table view with vim-style key bindings for log navigation."""
+    """Table view for log navigation."""
 
     pin_lines_requested = Signal(list)
     unpin_lines_requested = Signal(list)
@@ -288,8 +288,6 @@ class LogTableView(QTableView):
         self.setVerticalScrollMode(QTableView.ScrollMode.ScrollPerPixel)
         self.setHorizontalScrollMode(QTableView.ScrollMode.ScrollPerPixel)
 
-        self._g_pressed: bool = False
-        self._y_pressed: bool = False
         self.setItemDelegate(HighlightDelegate())
 
     def scrollTo(self, index, hint=QTableView.ScrollHint.EnsureVisible):  # noqa: N802
@@ -322,94 +320,6 @@ class LogTableView(QTableView):
             super().wheelEvent(new_event)
         else:
             super().wheelEvent(event)
-
-    def move_cursor_row(self, delta: int) -> None:
-        model = self.model()
-        if model is None:
-            return
-        current = self.currentIndex()
-        row = max(0, min(current.row() + delta, model.rowCount() - 1))
-        index = model.index(row, 0)
-        self.setCurrentIndex(index)
-        self.selectRow(row)
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        key = event.key()
-        modifiers = event.modifiers()
-
-        if key == Qt.Key.Key_J and not modifiers:
-            self._g_pressed = False
-            self._y_pressed = False
-            self.move_cursor_row(1)
-            return
-
-        if key == Qt.Key.Key_K and not modifiers:
-            self._g_pressed = False
-            self._y_pressed = False
-            self.move_cursor_row(-1)
-            return
-
-        if key == Qt.Key.Key_D and modifiers & Qt.KeyboardModifier.ControlModifier:
-            self._g_pressed = False
-            self._y_pressed = False
-            half = self.height() // max(self.rowHeight(0), 1) // 2
-            self.move_cursor_row(half)
-            return
-
-        if key == Qt.Key.Key_U and modifiers & Qt.KeyboardModifier.ControlModifier:
-            self._g_pressed = False
-            self._y_pressed = False
-            half = self.height() // max(self.rowHeight(0), 1) // 2
-            self.move_cursor_row(-half)
-            return
-
-        if key == Qt.Key.Key_G and modifiers & Qt.KeyboardModifier.ShiftModifier:
-            self._g_pressed = False
-            self._y_pressed = False
-            model = self.model()
-            if model is not None and model.rowCount() > 0:
-                last = model.rowCount() - 1
-                self.selectRow(last)
-                self.scrollTo(model.index(last, 0))
-            return
-
-        if key == Qt.Key.Key_G and not modifiers:
-            if self._g_pressed:
-                self._g_pressed = False
-                self._y_pressed = False
-                model = self.model()
-                if model is not None and model.rowCount() > 0:
-                    self.scrollToTop()
-                    self.selectRow(0)
-            else:
-                self._g_pressed = True
-                self._y_pressed = False
-            return
-
-        if key == Qt.Key.Key_Y and not modifiers:
-            if self._y_pressed:
-                self._y_pressed = False
-                self._g_pressed = False
-                self._copy_current_line()
-            else:
-                self._y_pressed = True
-                self._g_pressed = False
-            return
-
-        self._g_pressed = False
-        self._y_pressed = False
-        super().keyPressEvent(event)
-
-    def _copy_current_line(self) -> None:
-        model = self.model()
-        if model is None:
-            return
-        line = model.data(self.currentIndex(), Qt.ItemDataRole.UserRole)
-        if isinstance(line, RowRef):
-            raw = ""
-            if hasattr(model, '_store') and model._store is not None:
-                raw = model._store.get_raw(line._idx)
-            QApplication.clipboard().setText(raw if raw else line.message)
 
     def _selected_lines(self) -> list[RowRef]:
         """Return RowRef objects for all selected rows, sorted by row index."""
