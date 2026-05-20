@@ -327,8 +327,9 @@ class MainWindow(QMainWindow):
         if not pattern:
             return
         self.log_store.search(pattern, mode, direction=direction)
-        if self.log_store.search_state:
-            self.log_store.search_state.in_search = True
+        ss = self.log_store.search_state
+        if ss and ss.matches:
+            ss.in_search = True
         self._update_status()
         self._update_title()
         self._jump_to_search_match()

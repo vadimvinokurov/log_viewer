@@ -161,6 +161,29 @@ def test_command_rmpin_specific_line(main_window):
     assert 2 in main_window.log_store.pinned_line_numbers
 
 
+def test_do_search_activates_in_search_when_matches_found(main_window):
+    main_window._on_file_loaded(
+        [
+            "2025-01-01T10:00:00 LOG_INFO app/main hello",
+            "2025-01-01T10:00:01 LOG_INFO app/main error found",
+        ],
+        "test.log",
+    )
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    assert main_window.log_store.search_state is not None
+    assert main_window.log_store.search_state.in_search is True
+
+
+def test_do_search_does_not_activate_when_no_matches(main_window):
+    main_window._on_file_loaded(
+        ["2025-01-01T10:00:00 LOG_INFO app/main hello"],
+        "test.log",
+    )
+    main_window._do_search("nonexistent", SearchMode.PLAIN, SearchDirection.FORWARD)
+    ss = main_window.log_store.search_state
+    assert ss is None or ss.in_search is False
+
+
 def test_update_title_shows_search_mode(main_window):
     main_window._on_file_loaded(
         [
