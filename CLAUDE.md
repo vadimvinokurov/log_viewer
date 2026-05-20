@@ -170,7 +170,7 @@ src/log_viewer/
     filter_engine.py # Filter/highlight matching (plain, regex, simple query)
     simple_query.py  # Boolean query language: AND, OR, NOT, parentheses
     command_parser.py# Command syntax parser (:f, :h, :s, :open, etc.)
-    command_history.py# Persistent command history (~/.logviewer/history.json)
+    command_history.py# Persistent command history with Up/Down navigation (~/.logviewer/history.json)
     config.py        # Settings manager (~/.logviewer/settings.json)
     preset_manager.py# Save/load filter+highlight presets (YAML)
     themes.py        # Dark/Light theme color definitions
