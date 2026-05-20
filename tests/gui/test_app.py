@@ -215,3 +215,87 @@ def test_update_title_reverts_on_search_exit(main_window):
     )
     main_window.eventFilter(main_window.log_table, esc_event)
     assert main_window.windowTitle() == "Log Viewer \u2014 test.log"
+
+
+def test_arrow_down_navigates_next_match_in_search_mode(main_window):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    main_window._on_file_loaded(
+        [
+            "2025-01-01T10:00:00 LOG_INFO app/main error one",
+            "2025-01-01T10:00:01 LOG_INFO app/main error two",
+            "2025-01-01T10:00:02 LOG_INFO app/main other",
+        ],
+        "test.log",
+    )
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    assert main_window.log_store.search_state.current_index == 0
+
+    down = QKeyEvent(
+        QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier
+    )
+    main_window.eventFilter(main_window.log_table, down)
+    assert main_window.log_store.search_state.current_index == 1
+
+
+def test_arrow_up_navigates_prev_match_in_search_mode(main_window):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    main_window._on_file_loaded(
+        [
+            "2025-01-01T10:00:00 LOG_INFO app/main error one",
+            "2025-01-01T10:00:01 LOG_INFO app/main error two",
+            "2025-01-01T10:00:02 LOG_INFO app/main other",
+        ],
+        "test.log",
+    )
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    up = QKeyEvent(
+        QKeyEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier
+    )
+    main_window.eventFilter(main_window.log_table, up)
+    assert main_window.log_store.search_state.current_index == 1
+
+
+def test_arrow_keys_normal_when_not_in_search(main_window):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    main_window._on_file_loaded(
+        [
+            "2025-01-01T10:00:00 LOG_INFO app/main hello",
+            "2025-01-01T10:00:01 LOG_INFO app/main world",
+        ],
+        "test.log",
+    )
+    down = QKeyEvent(
+        QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier
+    )
+    result = main_window.eventFilter(main_window.log_table, down)
+    assert result is False
+
+
+def test_n_key_no_longer_navigates_search(main_window):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    main_window._on_file_loaded(
+        [
+            "2025-01-01T10:00:00 LOG_INFO app/main error one",
+            "2025-01-01T10:00:01 LOG_INFO app/main error two",
+        ],
+        "test.log",
+    )
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    initial_index = main_window.log_store.search_state.current_index
+
+    n_event = QKeyEvent(
+        QKeyEvent.Type.KeyPress,
+        Qt.Key.Key_N,
+        Qt.KeyboardModifier.NoModifier,
+        "n",
+    )
+    main_window.eventFilter(main_window.log_table, n_event)
+    assert main_window.log_store.search_state.current_index == initial_index

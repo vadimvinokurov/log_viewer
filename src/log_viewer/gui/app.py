@@ -450,14 +450,10 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, obj, event) -> bool:  # type: ignore[override]
         if event.type() == event.Type.KeyPress:
-            from PySide6.QtGui import QKeyEvent as _QKE
-            if isinstance(event, _QKE) and event.key() == Qt.Key.Key_Escape:
-                ss = self.log_store.search_state
-                if ss and ss.in_search:
-                    ss.in_search = False
-                    self._update_title()
-                    return True
             text = event.text()
+            key = event.key()
+            ss = self.log_store.search_state
+
             if text == ":":
                 self.bottom_bar.activate_command_mode()
                 return True
@@ -465,18 +461,26 @@ class MainWindow(QMainWindow):
                 self.bottom_bar.command_input.setText("/")
                 self.bottom_bar.command_input.setFocus()
                 return True
-            if text == "n" and self.log_store.search_state:
-                self.log_table.setFocus()
-                self.log_store.next_match()
-                self._update_status()
-                self._jump_to_search_match()
-                return True
-            if text == "N" and self.log_store.search_state:
-                self.log_table.setFocus()
-                self.log_store.prev_match()
-                self._update_status()
-                self._jump_to_search_match()
-                return True
+
+            # Search mode navigation
+            if ss and ss.in_search:
+                if key == Qt.Key.Key_Down:
+                    self.log_table.setFocus()
+                    self.log_store.next_match()
+                    self._update_status()
+                    self._jump_to_search_match()
+                    return True
+                if key == Qt.Key.Key_Up:
+                    self.log_table.setFocus()
+                    self.log_store.prev_match()
+                    self._update_status()
+                    self._jump_to_search_match()
+                    return True
+                if key == Qt.Key.Key_Escape:
+                    ss.in_search = False
+                    self._update_title()
+                    return True
+
         return super().eventFilter(obj, event)
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
