@@ -66,9 +66,7 @@ Both accept `--clean` to remove previous build artifacts.
 
 All commands are typed in the bottom command bar with a `:` prefix.
 
-**Syntax**: `:command[/flags/]text`
-
-**Flags**: `/cs/` — case-sensitive matching (search, filter, and highlight commands only)
+**Syntax**: `:command text`
 
 ### Match modes
 

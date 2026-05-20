@@ -1,4 +1,4 @@
-"""Tests for command_parser.py — RED phase."""
+"""Tests for command_parser.py."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ class TestBasicParsing:
         result = parse_command("f ERROR")
         assert result == ParsedCommand(
             name="f",
-            flags={},
             text="ERROR",
             raw="f ERROR",
         )
@@ -23,7 +22,6 @@ class TestBasicParsing:
         result = parse_command("h ERROR")
         assert result == ParsedCommand(
             name="h",
-            flags={},
             text="ERROR",
             raw="h ERROR",
         )
@@ -32,7 +30,6 @@ class TestBasicParsing:
         result = parse_command("s error")
         assert result == ParsedCommand(
             name="s",
-            flags={},
             text="error",
             raw="s error",
         )
@@ -45,7 +42,6 @@ class TestBasicParsing:
         result = parse_command("fr error_\\d+")
         assert result == ParsedCommand(
             name="fr",
-            flags={},
             text="error_\\d+",
             raw="fr error_\\d+",
         )
@@ -58,7 +54,6 @@ class TestBasicParsing:
         result = parse_command("reload")
         assert result == ParsedCommand(
             name="reload",
-            flags={},
             text="",
             raw="reload",
         )
@@ -74,28 +69,6 @@ class TestBasicParsing:
         assert result.text == "/path/to/file.log"
 
 
-class TestFlagsParsing:
-    """Test command parsing with flags: name/flags/text."""
-
-    def test_case_sensitive_flag(self) -> None:
-        result = parse_command("f/cs/Failed to open")
-        assert result == ParsedCommand(
-            name="f",
-            flags={"cs": ""},
-            text="Failed to open",
-            raw="f/cs/Failed to open",
-        )
-
-    def test_multiple_flags_error_on_unknown(self) -> None:
-        with pytest.raises(ParseError, match="[Uu]nknown"):
-            parse_command("h/cs,color=yellow/WARNING")
-
-    def test_case_sensitive_search(self) -> None:
-        result = parse_command("s/cs/error")
-        assert result.flags == {"cs": ""}
-        assert result.text == "error"
-
-
 class TestRemoveCommands:
     """Test rmf and rmh commands."""
 
@@ -103,7 +76,6 @@ class TestRemoveCommands:
         result = parse_command("rmf ERROR")
         assert result == ParsedCommand(
             name="rmf",
-            flags={},
             text="ERROR",
             raw="rmf ERROR",
         )
@@ -160,14 +132,6 @@ class TestMiscCommands:
 class TestErrors:
     """Test error cases."""
 
-    def test_empty_flags_error(self) -> None:
-        with pytest.raises(ParseError, match="[Ff]lag"):
-            parse_command("f//text")
-
-    def test_unknown_flag_error(self) -> None:
-        with pytest.raises(ParseError, match="[Uu]nknown"):
-            parse_command("f/unknown/text")
-
     def test_empty_command(self) -> None:
         with pytest.raises(ParseError):
             parse_command("")
@@ -220,7 +184,7 @@ class TestEdgeCases:
         assert result.text == "/path/to/file"
 
     def test_raw_preserved(self) -> None:
-        raw = "f/cs/Some text"
+        raw = "f Some text"
         result = parse_command(raw)
         assert result.raw == raw
 

@@ -198,15 +198,13 @@ Lines are parsed as: `timestamp category [LOG_LEVEL] message`
 - Example: `2024-01-01T10:00:00 app/main [LOG_INFO] Starting application`
 
 ### Command system
-Typed in the bottom bar with `:` prefix. Grammar: `name[/flags/]text`
-- **Search**: `s` (plain), `sr` (regex), `ss` (simple query), `n`/`N` (next/prev match)
+Typed in the bottom bar with `:` prefix. Grammar: `name text`
+- **Search**: `s` (plain), `sr` (regex), `ss` (simple query) — enters search mode; `↑`/`↓` navigate matches, `Esc` exits
 - **Filter**: `f`, `fr`, `fs` — hide non-matching lines
 - **Highlight**: `h`, `hr`, `hs` — color matching text
-- **Categories**: `cate` (enable), `catd` (disable), `lscat` (list)
-- **Management**: `rmf`, `rmh`, `lsf`, `lsh`
-- **Presets**: `preset <name>`, `rmpreset`, `lspreset`, `presetl`
+- **Categories**: `cate` (enable), `catd` (disable)
+- **Management**: `rmf`, `rmh`
 - **File**: `open <path>`, `reload`
-- **Flags**: `/cs/` (case sensitive), `/color=red/` or `/color=#ff0000/` (highlight color)
 - **Quit**: `q`
 
 ### Architecture
