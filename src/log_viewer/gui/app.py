@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from log_viewer.core.command_history import CommandHistory
 from log_viewer.core.command_parser import ParseError, parse_command
 from log_viewer.core.config import ConfigManager
 from log_viewer.core.log_store import LogStore
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self._current_filename: str = ""
         self._config = ConfigManager()
         self._config.load()
+        self._command_history = CommandHistory(self._config)
 
         # Widgets
         self.log_table = LogTableView()
@@ -79,7 +81,7 @@ class MainWindow(QMainWindow):
         self.log_table.unpin_lines_requested.connect(self._on_unpin_lines_requested)
 
         self.side_panel = SidePanel()
-        self.bottom_bar = BottomBar()
+        self.bottom_bar = BottomBar(history=self._command_history)
 
         # Layout: splitter (log table | side panel) + bottom bar
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -106,6 +108,7 @@ class MainWindow(QMainWindow):
 
         # Signals
         self.bottom_bar.command_input.command_submitted.connect(self._on_command_submitted)
+        self.bottom_bar.command_input.editing_finished.connect(self.log_table.setFocus)
         self.side_panel.category_tree.category_changed.connect(self._on_category_changed)
         self.side_panel.filter_list.filter_changed.connect(self._on_filter_changed)
         self.side_panel.filter_list.filter_removed.connect(self._on_filter_removed)
@@ -214,7 +217,6 @@ class MainWindow(QMainWindow):
     def _on_command_submitted(self, raw: str) -> None:
         if raw.startswith(":"):
             self._handle_command(raw[1:].strip())
-        self.log_table.setFocus()
 
     def _handle_command(self, cmd: str) -> None:
         if not cmd:
