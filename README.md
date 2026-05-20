@@ -59,8 +59,8 @@ Both accept `--clean` to remove previous build artifacts.
 | `Ctrl+B` | Toggle side panel |
 | `Ctrl+Q` | Quit |
 | `:` | Activate command bar |
-| `n` | Next search match |
-| `N` | Previous search match |
+| `↑`/`↓` | Navigate search matches (in search mode) |
+| `Esc` | Exit search mode |
 
 ## Command reference
 
@@ -87,11 +87,15 @@ Simple query examples:
 
 ### Search
 
+Search activates **search mode** when matches are found. The window title shows the active pattern. Use arrow keys to navigate matches, `Esc` to exit.
+
 | Command | Description |
 |---------|-------------|
 | `:s text` | Search for plain text |
 | `:sr regex` | Search with regex |
 | `:ss query` | Search with simple query |
+
+In search mode: `↑`/`↓` navigate matches (wrap around), `Esc` exits. Outside search mode, arrow keys work normally.
 
 ### Filters
 
