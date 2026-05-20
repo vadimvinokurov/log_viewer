@@ -10,8 +10,7 @@ Desktop log file viewer with filtering, highlighting, and search. Built with Pyt
 - Category tree with checkboxes to show or hide log sources
 - Log level toggles (CRITICAL, ERROR, WARNING, INFO, DEBUG, TRACE) with per-level counts
 - Pin important lines to keep them visible
-- Persistent settings across sessions
-- Command bar with tab-autocomplete
+- Command bar for search, filter, highlight, and file operations
 
 ## Installation
 

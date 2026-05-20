@@ -173,7 +173,6 @@ src/log_viewer/
     command_history.py# Persistent command history (~/.logviewer/history.json)
     config.py        # Settings manager (~/.logviewer/settings.json)
     preset_manager.py# Save/load filter+highlight presets (YAML)
-    suggester.py     # Tab-autocomplete for :open (file paths), :cate/:catd (categories)
     themes.py        # Dark/Light theme color definitions
   gui/               # Qt widgets
     app.py           # MainWindow — coordinator, menus, file loading, command dispatch
@@ -181,7 +180,7 @@ src/log_viewer/
     log_table.py     # LogTableView + LogTableModel — main table, vim-style navigation (j/k/g/G/Ctrl-U/Ctrl-D)
     side_panel.py    # QTabWidget: Categories | Filters | Highlights
     bottom_bar.py    # Status label + command input bar
-    command_input.py # QLineEdit with autocomplete popup
+    command_input.py # QLineEdit with Enter/Escape handling
     category_tree.py # QTreeWidget with checkboxes, search filter, enable/disable categories
     filter_list.py   # Scrollable filter list with toggle/delete
     highlight_list.py# Highlight list with color indicators

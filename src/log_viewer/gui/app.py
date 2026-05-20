@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
-    QTextEdit,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -26,7 +25,6 @@ from log_viewer.core.command_parser import ParseError, parse_command
 from log_viewer.core.config import ConfigManager
 from log_viewer.core.log_store import LogStore
 from log_viewer.core.models import Filter, Highlight, LogLevel, RowRef, SearchDirection, SearchMode, _LEVEL_LIST
-from log_viewer.core.suggester import CommandSuggester
 
 from log_viewer.core.typography import Typography
 from log_viewer.gui.bottom_bar import BottomBar
@@ -72,8 +70,6 @@ class MainWindow(QMainWindow):
         self._current_filename: str = ""
         self._config = ConfigManager()
         self._config.load()
-        self._suggester = CommandSuggester()
-        self._suggester.log_store = self.log_store
 
         # Widgets
         self.log_table = LogTableView()
@@ -110,7 +106,6 @@ class MainWindow(QMainWindow):
 
         # Signals
         self.bottom_bar.command_input.command_submitted.connect(self._on_command_submitted)
-        self.bottom_bar.command_input.textChanged.connect(self._on_command_text_changed)
         self.side_panel.category_tree.category_changed.connect(self._on_category_changed)
         self.side_panel.filter_list.filter_changed.connect(self._on_filter_changed)
         self.side_panel.filter_list.filter_removed.connect(self._on_filter_removed)
@@ -220,11 +215,6 @@ class MainWindow(QMainWindow):
         if raw.startswith(":"):
             self._handle_command(raw[1:].strip())
         self.log_table.setFocus()
-
-    def _on_command_text_changed(self, text: str) -> None:
-        if text.startswith(":"):
-            suggestions = self._suggester.get_all_suggestions(text)
-            self.bottom_bar.command_input.set_suggestions(suggestions)
 
     def _handle_command(self, cmd: str) -> None:
         if not cmd:
@@ -442,12 +432,11 @@ class MainWindow(QMainWindow):
             key = event.key()
             ss = self.log_store.search_state
 
-            if text == ":":
+            focused = QApplication.focusWidget()
+            in_command_input = isinstance(focused, QLineEdit)
+
+            if text == ":" and not in_command_input:
                 self.bottom_bar.activate_command_mode()
-                return True
-            if text == "/" and not isinstance(obj, (QLineEdit, QTextEdit)):
-                self.bottom_bar.command_input.setText("/")
-                self.bottom_bar.command_input.setFocus()
                 return True
 
             # Search mode navigation
