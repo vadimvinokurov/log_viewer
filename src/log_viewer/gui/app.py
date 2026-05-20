@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
 
         # Core state
         self.log_store = LogStore()
+        self._current_filename: str = ""
         self._config = ConfigManager()
         self._config.load()
         self._suggester = CommandSuggester()
@@ -180,12 +181,13 @@ class MainWindow(QMainWindow):
     def _on_file_loaded(self, lines: list[str], path: str) -> None:
         self.log_store.load_lines(lines, file_path=path)
         del lines  # Free raw string list immediately
-        # Update window title with filename
-        filename = Path(path).name if not path.startswith(("http://", "https://")) else path
-        self.setWindowTitle(f"Log Viewer \u2014 {filename}")
+        self._current_filename = (
+            Path(path).name if not path.startswith(("http://", "https://")) else path
+        )
         self._hide_empty_state()
         self._refresh_display()
         self._save_last_open_dir(path)
+        self._update_title()
 
     def _on_file_error(self, msg: str) -> None:
         self.bottom_bar.set_status(f"Error: {msg}")
@@ -325,7 +327,10 @@ class MainWindow(QMainWindow):
         if not pattern:
             return
         self.log_store.search(pattern, mode, direction=direction)
+        if self.log_store.search_state:
+            self.log_store.search_state.in_search = True
         self._update_status()
+        self._update_title()
         self._jump_to_search_match()
 
     def _on_category_changed(self) -> None:
@@ -423,6 +428,14 @@ class MainWindow(QMainWindow):
             disabled, store.level_button_counts
         )
 
+    def _update_title(self) -> None:
+        ss = self.log_store.search_state
+        base = f"Log Viewer \u2014 {self._current_filename}" if self._current_filename else "Log Viewer"
+        if ss and ss.in_search:
+            self.setWindowTitle(f"{base} \u2014 Search: {ss.pattern}")
+        else:
+            self.setWindowTitle(base)
+
     def _jump_to_search_match(self) -> None:
         ss = self.log_store.search_state
         if not ss or not ss.matches:
@@ -436,6 +449,13 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, obj, event) -> bool:  # type: ignore[override]
         if event.type() == event.Type.KeyPress:
+            from PySide6.QtGui import QKeyEvent as _QKE
+            if isinstance(event, _QKE) and event.key() == Qt.Key.Key_Escape:
+                ss = self.log_store.search_state
+                if ss and ss.in_search:
+                    ss.in_search = False
+                    self._update_title()
+                    return True
             text = event.text()
             if text == ":":
                 self.bottom_bar.activate_command_mode()

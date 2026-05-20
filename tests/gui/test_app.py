@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from log_viewer.core.models import SearchDirection, SearchMode
 from log_viewer.gui.app import MainWindow
 
 
@@ -158,3 +159,36 @@ def test_command_rmpin_specific_line(main_window):
     main_window._handle_command("rmpin 1")
     assert 1 not in main_window.log_store.pinned_line_numbers
     assert 2 in main_window.log_store.pinned_line_numbers
+
+
+def test_update_title_shows_search_mode(main_window):
+    main_window._on_file_loaded(
+        [
+            "2025-01-01T10:00:00 LOG_INFO app/main hello",
+            "2025-01-01T10:00:01 LOG_INFO app/main error found",
+        ],
+        "test.log",
+    )
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    assert "Search: error" in main_window.windowTitle()
+    assert "test.log" in main_window.windowTitle()
+
+
+def test_update_title_reverts_on_search_exit(main_window):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    main_window._on_file_loaded(
+        [
+            "2025-01-01T10:00:00 LOG_INFO app/main hello",
+            "2025-01-01T10:00:01 LOG_INFO app/main error found",
+        ],
+        "test.log",
+    )
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    assert "Search: error" in main_window.windowTitle()
+    esc_event = QKeyEvent(
+        QKeyEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier
+    )
+    main_window.eventFilter(main_window.log_table, esc_event)
+    assert main_window.windowTitle() == "Log Viewer \u2014 test.log"
