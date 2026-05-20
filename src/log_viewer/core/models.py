@@ -128,6 +128,7 @@ class SearchState:
     direction: SearchDirection
     matches: list[int] = field(default_factory=list)
     current_index: int = 0
+    in_search: bool = False
 
 
 @dataclass

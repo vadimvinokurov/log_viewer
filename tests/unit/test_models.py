@@ -174,6 +174,17 @@ class TestSearchState:
         assert state.current_index == 0
 
 
+def test_search_state_in_search_defaults_false():
+    from log_viewer.core.models import SearchState, SearchMode, SearchDirection
+    state = SearchState(
+        pattern="test",
+        mode=SearchMode.PLAIN,
+        case_sensitive=False,
+        direction=SearchDirection.FORWARD,
+    )
+    assert state.in_search is False
+
+
 class TestCategoryNode:
     def test_create_category_node(self) -> None:
         node = CategoryNode(
