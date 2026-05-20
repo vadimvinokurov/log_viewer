@@ -446,7 +446,10 @@ class MainWindow(QMainWindow):
         pos = int(np.searchsorted(indices, matched_idx))
         if pos < len(indices) and int(indices[pos]) == matched_idx:
             self.log_table.selectRow(pos)
-            self.log_table.scrollTo(self._table_model.index(pos, 0))
+            self.log_table.scrollTo(
+                self._table_model.index(pos, 0),
+                LogTableView.ScrollHint.PositionAtCenter,
+            )
 
     def eventFilter(self, obj, event) -> bool:  # type: ignore[override]
         if event.type() == event.Type.KeyPress:
