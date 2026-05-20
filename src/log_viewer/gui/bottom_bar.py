@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Optional
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+
+if TYPE_CHECKING:
+    from log_viewer.core.command_history import CommandHistory
 
 from log_viewer.core.models import LogLevel
 from log_viewer.core.themes import _t
@@ -112,7 +117,7 @@ class BottomBar(QWidget):
     open_clicked = Signal()
     reload_clicked = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, history: Optional[CommandHistory] = None) -> None:
         super().__init__()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
@@ -125,7 +130,7 @@ class BottomBar(QWidget):
         layout.addWidget(self._open_btn)
         layout.addWidget(self._reload_btn)
 
-        self.command_input = CommandInput()
+        self.command_input = CommandInput(history=history)
         self.command_input.setFrame(False)
         pal = self.command_input.palette()
         pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(_t("slate")))
