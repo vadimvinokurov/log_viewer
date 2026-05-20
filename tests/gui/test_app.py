@@ -299,3 +299,23 @@ def test_n_key_no_longer_navigates_search(main_window):
     )
     main_window.eventFilter(main_window.log_table, n_event)
     assert main_window.log_store.search_state.current_index == initial_index
+
+
+def test_file_reload_resets_search_mode(main_window):
+    main_window._on_file_loaded(
+        [
+            "2025-01-01T10:00:00 LOG_INFO app/main hello",
+            "2025-01-01T10:00:01 LOG_INFO app/main error found",
+        ],
+        "test.log",
+    )
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    assert main_window.log_store.search_state.in_search is True
+    assert "Search" in main_window.windowTitle()
+
+    main_window._on_file_loaded(
+        ["2025-01-01T10:00:00 LOG_INFO app/main hello"],
+        "other.log",
+    )
+    assert "Search" not in main_window.windowTitle()
+    assert "other.log" in main_window.windowTitle()
