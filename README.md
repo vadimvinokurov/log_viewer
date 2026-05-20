@@ -4,7 +4,7 @@ Desktop log file viewer with filtering, highlighting, and search. Built with Pyt
 
 ## Features
 
-- Open local files and HTTP/HTTPS URLs, or drag and drop a file onto the window
+- Open local files via dialog or drag and drop
 - Three match modes: plain text, regex, and boolean query language (`AND`, `OR`, `NOT`)
 - Hide non-matching lines with filters, color matching text with highlights
 - Category tree with checkboxes to show or hide log sources
@@ -144,7 +144,7 @@ Pin specific line numbers to keep them visible regardless of filters.
 
 | Command | Description |
 |---------|-------------|
-| `:open path` | Open a local file or HTTP/HTTPS URL |
+| `:open path` | Open a local file |
 | `:reload` | Reload the current file |
 
 ### Other
