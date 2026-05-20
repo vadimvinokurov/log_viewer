@@ -47,18 +47,6 @@ class _FileLoadWorker(QThread):
 
     def run(self) -> None:
         try:
-            if self._path.startswith(("http://", "https://")):
-                import urllib.request
-
-                req = urllib.request.Request(self._path)
-                with urllib.request.urlopen(req) as resp:
-                    if resp.status >= 400:
-                        self.error.emit(f"HTTP {resp.status}: {resp.reason}")
-                        return
-                    data = resp.read().decode("utf-8", errors="replace")
-                    self.loaded.emit(data.split("\n"), self._path)
-                    return
-
             file_path = Path(os.path.expanduser(self._path))
             if not file_path.exists():
                 self.error.emit(f"File not found: {self._path}")
@@ -174,16 +162,13 @@ class MainWindow(QMainWindow):
 
     def _save_last_open_dir(self, path: str) -> None:
         """Persist the directory of an opened file for next dialog start."""
-        if not path.startswith(("http://", "https://")):
-            self._config.set("last_open_dir", os.path.dirname(path))
-            self._config.save()
+        self._config.set("last_open_dir", os.path.dirname(path))
+        self._config.save()
 
     def _on_file_loaded(self, lines: list[str], path: str) -> None:
         self.log_store.load_lines(lines, file_path=path)
         del lines  # Free raw string list immediately
-        self._current_filename = (
-            Path(path).name if not path.startswith(("http://", "https://")) else path
-        )
+        self._current_filename = Path(path).name
         self._hide_empty_state()
         self._refresh_display()
         self._save_last_open_dir(path)
