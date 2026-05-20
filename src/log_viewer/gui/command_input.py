@@ -46,11 +46,11 @@ class CommandInput(QLineEdit):
         if key == Qt.Key.Key_Up:
             if self._history:
                 self.setText(self._history.navigate_up())
-            return
+                return
 
         if key == Qt.Key.Key_Down:
             if self._history:
                 self.setText(self._history.navigate_down())
-            return
+                return
 
         super().keyPressEvent(event)
