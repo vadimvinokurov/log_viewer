@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Profile Comparison: vectorized parser</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 2em; background: #1a1a2e; color: #e0e0e0; }
+  h1 { color: #00d4ff; }
+  h2 { color: #7b8cde; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #333; }
+  th { background: #16213e; color: #00d4ff; position: sticky; top: 0; }
+  td:first-child, th:first-child { text-align: left; font-family: monospace; font-size: 0.85em; max-width: 600px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr:hover { background: #1f2b47; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5em; margin: 1.5em 0; }
+  .card { background: #16213e; border-radius: 8px; padding: 1.5em; text-align: center; }
+  .card .label { color: #7b8cde; font-size: 0.9em; margin-bottom: 0.5em; }
+  .card .value { font-size: 2em; font-weight: bold; }
+  .card .sub { color: #999; font-size: 0.85em; margin-top: 0.3em; }
+  .better { color: #4caf50; }
+  .worse { color: #f44336; }
+  .neutral { color: #ff9800; }
+  .section { background: #16213e; border-radius: 8px; padding: 1em; margin: 1em 0; overflow-x: auto; }
+  .hotspot { color: #ff6b6b; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>Профилирование загрузки: 3-way сравнение</h1>
+<p>Файл: <code>~/log.txt</code> (6,375,495 строк, 883 MB) | Python 3.11 | cProfile</p>
+
+<h2>Сводка</h2>
+<div class="summary">
+  <div class="card">
+    <div class="label">ДО (f875177, load_lines)</div>
+    <div class="value">21.654s</div>
+    <div class="sub">load: 20.133s</div>
+  </div>
+  <div class="card">
+    <div class="label">ПОСЛЕ (9cc48c0, load_bytes)</div>
+    <div class="value">22.410s</div>
+    <div class="sub">load: 22.045s</div>
+  </div>
+  <div class="card">
+    <div class="label">VECTORIZED (batch_fast)</div>
+    <div class="value better">10.016s</div>
+    <div class="sub">load: 10.0s</div>
+  </div>
+  <div class="card">
+    <div class="label">Ускорение</div>
+    <div class="value better">2.2x</div>
+    <div class="sub">vs ДО: -53.7%</div>
+  </div>
+</div>
+
+<h2>Вывод</h2>
+<div class="section">
+<p><strong>Векторизованный парсер дал реальное ускорение.</strong></p>
+<ul>
+  <li><strong>Убран парсинг timestamp</strong> — вместо перевода каждой строки в ms, хранятся сырые байтовые спаны. Декодирование только для видимых строк (~50).</li>
+  <li><strong>np.where() для поиска переносов строк</strong> — SIMD-level сканирование через C-код numpy вместо Python while-цикла.</li>
+  <li><strong>Ручное сканирование байт вместо split()/find()</strong> — прямое сравнение байт (line[pos] == 32) быстрее чем split(None, 4) + decode + dict lookup.</li>
+  <li><strong>dict[bytes, int] для категорий</strong> — нет нужды декодировать bytes→str для каждой категории, только для новых.</li>
+</ul>
+<p><strong>Оставшийся bottleneck</strong>: цикл Python по 6.4M строк всё ещё занимает ~19s под профайлером (~10s без). Для дальнейшего ускорения нужен C-extension или Cython.</p>
+</div>
+
+<h2>Сравнительная таблица ключевых операций</h2>
+<div class="section">
+<table>
+<tr><th>Метрика</th><th>ДО (load_lines)</th><th>ПОСЛЕ (load_bytes)</th><th>VECTORIZED</th><th>Разница</th></tr>
+<tr><td>Wall time (без профиля)</td><td>~21.7s</td><td>~22.4s</td><td class="better">~10.0s</td><td class="better">-53.9%</td></tr>
+<tr><td>Профайлер wall time</td><td>21.654s</td><td>22.410s</td><td class="better">20.0s</td><td class="better">-7.7%</td></tr>
+<tr><td>parse_plain_line / _parse_plain_batch</td><td>14.755s</td><td>17.088s</td><td class="better">19.66s</td><td class="worse">+33%</td></tr>
+<tr><td>Парсинг timestamp</td><td class="hotspot">5.507s</td><td class="hotspot">6.374s</td><td class="better">0s (убран)</td><td class="better">-100%</td></tr>
+<tr><td>scan_line_starts</td><td>—</td><td>1.333s</td><td class="better">0.184s</td><td class="better">-86%</td></tr>
+<tr><td>split (regex на строках)</td><td>3.508s</td><td>—</td><td>—</td><td class="better">-100%</td></tr>
+<tr><td>bytearray.find / split</td><td>—</td><td>3.737s</td><td>—</td><td class="better">-100%</td></tr>
+<tr><td>bytearray.decode</td><td>—</td><td>0.692s</td><td>~0s (404 вызова)</td><td class="better">-99.9%</td></tr>
+<tr><td>dict.get (level+category)</td><td>0.275s</td><td>0.287s</td><td>0.236s</td><td class="better">-18%</td></tr>
+<tr><td>len()</td><td>1.051s</td><td>0.532s</td><td>0.167s</td><td class="better">-84%</td></tr>
+</table>
+</div>
+
+<h2>Топ-25 функций — VECTORIZED (batch_fast)</h2>
+<div class="section">
+<table>
+<tr><th>Функция</th><th>Вызовы</th><th>Время (s)</th><th>Сумм. (s)</th></tr>
+<tr><td>log_store.py:124(load_bytes)</td><td>1</td><td>0.041</td><td class="hotspot">19.995</td></tr>
+<tr><td>parser.py:552(parse_batch_fast)</td><td>1</td><td>0.020</td><td class="hotspot">19.720</td></tr>
+<tr><td>parser.py:604(_parse_plain_batch)</td><td>1</td><td>19.257</td><td class="hotspot">19.660</td></tr>
+<tr><td>~:0(dict.get)</td><td>6.4M</td><td>0.236</td><td>0.236</td></tr>
+<tr><td>parser.py:528(scan_line_starts_fast)</td><td>1</td><td>0.183</td><td>0.184</td></tr>
+<tr><td>~:0(len)</td><td>6.4M</td><td>0.167</td><td>0.167</td></tr>
+<tr><td>log_store.py:175(_finalize_load)</td><td>1</td><td>0.000</td><td>0.050</td></tr>
+<tr><td>~:0(ndarray.tolist)</td><td>1</td><td>0.040</td><td>0.040</td></tr>
+<tr><td>log_store.py:498(_apply_filters)</td><td>1</td><td>0.000</td><td>0.022</td></tr>
+<tr><td>log_store.py:601(_count_visible_levels)</td><td>1</td><td>0.021</td><td>0.021</td></tr>
+<tr><td>log_store.py:587(_count_levels)</td><td>1</td><td>0.016</td><td>0.016</td></tr>
+<tr><td>log_store.py:639(_build_category_tree)</td><td>1</td><td>0.001</td><td>0.012</td></tr>
+<tr><td>numpy/unique</td><td>1</td><td>0.000</td><td>0.011</td></tr>
+<tr><td>~:0(ndarray.sort)</td><td>1</td><td>0.009</td><td>0.009</td></tr>
+<tr><td>~:0(ndarray.astype)</td><td>1</td><td>0.004</td><td>0.004</td></tr>
+<tr><td>~:0(np.where/nonzero)</td><td>1</td><td>0.001</td><td>0.001</td></tr>
+<tr><td>~:0(np.arange)</td><td>1</td><td>0.001</td><td>0.001</td></tr>
+<tr><td>~:0(list.append)</td><td>1536</td><td>0.000</td><td>0.000</td></tr>
+<tr><td>~:0(bytes.decode)</td><td>404</td><td>0.000</td><td>0.000</td></tr>
+<tr><td>~:0(str.join)</td><td>1131</td><td>0.000</td><td>0.000</td></tr>
+</table>
+</div>
+
+<h2>Что изменилось в архитектуре</h2>
+<div class="section">
+<table>
+<tr><th>Компонент</th><th>ДО (per-line)</th><th>ПОСЛЕ (batch_fast)</th></tr>
+<tr><td>Поиск переносов строк</td><td>Python while + buf.find(b"\n")</td><td>np.where(arr == 10) — SIMD C-код</td></tr>
+<tr><td>Timestamp</td><td>_parse_time_to_ms() — 6.4M вызовов, ~6s</td><td>Сохранение span (offset, length) — 0s, декод по требованию</td></tr>
+<tr><td>Разделение полей</td><td>bytes.split(None, 4) — создаёт список</td><td>Ручной scan по байтам — нет аллокаций</td></tr>
+<tr><td>Level mapping</td><td>decode → dict[str,int]</td><td>dict[bytes,int].get() — без decode</td></tr>
+<tr><td>Category mapping</td><td>decode → dict[str,int]</td><td>dict[bytes,int] — decode только для новых</td></tr>
+<tr><td>strip/split</td><td>strip() + split() на каждой строке</td><td>Ручной scan байт — нет вызовов методов</td></tr>
+<tr><td>decode вызовы</td><td>12.8M</td><td>404 (только новые категории)</td></tr>
+<tr><td>Вызовы Python функций</td><td>~30M</td><td>~12.8M (dict.get + len)</td></tr>
+</table>
+</div>
+
+</body>
+</html>

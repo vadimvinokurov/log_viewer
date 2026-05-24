@@ -6,8 +6,8 @@ import numpy as np
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtWidgets import QApplication
 
-from log_viewer.core.log_store import LogStore
-from log_viewer.core.models import LogLine, LogLevel, OFFSET_DTYPE, _LEVEL_LIST, RowRef
+from log_viewer.core.log_store import LogStore, SPAN_DTYPE
+from log_viewer.core.models import LogLine, LogLevel, _LEVEL_LIST, RowRef
 from log_viewer.gui.log_table import LogTableModel, LogTableView
 
 
@@ -20,6 +20,24 @@ def _populate_store(store: LogStore, lines: list[LogLine]) -> None:
     if n == 0:
         store._apply_filters()
         return
+
+    # Build byte buffer from messages
+    buf = bytearray()
+    line_starts_list = [0]
+    msg_offsets = []
+    msg_lengths = []
+    for l in lines:
+        msg_bytes = l.message.encode("utf-8")
+        msg_offsets.append(len(buf))
+        msg_lengths.append(len(msg_bytes))
+        buf.extend(msg_bytes)
+        line_starts_list.append(len(buf))
+    store._buf = buf
+    store.line_starts = np.array(line_starts_list, dtype=np.uint64)
+    store.message_spans = np.array(
+        list(zip(msg_offsets, msg_lengths)),
+        dtype=SPAN_DTYPE,
+    )
 
     store.timestamps = np.array(
         [_parse_time_to_ms(l.timestamp) for l in lines], dtype=np.uint64
@@ -41,12 +59,6 @@ def _populate_store(store: LogStore, lines: list[LogLine]) -> None:
     level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
     store.levels = np.array(
         [level_map.get(l.level, 3) for l in lines], dtype=np.uint8
-    )
-
-    store.messages = [l.message for l in lines]
-
-    store.offsets = np.array(
-        [(l.file_offset, l.line_length) for l in lines], dtype=OFFSET_DTYPE
     )
 
     store._build_category_tree()

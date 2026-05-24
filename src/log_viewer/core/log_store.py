@@ -1,4 +1,4 @@
-"""Central store for parsed log data (SoA layout)."""
+"""Central store for parsed log data (SoA layout with byte buffer)."""
 
 from __future__ import annotations
 
@@ -7,14 +7,12 @@ from typing import Optional
 
 import numpy as np
 
-from log_viewer.core.filter_engine import batch_match, match as filter_match
+from log_viewer.core import filter_engine
 from log_viewer.core.models import (
     CategoryNode,
     Filter,
     Highlight,
-    LogFormat,
     LogLevel,
-    OFFSET_DTYPE,
     RowRef,
     SearchDirection,
     SearchMode,
@@ -22,7 +20,9 @@ from log_viewer.core.models import (
     _LEVEL_LIST,
 )
 from log_viewer.core.palette import HIGHLIGHT_PALETTE
-from log_viewer.core.parser import detect_format
+
+# dtype for message spans: offset into _buf and length
+SPAN_DTYPE = np.dtype([("offset", np.uint64), ("length", np.uint32)])
 
 
 def _merge_sorted(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -38,18 +38,24 @@ def _merge_sorted(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 class LogStore:
     """Holds parsed log data in Structure-of-Arrays layout.
 
-    Instead of a list of LogLine objects, data is stored in separate
-    contiguous numpy arrays indexed by row position (0-based).
+    Data is stored in a single byte buffer (_buf) with numpy arrays
+    of indices for compact, cache-friendly access.
     """
 
     def __init__(self) -> None:
+        # --- Byte buffer ---
+        self._buf: bytearray = bytearray()
+
         # --- SoA column arrays (all length n) ---
         self.n: int = 0
         self.timestamps: np.ndarray = np.empty(0, dtype=np.uint64)
+        self.timestamp_spans: np.ndarray = np.empty(0, dtype=SPAN_DTYPE)
         self.category_ids: np.ndarray = np.empty(0, dtype=np.uint16)
         self.levels: np.ndarray = np.empty(0, dtype=np.uint8)
-        self.messages: list[str] = []
-        self.offsets: np.ndarray = np.empty(0, dtype=OFFSET_DTYPE)
+        self.message_spans: np.ndarray = np.empty(0, dtype=SPAN_DTYPE)
+
+        # --- Line boundaries (length n+1, last = len(_buf)) ---
+        self.line_starts: np.ndarray = np.empty(0, dtype=np.uint64)
 
         # --- Category mapping ---
         self._category_names: list[str] = []
@@ -76,7 +82,7 @@ class LogStore:
         self.pinned_line_numbers: set[int] = set()
 
     # ------------------------------------------------------------------ #
-    #  Backward-compatible property: `lines`                              #
+    #  Backward-compatible properties                                      #
     # ------------------------------------------------------------------ #
 
     @property
@@ -84,60 +90,94 @@ class LogStore:
         """Build list of RowRef on demand (for backward compat)."""
         return [RowRef(i, self) for i in range(self.n)]
 
+    @property
+    def messages(self) -> list[str]:
+        """Decode all messages on demand (for backward compat)."""
+        return [self.get_message(i) for i in range(self.n)]
+
+    @messages.setter
+    def messages(self, value: list[str]) -> None:
+        """No-op setter for backward compat (load_bytes handles data)."""
+        pass
+
+    @property
+    def offsets(self) -> np.ndarray:
+        """Compute offsets from line_starts for backward compat."""
+        if self.n == 0:
+            return np.empty(0, dtype=np.dtype([("file_offset", np.uint64), ("line_length", np.uint32)]))
+        dt = np.dtype([("file_offset", np.uint64), ("line_length", np.uint32)])
+        result = np.empty(self.n, dtype=dt)
+        for i in range(self.n):
+            result[i]["file_offset"] = self.line_starts[i]
+            result[i]["line_length"] = self.line_starts[i + 1] - self.line_starts[i]
+        return result
+
+    @offsets.setter
+    def offsets(self, value: np.ndarray) -> None:
+        """No-op setter for backward compat."""
+        pass
+
     # ------------------------------------------------------------------ #
-    #  File loading                                                       #
+    #  File loading                                                        #
     # ------------------------------------------------------------------ #
 
-    def load_lines(self, raw_lines: list[str], file_path: Optional[str] = None) -> None:
-        """Parse raw lines and rebuild all indices."""
-        n = len(raw_lines)
+    def load_bytes(self, buf: bytearray, file_path: Optional[str] = None) -> None:
+        """Parse a byte buffer and rebuild all indices."""
+        from log_viewer.core.parser import (
+            detect_format_bytes,
+            parse_batch_fast,
+            scan_line_starts_fast,
+        )
+
+        self._buf = buf
+
+        # Scan line boundaries using numpy (SIMD)
+        line_starts = scan_line_starts_fast(buf)
+        n = len(line_starts) - 1
         self.n = n
 
-        fmt = detect_format(raw_lines)
+        if n == 0:
+            self.timestamps = np.empty(0, dtype=np.uint64)
+            self.timestamp_spans = np.empty(0, dtype=SPAN_DTYPE)
+            self.category_ids = np.empty(0, dtype=np.uint16)
+            self.levels = np.empty(0, dtype=np.uint8)
+            self.message_spans = np.empty(0, dtype=SPAN_DTYPE)
+            self.line_starts = line_starts
+            self._finalize_load(file_path)
+            return
 
-        # Compute byte offsets
-        offsets_data: list[tuple[int, int]] = []
-        offset = 0
-        for raw in raw_lines:
-            line_bytes = raw.encode("utf-8")
-            offsets_data.append((offset, len(line_bytes)))
-            offset += len(line_bytes) + 1
+        self.line_starts = line_starts
 
-        # Parse into separate lists
-        from log_viewer.core.parser import parse_line_soa, parse_plain_line_soa
+        # Detect format
+        fmt = detect_format_bytes(bytes(buf))
 
-        cat_name_to_id: dict[str, int] = {"uncategorized": 0}
-        cat_names: list[str] = ["uncategorized"]
+        # Batch parse
+        ts_spans, cat_names, cat_name_to_id, cat_ids, levels, msg_spans = parse_batch_fast(
+            buf, line_starts, fmt
+        )
 
-        ts_list: list[int] = [0] * n
-        cat_list: list[int] = [0] * n
-        lvl_list: list[int] = [3] * n  # default INFO=3
-        msg_list: list[str] = [""] * n
+        self.timestamp_spans = ts_spans
+        self.timestamps = np.empty(0, dtype=np.uint64)  # legacy, unused in fast path
+        self.category_ids = cat_ids
+        self.levels = levels
+        self.message_spans = msg_spans
+        self._category_names = cat_names
+        self._category_name_to_id = cat_name_to_id
 
-        parse_fn = parse_plain_line_soa if fmt == LogFormat.PLAIN else parse_line_soa
-        for i, raw in enumerate(raw_lines):
-            ts, cat_id, lvl_id, msg = parse_fn(raw, cat_name_to_id, cat_names)
-            ts_list[i] = ts
-            cat_list[i] = cat_id
-            lvl_list[i] = lvl_id
-            msg_list[i] = msg
+        self._finalize_load(file_path)
 
-        # Convert to numpy, free temporary lists
-        self.timestamps = np.array(ts_list, dtype=np.uint64)
-        self.category_ids = np.array(cat_list, dtype=np.uint16)
-        self.levels = np.array(lvl_list, dtype=np.uint8)
-        self.messages = msg_list
-        self.offsets = np.array(offsets_data, dtype=OFFSET_DTYPE)
+    def load_lines(self, raw_lines: list[str], file_path: Optional[str] = None) -> None:
+        """Parse raw string lines and rebuild all indices (backward compat)."""
+        # Convert strings to a single bytearray
+        buf = bytearray("\n".join(raw_lines).encode("utf-8"))
+        self.load_bytes(buf, file_path=file_path)
 
-        del ts_list, cat_list, lvl_list, offsets_data
-        del raw_lines
-
+    def _finalize_load(self, file_path: Optional[str]) -> None:
+        """Common post-load logic: restore state, build tree, apply filters."""
         # Snapshot disabled category paths from tree (includes intermediate nodes)
         disabled_cat_names: set[str] = set()
         self._collect_disabled_paths(self.category_tree, disabled_cat_names)
 
-        self._category_names = cat_names
-        self._category_name_to_id = cat_name_to_id
         self.current_file = file_path
         # disabled_levels intentionally not reset — preserved across reload
         self.disabled_categories = set()
@@ -152,8 +192,6 @@ class LogStore:
         self._build_category_tree()
 
         # Sync tree node.enabled flags with restored disabled set.
-        # Set each node directly (not recursive) to preserve leaf-priority
-        # re-enables (a child explicitly enabled under a disabled parent).
         for name in disabled_cat_names:
             node = self._find_category_node(name)
             if node:
@@ -163,20 +201,50 @@ class LogStore:
         self._apply_filters()
 
     # ------------------------------------------------------------------ #
-    #  Raw line access                                                     #
+    #  Message / raw line access                                           #
     # ------------------------------------------------------------------ #
 
+    def get_message(self, index: int) -> str:
+        """Decode message text on demand from byte buffer."""
+        if index < 0 or index >= self.n:
+            return ""
+        off = int(self.message_spans[index]["offset"])
+        ln = int(self.message_spans[index]["length"])
+        return self._buf[off:off + ln].decode("utf-8", errors="replace")
+
+    def get_message_bytes(self, index: int) -> bytes:
+        """Return message as bytes (zero-copy view)."""
+        if index < 0 or index >= self.n:
+            return b""
+        off = int(self.message_spans[index]["offset"])
+        ln = int(self.message_spans[index]["length"])
+        return bytes(self._buf[off:off + ln])
+
+    def get_timestamp(self, index: int) -> str:
+        """Decode timestamp on demand from byte buffer or legacy uint64 array."""
+        if index < 0 or index >= self.n:
+            return ""
+        # Fast path: byte spans from parse_batch_fast
+        if len(self.timestamp_spans) > 0:
+            off = int(self.timestamp_spans[index]["offset"])
+            ln = int(self.timestamp_spans[index]["length"])
+            if ln == 0:
+                return ""
+            raw = self._buf[off:off + ln].decode("utf-8", errors="replace")
+            return raw.split("T")[-1] if "T" in raw else raw
+        # Legacy path: pre-parsed uint64 milliseconds
+        if len(self.timestamps) > 0:
+            from log_viewer.core.models import format_timestamp
+            return format_timestamp(int(self.timestamps[index]))
+        return ""
+
     def get_raw(self, index: int) -> str:
-        """Read raw line from file by index (opens file on each call)."""
-        if self.current_file is None or index < 0 or index >= self.n:
+        """Return raw line text from byte buffer."""
+        if index < 0 or index >= self.n:
             return ""
-        off = self.offsets[index]
-        try:
-            with open(self.current_file, "rb") as f:
-                f.seek(int(off["file_offset"]))
-                return f.read(int(off["line_length"])).decode("utf-8", errors="replace")
-        except (OSError, ValueError):
-            return ""
+        start = int(self.line_starts[index])
+        end = int(self.line_starts[index + 1])
+        return self._buf[start:end].decode("utf-8", errors="replace").rstrip("\n\r")
 
     # ------------------------------------------------------------------ #
     #  Filters                                                            #
@@ -263,19 +331,34 @@ class LogStore:
         direction: SearchDirection = SearchDirection.FORWARD,
     ) -> SearchState:
         matches: list[int] = []
-        msgs = self.messages
-        # Convert to Python list for fast iteration (avoids numpy scalar overhead)
+        buf = self._buf
+        spans = self.message_spans
         indices = self.filtered_indices.tolist()
 
         if mode == SearchMode.PLAIN and not case_sensitive:
-            pat_lower = pattern.lower()
+            pat_lower = pattern.lower().encode("utf-8")
             for idx in indices:
-                if pat_lower in msgs[idx].lower():
+                off = int(spans[idx]["offset"])
+                ln = int(spans[idx]["length"])
+                msg = bytes(buf[off:off + ln])
+                if pat_lower in msg.lower():
+                    matches.append(idx)
+        elif mode == SearchMode.PLAIN and case_sensitive:
+            pat_bytes = pattern.encode("utf-8")
+            for idx in indices:
+                off = int(spans[idx]["offset"])
+                ln = int(spans[idx]["length"])
+                msg = bytes(buf[off:off + ln])
+                if pat_bytes in msg:
                     matches.append(idx)
         else:
+            # Regex and simple query: use filter engine on bytes
             filt = Filter(pattern=pattern, mode=mode, case_sensitive=case_sensitive)
             for idx in indices:
-                if filter_match(msgs[idx], filt):
+                off = int(spans[idx]["offset"])
+                ln = int(spans[idx]["length"])
+                msg = bytes(buf[off:off + ln])
+                if filter_engine.match_bytes(msg, filt):
                     matches.append(idx)
 
         start = 0
@@ -413,7 +496,7 @@ class LogStore:
     # ------------------------------------------------------------------ #
 
     def _apply_filters(self) -> None:
-        """Recompute filtered_indices using vectorized numpy operations."""
+        """Recompute filtered_indices using vectorized numpy + byte matching."""
         if self.n == 0:
             self.filtered_indices = np.empty(0, dtype=np.uint32)
             return
@@ -460,11 +543,8 @@ class LogStore:
             would_be_visible = cat_level_indices.astype(np.uint32)
         else:
             active_filters = [f for f, e in zip(self.filters, self.filter_enabled) if e]
-            # Build message lists for batch_match
             cat_level_list = cat_level_indices.tolist()
-            messages = [self.messages[i] for i in cat_level_list]
-            lowered = [self.messages[i].lower() for i in cat_level_list]
-            matched_positions = batch_match(messages, active_filters, pre_lowered=lowered)
+            matched_positions = self._batch_match_bytes(cat_level_list, active_filters)
             would_be_visible = cat_level_indices[np.array(sorted(matched_positions), dtype=np.intp)].astype(np.uint32)
 
         # Count per level for buttons (category + text filtering, ignoring level toggles)
@@ -486,6 +566,23 @@ class LogStore:
 
         self.filtered_indices = result
         self._count_visible_levels()
+
+    def _batch_match_bytes(
+        self, indices: list[int], filters: list[Filter]
+    ) -> set[int]:
+        """Match filters against byte-buffer message spans."""
+        if not indices or not filters:
+            return set(range(len(indices))) if not filters else set()
+
+        buf = self._buf
+        spans = self.message_spans
+
+        # Extract byte slices for all candidate indices
+        messages = [
+            bytes(buf[int(spans[idx]["offset"]):int(spans[idx]["offset"]) + int(spans[idx]["length"])])
+            for idx in indices
+        ]
+        return filter_engine.batch_match_bytes(messages, filters)
 
     def _count_levels(self) -> None:
         """Count log levels across all lines using vectorized bincount."""

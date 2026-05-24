@@ -8,6 +8,11 @@ from log_viewer.core.models import SearchDirection, SearchMode
 from log_viewer.gui.app import MainWindow
 
 
+def _buf(*lines: str) -> bytearray:
+    """Helper: join lines with newlines and return as bytearray."""
+    return bytearray("\n".join(lines).encode("utf-8"))
+
+
 @pytest.fixture
 def main_window(qtbot):
     win = MainWindow()
@@ -163,10 +168,10 @@ def test_command_rmpin_specific_line(main_window):
 
 def test_do_search_activates_in_search_when_matches_found(main_window):
     main_window._on_file_loaded(
-        [
+        _buf(
             "2025-01-01T10:00:00 LOG_INFO app/main hello",
             "2025-01-01T10:00:01 LOG_INFO app/main error found",
-        ],
+        ),
         "test.log",
     )
     main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
@@ -176,7 +181,7 @@ def test_do_search_activates_in_search_when_matches_found(main_window):
 
 def test_do_search_does_not_activate_when_no_matches(main_window):
     main_window._on_file_loaded(
-        ["2025-01-01T10:00:00 LOG_INFO app/main hello"],
+        _buf("2025-01-01T10:00:00 LOG_INFO app/main hello"),
         "test.log",
     )
     main_window._do_search("nonexistent", SearchMode.PLAIN, SearchDirection.FORWARD)
@@ -186,10 +191,10 @@ def test_do_search_does_not_activate_when_no_matches(main_window):
 
 def test_update_title_shows_search_mode(main_window):
     main_window._on_file_loaded(
-        [
+        _buf(
             "2025-01-01T10:00:00 LOG_INFO app/main hello",
             "2025-01-01T10:00:01 LOG_INFO app/main error found",
-        ],
+        ),
         "test.log",
     )
     main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
@@ -202,10 +207,10 @@ def test_update_title_reverts_on_search_exit(main_window):
     from PySide6.QtGui import QKeyEvent
 
     main_window._on_file_loaded(
-        [
+        _buf(
             "2025-01-01T10:00:00 LOG_INFO app/main hello",
             "2025-01-01T10:00:01 LOG_INFO app/main error found",
-        ],
+        ),
         "test.log",
     )
     main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
@@ -222,11 +227,11 @@ def test_arrow_down_navigates_next_match_in_search_mode(main_window):
     from PySide6.QtGui import QKeyEvent
 
     main_window._on_file_loaded(
-        [
+        _buf(
             "2025-01-01T10:00:00 LOG_INFO app/main error one",
             "2025-01-01T10:00:01 LOG_INFO app/main error two",
             "2025-01-01T10:00:02 LOG_INFO app/main other",
-        ],
+        ),
         "test.log",
     )
     main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
@@ -244,11 +249,11 @@ def test_arrow_up_navigates_prev_match_in_search_mode(main_window):
     from PySide6.QtGui import QKeyEvent
 
     main_window._on_file_loaded(
-        [
+        _buf(
             "2025-01-01T10:00:00 LOG_INFO app/main error one",
             "2025-01-01T10:00:01 LOG_INFO app/main error two",
             "2025-01-01T10:00:02 LOG_INFO app/main other",
-        ],
+        ),
         "test.log",
     )
     main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
@@ -264,10 +269,10 @@ def test_arrow_keys_normal_when_not_in_search(main_window):
     from PySide6.QtGui import QKeyEvent
 
     main_window._on_file_loaded(
-        [
+        _buf(
             "2025-01-01T10:00:00 LOG_INFO app/main hello",
             "2025-01-01T10:00:01 LOG_INFO app/main world",
-        ],
+        ),
         "test.log",
     )
     down = QKeyEvent(
@@ -282,10 +287,10 @@ def test_n_key_no_longer_navigates_search(main_window):
     from PySide6.QtGui import QKeyEvent
 
     main_window._on_file_loaded(
-        [
+        _buf(
             "2025-01-01T10:00:00 LOG_INFO app/main error one",
             "2025-01-01T10:00:01 LOG_INFO app/main error two",
-        ],
+        ),
         "test.log",
     )
     main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
@@ -303,10 +308,10 @@ def test_n_key_no_longer_navigates_search(main_window):
 
 def test_file_reload_resets_search_mode(main_window):
     main_window._on_file_loaded(
-        [
+        _buf(
             "2025-01-01T10:00:00 LOG_INFO app/main hello",
             "2025-01-01T10:00:01 LOG_INFO app/main error found",
-        ],
+        ),
         "test.log",
     )
     main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
@@ -314,7 +319,7 @@ def test_file_reload_resets_search_mode(main_window):
     assert "Search" in main_window.windowTitle()
 
     main_window._on_file_loaded(
-        ["2025-01-01T10:00:00 LOG_INFO app/main hello"],
+        _buf("2025-01-01T10:00:00 LOG_INFO app/main hello"),
         "other.log",
     )
     assert "Search" not in main_window.windowTitle()

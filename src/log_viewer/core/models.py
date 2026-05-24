@@ -199,8 +199,7 @@ class RowRef:
 
     @property
     def timestamp(self) -> str:
-        from log_viewer.core.models import format_timestamp
-        return format_timestamp(self._store.timestamps[self._idx])
+        return self._store.get_timestamp(self._idx)
 
     @property
     def time_only(self) -> str:
@@ -217,15 +216,15 @@ class RowRef:
 
     @property
     def message(self) -> str:
-        return self._store.messages[self._idx]
+        return self._store.get_message(self._idx)
 
     @property
     def file_offset(self) -> int:
-        return int(self._store.offsets[self._idx]["file_offset"])
+        return int(self._store.line_starts[self._idx])
 
     @property
     def line_length(self) -> int:
-        return int(self._store.offsets[self._idx]["line_length"])
+        return int(self._store.line_starts[self._idx + 1] - self._store.line_starts[self._idx])
 
     def __repr__(self) -> str:
         return (

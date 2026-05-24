@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, Qt, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QWheelEvent
+from PySide6.QtGui import QColor, QWheelEvent
 from PySide6.QtWidgets import QApplication, QMenu, QTableView
 
-from log_viewer.core.models import Highlight, RowRef, _LEVEL_LIST, format_timestamp
+from log_viewer.core.log_store import SPAN_DTYPE
+from log_viewer.core.models import Highlight, RowRef, _LEVEL_LIST
 from log_viewer.core.themes import _t
 from log_viewer.gui.highlight_delegate import HighlightDelegate
 
@@ -90,11 +91,11 @@ class LogTableModel(QAbstractTableModel):
             if col == 0:
                 return str(idx + 1)  # line_number = idx + 1
             if col == 1:
-                return format_timestamp(int(store.timestamps[idx]))
+                return store.get_timestamp(idx)
             if col == 2:
                 return store._category_names[store.category_ids[idx]]
             if col == 3:
-                return store.messages[idx]
+                return store.get_message(idx)
             return None
 
         if role == Qt.ItemDataRole.ForegroundRole:
@@ -206,22 +207,41 @@ class LogTableModel(QAbstractTableModel):
             self.update_indices(indices, selection_model, table_view)
         else:
             # LogLine path — repopulate store from scratch
-            from log_viewer.core.models import OFFSET_DTYPE, _LEVEL_LIST
+            from log_viewer.core.models import _LEVEL_LIST
             from log_viewer.core.parser import _parse_time_to_ms
 
             n = len(lines)
             store = self._store
             store.n = n
             if n == 0:
+                store._buf = bytearray()
                 store.timestamps = np.empty(0, dtype=np.uint64)
                 store.category_ids = np.empty(0, dtype=np.uint16)
                 store.levels = np.empty(0, dtype=np.uint8)
-                store.messages = []
-                store.offsets = np.empty(0, dtype=OFFSET_DTYPE)
+                store.line_starts = np.empty(0, dtype=np.uint64)
+                store.message_spans = np.empty(0, dtype=SPAN_DTYPE)
                 store._apply_filters()
                 self.update_indices(store.filtered_indices, selection_model, table_view)
                 return
 
+            # Build byte buffer from LogLine messages
+            buf = bytearray()
+            line_starts_list = [0]
+            msg_offsets = []
+            msg_lengths = []
+            for ln in lines:
+                msg_bytes = ln.message.encode("utf-8")
+                msg_offsets.append(len(buf))
+                msg_lengths.append(len(msg_bytes))
+                buf.extend(msg_bytes)
+                line_starts_list.append(len(buf))
+
+            store._buf = buf
+            store.line_starts = np.array(line_starts_list, dtype=np.uint64)
+            store.message_spans = np.array(
+                list(zip(msg_offsets, msg_lengths)),
+                dtype=SPAN_DTYPE,
+            )
             store.timestamps = np.array(
                 [_parse_time_to_ms(ln.timestamp) for ln in lines], dtype=np.uint64
             )
@@ -241,10 +261,6 @@ class LogTableModel(QAbstractTableModel):
             level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
             store.levels = np.array(
                 [level_map.get(ln.level, 3) for ln in lines], dtype=np.uint8
-            )
-            store.messages = [ln.message for ln in lines]
-            store.offsets = np.array(
-                [(ln.file_offset, ln.line_length) for ln in lines], dtype=OFFSET_DTYPE
             )
             store._build_category_tree()
             store._count_levels()

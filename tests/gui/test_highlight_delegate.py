@@ -9,8 +9,8 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import QStyleOptionViewItem
 
-from log_viewer.core.log_store import LogStore
-from log_viewer.core.models import Highlight, LogLine, LogLevel, OFFSET_DTYPE, SearchMode, _LEVEL_LIST
+from log_viewer.core.log_store import LogStore, SPAN_DTYPE
+from log_viewer.core.models import Highlight, LogLine, LogLevel, SearchMode, _LEVEL_LIST
 from log_viewer.core.typography import Typography
 from log_viewer.gui.highlight_delegate import HighlightDelegate
 from log_viewer.gui.log_table import LogTableModel
@@ -35,6 +35,24 @@ def _make_model(lines: list[LogLine]) -> LogTableModel:
     n = len(lines)
     store.n = n
     if n > 0:
+        # Build byte buffer from messages
+        buf = bytearray()
+        line_starts_list = [0]
+        msg_offsets = []
+        msg_lengths = []
+        for l in lines:
+            msg_bytes = l.message.encode("utf-8")
+            msg_offsets.append(len(buf))
+            msg_lengths.append(len(msg_bytes))
+            buf.extend(msg_bytes)
+            line_starts_list.append(len(buf))
+        store._buf = buf
+        store.line_starts = np.array(line_starts_list, dtype=np.uint64)
+        store.message_spans = np.array(
+            list(zip(msg_offsets, msg_lengths)),
+            dtype=SPAN_DTYPE,
+        )
+
         store.timestamps = np.array(
             [_parse_time_to_ms(l.timestamp) for l in lines], dtype=np.uint64
         )
@@ -54,10 +72,6 @@ def _make_model(lines: list[LogLine]) -> LogTableModel:
         level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
         store.levels = np.array(
             [level_map.get(l.level, 3) for l in lines], dtype=np.uint8
-        )
-        store.messages = [l.message for l in lines]
-        store.offsets = np.array(
-            [(l.file_offset, l.line_length) for l in lines], dtype=OFFSET_DTYPE
         )
         store._build_category_tree()
         store._count_levels()

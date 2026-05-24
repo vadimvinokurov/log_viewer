@@ -153,3 +153,72 @@ def batch_match(
                 matching.add(i)
 
     return matching
+
+
+# --- Bytes-based matching ---
+
+
+def match_bytes(text: bytes, filt: Filter) -> bool:
+    """Check if byte text matches the filter pattern.
+
+    Plain and regex modes work directly on bytes.
+    Simple query falls back to str decoding.
+    """
+    if filt.mode == SearchMode.PLAIN:
+        return _match_plain_bytes(text, filt.pattern, filt.case_sensitive)
+    elif filt.mode == SearchMode.REGEX:
+        return _match_regex_bytes(text, filt.pattern, filt.case_sensitive)
+    elif filt.mode == SearchMode.SIMPLE:
+        return _match_simple(text.decode("utf-8", errors="replace"), filt.pattern, filt.case_sensitive)
+    return False
+
+
+def _match_plain_bytes(text: bytes, pattern: str, case_sensitive: bool) -> bool:
+    if case_sensitive:
+        return pattern.encode("utf-8") in text
+    return pattern.lower().encode("utf-8") in text.lower()
+
+
+def _match_regex_bytes(text: bytes, pattern: str, case_sensitive: bool) -> bool:
+    try:
+        flags = 0 if case_sensitive else re.IGNORECASE
+        return re.search(pattern.encode("utf-8"), text, flags) is not None
+    except re.error as e:
+        raise RegexError(f"Invalid regex: {e}") from e
+
+
+def batch_match_bytes(
+    messages: list[bytes],
+    filters: list[Filter],
+) -> set[int]:
+    """Match multiple filters against multiple byte messages. Returns set of matching indices.
+
+    Plain case-insensitive filters are merged into a single compiled bytes regex.
+    """
+    if not messages:
+        return set()
+    if not filters:
+        return set(range(len(messages)))
+
+    matching: set[int] = set()
+
+    plain_ci: list[bytes] = []
+    other_filters: list[Filter] = []
+    for f in filters:
+        if f.mode == SearchMode.PLAIN and not f.case_sensitive:
+            plain_ci.append(re.escape(f.pattern).encode("utf-8"))
+        else:
+            other_filters.append(f)
+
+    if plain_ci:
+        combined = re.compile(b"|".join(plain_ci), re.IGNORECASE)
+        for i, msg in enumerate(messages):
+            if combined.search(msg):
+                matching.add(i)
+
+    for f in other_filters:
+        for i, msg in enumerate(messages):
+            if i not in matching and match_bytes(msg, f):
+                matching.add(i)
+
+    return matching

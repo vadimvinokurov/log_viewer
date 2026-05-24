@@ -35,9 +35,9 @@ from log_viewer.gui.styles import APP_BASE, EMPTY_LABEL, AppProxyStyle, styles
 
 
 class _FileLoadWorker(QThread):
-    """Load file lines in a background thread."""
+    """Load file bytes in a background thread."""
 
-    loaded = Signal(list, str)
+    loaded = Signal(bytearray, str)
     error = Signal(str)
 
     def __init__(self, path: str) -> None:
@@ -50,8 +50,8 @@ class _FileLoadWorker(QThread):
             if not file_path.exists():
                 self.error.emit(f"File not found: {self._path}")
                 return
-            lines = file_path.read_text(encoding="utf-8", errors="replace").split("\n")
-            self.loaded.emit(lines, self._path)
+            buf = bytearray(file_path.read_bytes())
+            self.loaded.emit(buf, self._path)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -163,9 +163,9 @@ class MainWindow(QMainWindow):
         self._config.set("last_open_dir", os.path.dirname(path))
         self._config.save()
 
-    def _on_file_loaded(self, lines: list[str], path: str) -> None:
-        self.log_store.load_lines(lines, file_path=path)
-        del lines  # Free raw string list immediately
+    def _on_file_loaded(self, buf: bytearray, path: str) -> None:
+        self.log_store.load_bytes(buf, file_path=path)
+        del buf  # Free reference (LogStore has its own copy)
         self._current_filename = Path(path).name
         self._hide_empty_state()
         self._refresh_display()

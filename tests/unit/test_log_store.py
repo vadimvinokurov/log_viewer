@@ -911,10 +911,10 @@ class TestLogStoreGetRaw:
         finally:
             os.unlink(path)
 
-    def test_get_raw_returns_empty_without_file(self) -> None:
+    def test_get_raw_works_without_file(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        assert store.get_raw(0) == ""
+        assert "my_lib/core" in store.get_raw(0)
 
     def test_get_raw_out_of_range_returns_empty(self) -> None:
         lines = ["01-01-2024T08:00:00.100 my_lib/core version 5.18"]
