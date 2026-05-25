@@ -552,6 +552,7 @@ def scan_line_starts_fast(buf: bytes | bytearray) -> np.ndarray:
 # --- Cython fast path ---
 try:
     from log_viewer.core._parser_cy import parse_plain_batch_cy as _parse_plain_cy
+    from log_viewer.core._parser_cy import parse_ksiva_batch_cy as _parse_ksiva_cy
     _HAS_CYTHON = True
 except ImportError:
     _HAS_CYTHON = False
@@ -587,7 +588,8 @@ def parse_batch_fast(
         buf_bytes = bytes(buf)
         if fmt == "plain":
             return _parse_plain_cy(buf_bytes, line_starts, n)
-        # ksiva will be added in Task 5
+        else:
+            return _parse_ksiva_cy(buf_bytes, line_starts, n)
 
     # Pure Python fallback
     ts_spans = np.empty(n, dtype=SPAN_DTYPE)
@@ -786,7 +788,13 @@ def _parse_ksiva_batch(
             pos += 1
         fld_bytes = line[fld_start:pos]
 
-        lvl_id = level_map.get(fld_bytes)
+        # Strip surrounding brackets: [LOG_INFO] -> LOG_INFO
+        if len(fld_bytes) >= 2 and fld_bytes[0] == 91 and fld_bytes[-1] == 93:
+            lvl_lookup = fld_bytes[1:-1]
+        else:
+            lvl_lookup = fld_bytes
+
+        lvl_id = level_map.get(lvl_lookup)
         if lvl_id is not None:
             # It's a level -- message starts after spaces
             _lvl[i] = lvl_id

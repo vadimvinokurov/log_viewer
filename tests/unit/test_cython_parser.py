@@ -126,3 +126,29 @@ def test_single_line():
     py = _parse_python(buf, ls, "plain")
     cy = _parse_cython(buf, ls, "plain")
     _assert_equal_result(py, cy, "single")
+
+
+# --- KSIVA format tests ---
+
+
+def test_ksiva_format_matches(ksiva_data):
+    buf, ls = ksiva_data
+    py = _parse_python(buf, ls, "ksiva")
+    cy = _parse_cython(buf, ls, "ksiva")
+    _assert_equal_result(py, cy, "ksiva")
+
+
+def test_ksiva_levels_correct(ksiva_data):
+    buf, ls = ksiva_data
+    _, _, _, _, lvls, _ = _parse_cython(buf, ls, "ksiva")
+    # INFO=3, ERROR=1, WARNING=2, empty(3), DEBUG=4, CRITICAL=0, TRACE=5, INFO(3, no level)
+    expected = np.array([3, 1, 2, 3, 4, 0, 5, 3], dtype=np.uint8)
+    np.testing.assert_array_equal(lvls, expected)
+
+
+def test_ksiva_no_level_line(ksiva_data):
+    buf, ls = ksiva_data
+    ts, _, _, _, lvls, msgs = _parse_cython(buf, ls, "ksiva")
+    # Line index 7 has no LOG_* level — message should include "no level here"
+    assert lvls[7] == 3
+    assert msgs[7]["length"] > 0
