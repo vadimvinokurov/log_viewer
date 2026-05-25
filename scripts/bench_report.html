@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Viewer — Benchmark Report</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e0e0e6;
+    --dim: #8b8fa3;
+    --accent: #6c8cff;
+    --red: #ff6b6b;
+    --green: #51cf66;
+    --orange: #ffa94d;
+    --yellow: #ffe066;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 40px 20px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.6rem; margin-bottom: 8px; color: var(--accent); }
+  h2 { font-size: 1.2rem; margin: 32px 0 12px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  h3 { font-size: 1rem; margin: 20px 0 8px; color: var(--dim); }
+  .subtitle { color: var(--dim); font-size: 0.85rem; margin-bottom: 32px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .stat { text-align: center; }
+  .stat .value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+  .stat .label { font-size: 0.75rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--dim); font-weight: 500; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+  td { font-variant-numeric: tabular-nums; }
+  tr.bottleneck td { background: rgba(255, 107, 107, 0.08); }
+  .bar-container { position: relative; height: 20px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+  .bar { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .bar.critical { background: var(--red); }
+  .bar.ok { background: var(--green); }
+  .bar.warn { background: var(--orange); }
+  .bar-label { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.7rem; color: var(--text); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .tag-red { background: rgba(255,107,107,0.15); color: var(--red); }
+  .tag-green { background: rgba(81,207,102,0.15); color: var(--green); }
+  .tag-orange { background: rgba(255,169,77,0.15); color: var(--orange); }
+  .tag-blue { background: rgba(108,140,255,0.15); color: var(--accent); }
+  .timeline { margin: 12px 0; }
+  .timeline-row { display: flex; align-items: center; margin: 6px 0; font-size: 0.8rem; }
+  .timeline-label { width: 200px; color: var(--dim); flex-shrink: 0; }
+  .timeline-bar-wrap { flex: 1; height: 18px; position: relative; }
+  .timeline-bar { height: 100%; border-radius: 3px; min-width: 2px; }
+  .timeline-value { margin-left: 10px; width: 80px; text-align: right; flex-shrink: 0; }
+  .timeline-pct { width: 50px; text-align: right; color: var(--dim); flex-shrink: 0; font-size: 0.75rem; }
+  .rec { margin-bottom: 16px; padding-left: 16px; border-left: 3px solid var(--border); }
+  .rec.p1 { border-color: var(--red); }
+  .rec.p2 { border-color: var(--orange); }
+  .rec.p3 { border-color: var(--accent); }
+  .rec-title { font-weight: 600; margin-bottom: 4px; }
+  .rec-detail { color: var(--dim); font-size: 0.8rem; }
+  .rec-impact { margin-top: 4px; font-size: 0.8rem; }
+  code { background: rgba(108,140,255,0.1); padding: 1px 5px; border-radius: 3px; font-size: 0.85em; color: var(--accent); }
+  .level-bar { display: flex; height: 14px; border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .level-bar div { height: 100%; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.75rem; margin-top: 4px; }
+  .legend span { display: flex; align-items: center; gap: 4px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<h1>Log Viewer — Benchmark Report</h1>
+<p class="subtitle">d:/log.txt &middot; 2026-05-25 &middot; <span style="color:var(--green)">Optimized with Cython</span></p>
+
+<!-- File Overview -->
+<div class="card">
+  <h2 style="margin-top:0">File Overview</h2>
+  <div class="grid">
+    <div class="stat">
+      <div class="value">842 MB</div>
+      <div class="label">File Size</div>
+    </div>
+    <div class="stat">
+      <div class="value">6,375,495</div>
+      <div class="label">Lines</div>
+    </div>
+    <div class="stat">
+      <div class="value">405</div>
+      <div class="label">Categories</div>
+    </div>
+    <div class="stat">
+      <div class="value">plain</div>
+      <div class="label">Format</div>
+    </div>
+  </div>
+
+  <h3>Level Distribution</h3>
+  <div class="level-bar">
+    <div style="width:45.2%;background:#6c8cff" title="INFO 45.2%"></div>
+    <div style="width:40.3%;background:#51cf66" title="DEBUG 40.3%"></div>
+    <div style="width:8.1%;background:#ff6b6b" title="ERROR 8.1%"></div>
+    <div style="width:4.9%;background:#ffa94d" title="WARNING 4.9%"></div>
+    <div style="width:1.5%;background:#ffe066" title="TRACE 1.5%"></div>
+  </div>
+  <div class="legend">
+    <span><span class="dot" style="background:#6c8cff"></span> INFO 2,879,650 (45.2%)</span>
+    <span><span class="dot" style="background:#51cf66"></span> DEBUG 2,567,351 (40.3%)</span>
+    <span><span class="dot" style="background:#ff6b6b"></span> ERROR 516,692 (8.1%)</span>
+    <span><span class="dot" style="background:#ffa94d"></span> WARNING 313,422 (4.9%)</span>
+    <span><span class="dot" style="background:#ffe066"></span> TRACE 98,380 (1.5%)</span>
+  </div>
+</div>
+
+<!-- Timing -->
+<div class="card">
+  <h2 style="margin-top:0">Load Pipeline Timing</h2>
+
+  <div class="timeline">
+    <div class="timeline-row">
+      <span class="timeline-label">File read + bytearray</span>
+      <div class="timeline-bar-wrap">
+        <div class="timeline-bar" style="width:1.8%;background:var(--green)"></div>
+      </div>
+      <span class="timeline-value">0.43s</span>
+      <span class="timeline-pct">1.8%</span>
+    </div>
+    <div class="timeline-row">
+      <span class="timeline-label">Scan line starts (numpy)</span>
+      <div class="timeline-bar-wrap">
+        <div class="timeline-bar" style="width:1.8%;background:var(--green)"></div>
+      </div>
+      <span class="timeline-value">0.45s</span>
+      <span class="timeline-pct">1.8%</span>
+    </div>
+    <div class="timeline-row">
+      <span class="timeline-label">Format detection</span>
+      <div class="timeline-bar-wrap">
+        <div class="timeline-bar" style="width:0.01%;background:var(--green)"></div>
+      </div>
+      <span class="timeline-value">&lt;0.001s</span>
+      <span class="timeline-pct">0%</span>
+    </div>
+    <div class="timeline-row" style="background:rgba(81,207,102,0.06);border-radius:4px;padding:2px 0">
+      <span class="timeline-label" style="color:var(--green);font-weight:600">Batch parse (Cython _parse_plain_batch_cy)</span>
+      <div class="timeline-bar-wrap">
+        <div class="timeline-bar" style="width:47.4%;background:var(--green)"></div>
+      </div>
+      <span class="timeline-value" style="color:var(--green);font-weight:600">0.93s</span>
+      <span class="timeline-pct" style="color:var(--green)">47.4%</span>
+    </div>
+    <div class="timeline-row">
+      <span class="timeline-label">Build category tree</span>
+      <div class="timeline-bar-wrap">
+        <div class="timeline-bar" style="width:0.3%;background:var(--green)"></div>
+      </div>
+      <span class="timeline-value">0.08s</span>
+      <span class="timeline-pct">0.3%</span>
+    </div>
+    <div class="timeline-row">
+      <span class="timeline-label">Count levels</span>
+      <div class="timeline-bar-wrap">
+        <div class="timeline-bar" style="width:0.1%;background:var(--green)"></div>
+      </div>
+      <span class="timeline-value">0.02s</span>
+      <span class="timeline-pct">0.1%</span>
+    </div>
+    <div class="timeline-row">
+      <span class="timeline-label">Apply filters (none)</span>
+      <div class="timeline-bar-wrap">
+        <div class="timeline-bar" style="width:0.2%;background:var(--green)"></div>
+      </div>
+      <span class="timeline-value">0.04s</span>
+      <span class="timeline-pct">0.2%</span>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+    <span style="color:var(--dim)">Total pipeline</span>
+    <span style="font-size:1.1rem;font-weight:700;color:var(--green)">2.0s</span>
+  </div>
+</div>
+
+<!-- Memory -->
+<div class="card">
+  <h2 style="margin-top:0">Memory Layout</h2>
+  <table>
+    <thead>
+      <tr><th>Structure</th><th>Type</th><th>Size</th><th>% of Total</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>_buf</code> (file buffer)</td>
+        <td>bytearray</td>
+        <td>842.3 MB</td>
+        <td>78.0%</td>
+      </tr>
+      <tr>
+        <td><code>message_spans</code></td>
+        <td>uint64 + uint32</td>
+        <td>73.0 MB</td>
+        <td>6.8%</td>
+      </tr>
+      <tr>
+        <td><code>timestamp_spans</code></td>
+        <td>uint64 + uint32</td>
+        <td>73.0 MB</td>
+        <td>6.8%</td>
+      </tr>
+      <tr>
+        <td><code>line_starts</code></td>
+        <td>uint64</td>
+        <td>48.6 MB</td>
+        <td>4.5%</td>
+      </tr>
+      <tr>
+        <td><code>filtered_indices</code></td>
+        <td>uint32</td>
+        <td>24.3 MB</td>
+        <td>2.3%</td>
+      </tr>
+      <tr>
+        <td><code>category_ids</code></td>
+        <td>uint16</td>
+        <td>12.2 MB</td>
+        <td>1.1%</td>
+      </tr>
+      <tr>
+        <td><code>levels</code></td>
+        <td>uint8</td>
+        <td>6.1 MB</td>
+        <td>0.6%</td>
+      </tr>
+    </tbody>
+  </table>
+  <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+    <span style="color:var(--dim)">Total in-memory data</span>
+    <span style="font-weight:600">1,079.5 MB</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;margin-top:4px">
+    <span style="color:var(--dim)">Overhead vs file size</span>
+    <span style="font-weight:600">1.28x</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;margin-top:4px">
+    <span style="color:var(--dim)">Process RSS</span>
+    <span style="font-weight:600">1,111 MB</span>
+  </div>
+</div>
+
+<!-- Architecture -->
+<div class="card">
+  <h2 style="margin-top:0">Architecture Summary</h2>
+  <p style="font-size:0.85rem;color:var(--dim);margin-bottom:12px">
+    Data is stored in <strong style="color:var(--text)">Structure-of-Arrays (SoA)</strong> layout on top of a single <code>bytearray</code> buffer.
+    String fields (messages, timestamps) are not decoded until accessed — stored as (offset, length) spans into the buffer.
+    Filtering uses vectorized numpy operations.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Stage</th><th>Mechanism</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Line scanning</td>
+        <td>numpy <code>np.where</code> on uint8 view</td>
+        <td><span class="tag tag-green">SIMD-fast</span></td>
+      </tr>
+      <tr>
+        <td>Parsing</td>
+        <td>Python <code>for</code> loop, per-line byte ops</td>
+        <td><span class="tag tag-red">Bottleneck</span></td>
+      </tr>
+      <tr>
+        <td>Category tree</td>
+        <td><code>np.unique</code> + dict tree</td>
+        <td><span class="tag tag-green">Fast</span></td>
+      </tr>
+      <tr>
+        <td>Level counting</td>
+        <td><code>np.bincount</code></td>
+        <td><span class="tag tag-green">Fast</span></td>
+      </tr>
+      <tr>
+        <td>Filtering</td>
+        <td>numpy boolean masks + <code>np.isin</code></td>
+        <td><span class="tag tag-green">Vectorized</span></td>
+      </tr>
+      <tr>
+        <td>Message access</td>
+        <td>Lazy decode from byte buffer</td>
+        <td><span class="tag tag-green">Zero-copy</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Bottleneck Analysis -->
+<div class="card">
+  <h2 style="margin-top:0">Bottleneck: <code>_parse_plain_batch</code></h2>
+  <p style="font-size:0.85rem;color:var(--dim);margin-bottom:12px">
+    <code>parser.py:604-698</code> &mdash; 6,375,495 iterations of pure Python, ~3.7 &micro;s/line.
+  </p>
+  <h3>Per-iteration cost breakdown</h3>
+  <table>
+    <thead>
+      <tr><th>Operation</th><th>Issue</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Byte slicing <code>buf[start:end]</code></td>
+        <td>Creates a new bytes object per line</td>
+      </tr>
+      <tr>
+        <td>Trailing <code>\n\r</code> strip</td>
+        <td>2 conditional checks per line</td>
+      </tr>
+      <tr>
+        <td>5x <code>while pos &lt; ll</code> field scanning</td>
+        <td>Interpreted Python loop, not vectorized</td>
+      </tr>
+      <tr>
+        <td><code>cat_bytes.decode("utf-8")</code></td>
+        <td>Per-line string allocation + UTF-8 decode</td>
+      </tr>
+      <tr>
+        <td>Dict lookup for category</td>
+        <td>Hash on every line ( amortized O(1), but Python overhead)</td>
+      </tr>
+      <tr>
+        <td><code>arr[i] = value</code> scalar write</td>
+        <td>Numpy scalar indexing is slow vs batch ops</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Recommendations -->
+<div class="card">
+  <h2 style="margin-top:0">Recommendations</h2>
+
+  <h3 style="color:var(--red)">Priority 1 — Parsing speed (5-20x gain)</h3>
+
+  <div class="rec p1">
+    <div class="rec-title">Cython / C extension for _parse_plain_batch</div>
+    <div class="rec-detail">Replace the Python loop with C code accessing <code>char*</code> directly. Eliminates Python interpreter overhead per line. Standard approach for parsers at this scale.</div>
+    <div class="rec-impact"><span class="tag tag-red">Expected: ~1-3s instead of 23s</span></div>
+  </div>
+
+  <div class="rec p1">
+    <div class="rec-title">Multiprocessing (chunk-based parallelism)</div>
+    <div class="rec-detail">Split buffer into ~500K line chunks, parse in parallel processes, merge <code>cat_name_to_id</code> at the end. The codebase already has this pattern in <code>parse_lines_batch</code> but <code>parse_batch_fast</code> doesn't use it.</div>
+    <div class="rec-impact"><span class="tag tag-orange">Expected: ~3s with 8 cores</span></div>
+  </div>
+
+  <div class="rec p1">
+    <div class="rec-title">Vectorized field extraction with numpy</div>
+    <div class="rec-detail">For plain format, field positions are nearly fixed. Use numpy to find delimiter positions in bulk, then extract all fields at once without a Python loop.</div>
+    <div class="rec-impact"><span class="tag tag-orange">Expected: 5-20x depending on field regularity</span></div>
+  </div>
+
+  <h3 style="color:var(--orange)">Priority 2 — Memory (-200 MB)</h3>
+
+  <div class="rec p2">
+    <div class="rec-title">Drop timestamp_spans array</div>
+    <div class="rec-detail">Timestamps are always field 1 — positions can be computed from <code>line_starts</code> on access. Remove 73 MB array.</div>
+    <div class="rec-impact"><span class="tag tag-orange">-73 MB</span></div>
+  </div>
+
+  <div class="rec p2">
+    <div class="rec-title">Use uint32 for line_starts</div>
+    <div class="rec-detail">Files under 4 GB don't need uint64 offsets. Switch to <code>np.uint32</code>.</div>
+    <div class="rec-impact"><span class="tag tag-orange">-24 MB</span></div>
+  </div>
+
+  <h3 style="color:var(--accent)">Priority 3 — UX</h3>
+
+  <div class="rec p3">
+    <div class="rec-title">Progressive loading</div>
+    <div class="rec-detail">Display first 10K lines immediately (~0.1s), parse the rest in background. User starts reading before parsing finishes.</div>
+    <div class="rec-impact"><span class="tag tag-blue">Perceived: 0.1s to first paint</span></div>
+  </div>
+
+  <div class="rec p3">
+    <div class="rec-title">Memory-mapped file (mmap)</div>
+    <div class="rec-detail">Replace <code>read_bytes()</code> + <code>bytearray</code> with <code>mmap.mmap()</code>. OS manages paging, avoids double-buffering during read, reduces RSS.</div>
+    <div class="rec-impact"><span class="tag tag-blue">Lower RSS, faster cold start</span></div>
+  </div>
+</div>
+
+</body>
+</html>
