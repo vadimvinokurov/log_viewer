@@ -172,6 +172,46 @@ class TestPinCommands:
         assert result.text == ""
 
 
+class TestLineNumberCommands:
+    """Test fn, sn, hn commands."""
+
+    def test_fn_with_line_number(self) -> None:
+        result = parse_command("fn 100")
+        assert result == ParsedCommand(
+            name="fn",
+            text="100",
+            raw="fn 100",
+        )
+
+    def test_sn_with_line_number(self) -> None:
+        result = parse_command("sn 42")
+        assert result == ParsedCommand(
+            name="sn",
+            text="42",
+            raw="sn 42",
+        )
+
+    def test_hn_with_line_number(self) -> None:
+        result = parse_command("hn 5")
+        assert result == ParsedCommand(
+            name="hn",
+            text="5",
+            raw="hn 5",
+        )
+
+    def test_fn_without_number_errors(self) -> None:
+        with pytest.raises(ParseError, match="[Tt]ext"):
+            parse_command("fn")
+
+    def test_sn_without_number_errors(self) -> None:
+        with pytest.raises(ParseError, match="[Tt]ext"):
+            parse_command("sn")
+
+    def test_hn_without_number_errors(self) -> None:
+        with pytest.raises(ParseError, match="[Tt]ext"):
+            parse_command("hn")
+
+
 class TestEdgeCases:
     """Test edge cases."""
 

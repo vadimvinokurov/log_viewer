@@ -17,6 +17,7 @@ class ParseError(Exception):
 _VALID_COMMANDS: set[str] = {
     "s", "sr", "ss",
     "f", "fr", "fs",
+    "fn", "sn", "hn",
     "h", "hr", "hs",
     "rmf", "rmh",
     "cate", "catd",

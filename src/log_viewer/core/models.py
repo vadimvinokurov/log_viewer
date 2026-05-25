@@ -73,6 +73,7 @@ class SearchMode(Enum):
     PLAIN = "plain"
     REGEX = "regex"
     SIMPLE = "simple"
+    LINE_NUMBER = "line_number"
 
 
 class SearchDirection(Enum):
