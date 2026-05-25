@@ -264,6 +264,21 @@ class MainWindow(QMainWindow):
                 Highlight(pattern=parsed.text, mode=mode)
             )
             self._refresh_display()
+        elif name in ("fn", "hn"):
+            line_num = self._parse_line_number(parsed.text, name)
+            if line_num is None:
+                return
+            if name == "fn":
+                self.log_store.add_filter(Filter(pattern=str(line_num), mode=SearchMode.LINE_NUMBER))
+                self._refresh_display()
+            else:
+                self.log_store.add_highlight(Highlight(pattern=str(line_num), mode=SearchMode.LINE_NUMBER))
+                self._refresh_display()
+        elif name == "sn":
+            line_num = self._parse_line_number(parsed.text, name)
+            if line_num is None:
+                return
+            self._navigate_to_line(line_num)
         elif name == "rmh":
             if not parsed.text:
                 self.log_store.clear_highlights()
@@ -414,6 +429,32 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"{base} \u2014 Search: {ss.pattern}")
         else:
             self.setWindowTitle(base)
+
+    def _parse_line_number(self, text: str, cmd_name: str) -> int | None:
+        """Parse and validate a line number from command text."""
+        try:
+            n = int(text.strip())
+        except ValueError:
+            self.bottom_bar.set_status(f"Error: {cmd_name} requires a line number")
+            return None
+        if n < 1 or n > self.log_store.n:
+            self.bottom_bar.set_status(f"Error: line {n} out of range (1..{self.log_store.n})")
+            return None
+        return n
+
+    def _navigate_to_line(self, line_number: int) -> None:
+        """Scroll to and select a line by its 1-based line number."""
+        idx = line_number - 1
+        indices = self.log_store.filtered_indices
+        pos = int(np.searchsorted(indices, idx))
+        if pos < len(indices) and int(indices[pos]) == idx:
+            self.log_table.selectRow(pos)
+            self.log_table.scrollTo(
+                self._table_model.index(pos, 0),
+                LogTableView.ScrollHint.PositionAtCenter,
+            )
+        else:
+            self.bottom_bar.set_status(f"Line {line_number} is filtered out")
 
     def _jump_to_search_match(self) -> None:
         ss = self.log_store.search_state
