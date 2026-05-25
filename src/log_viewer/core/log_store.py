@@ -80,6 +80,7 @@ class LogStore:
         self.disabled_categories: set[int] = set()  # category_ids
         self._highlight_color_index: int = 0
         self.pinned_line_numbers: set[int] = set()
+        self._filter_masks: list[np.ndarray] = []  # one bool mask per filter
 
     # ------------------------------------------------------------------ #
     #  Backward-compatible properties                                      #
@@ -198,6 +199,7 @@ class LogStore:
                 node.enabled = False
 
         self._count_levels()
+        self._recompute_all_filter_masks()
         self._apply_filters()
 
     # ------------------------------------------------------------------ #
@@ -253,21 +255,24 @@ class LogStore:
     def add_filter(self, filt: Filter) -> None:
         self.filters.append(filt)
         self.filter_enabled.append(True)
+        self._filter_masks.append(self._compute_filter_mask(filt))
         self._apply_filters()
 
     def remove_filter(self, pattern: str, case_sensitive: bool = False) -> None:
         kept = [
-            (f, e)
-            for f, e in zip(self.filters, self.filter_enabled)
+            (i, f, e)
+            for i, (f, e) in enumerate(zip(self.filters, self.filter_enabled))
             if not (f.pattern == pattern and f.case_sensitive == case_sensitive)
         ]
-        self.filters = [f for f, _ in kept]
-        self.filter_enabled = [e for _, e in kept]
+        self.filters = [f for _, f, _ in kept]
+        self.filter_enabled = [e for _, _, e in kept]
+        self._filter_masks = [self._filter_masks[i] for i, _, _ in kept]
         self._apply_filters()
 
     def clear_filters(self) -> None:
         self.filters = []
         self.filter_enabled = []
+        self._filter_masks = []
         self._apply_filters()
 
     # ------------------------------------------------------------------ #
@@ -495,6 +500,46 @@ class LogStore:
     #  Filtering (core)                                                   #
     # ------------------------------------------------------------------ #
 
+    def _compute_filter_mask(self, filt: Filter) -> np.ndarray:
+        """Compute boolean mask for ALL lines matching a single filter."""
+        n = self.n
+        if n == 0:
+            return np.empty(0, dtype=bool)
+
+        mask = np.zeros(n, dtype=bool)
+
+        if filt.mode == SearchMode.PLAIN and not filt.case_sensitive:
+            # Buffer-wide regex scan
+            combined = re.compile(re.escape(filt.pattern).encode("utf-8"), re.IGNORECASE)
+            msg_off = self.message_spans["offset"].astype(np.int64)
+            msg_len = self.message_spans["length"].astype(np.int64)
+            positions = np.array(
+                [m.start() for m in combined.finditer(self._buf)], dtype=np.int64
+            )
+            if len(positions) > 0:
+                si = np.searchsorted(msg_off, positions, side="right") - 1
+                valid = (si >= 0) & (si < n)
+                si, pv = si[valid], positions[valid]
+                ends = msg_off[si] + msg_len[si]
+                in_msg = (pv >= msg_off[si]) & (pv < ends)
+                mask[si[in_msg]] = True
+        else:
+            # Per-line decode + match
+            buf = self._buf
+            spans = self.message_spans
+            for idx in range(n):
+                off = int(spans[idx]["offset"])
+                ln = int(spans[idx]["length"])
+                msg = buf[off:off + ln].decode("utf-8", errors="replace")
+                if filter_engine.match(msg, filt):
+                    mask[idx] = True
+
+        return mask
+
+    def _recompute_all_filter_masks(self) -> None:
+        """Rebuild all filter masks (called after file load)."""
+        self._filter_masks = [self._compute_filter_mask(f) for f in self.filters]
+
     def _apply_filters(self) -> None:
         """Recompute filtered_indices using vectorized numpy + byte matching."""
         if self.n == 0:
@@ -542,10 +587,19 @@ class LogStore:
         if not has_text_filters:
             would_be_visible = cat_level_indices.astype(np.uint32)
         else:
-            active_filters = [f for f, e in zip(self.filters, self.filter_enabled) if e]
-            cat_level_list = cat_level_indices.tolist()
-            matched_positions = self._batch_match_bytes(cat_level_list, active_filters)
-            would_be_visible = cat_level_indices[np.array(sorted(matched_positions), dtype=np.intp)].astype(np.uint32)
+            # Rebuild masks if out of sync (e.g. filters set directly)
+            if len(self._filter_masks) != len(self.filters):
+                self._recompute_all_filter_masks()
+            # Combine active filter masks with OR logic
+            active_masks = [m for m, e in zip(self._filter_masks, self.filter_enabled) if e]
+            if active_masks:
+                text_mask = np.zeros(self.n, dtype=bool)
+                for m in active_masks:
+                    text_mask |= m
+                combined = cat_level_mask & text_mask
+            else:
+                combined = cat_level_mask
+            would_be_visible = np.where(combined)[0].astype(np.uint32)
 
         # Count per level for buttons (category + text filtering, ignoring level toggles)
         if has_text_filters:
@@ -567,22 +621,54 @@ class LogStore:
         self.filtered_indices = result
         self._count_visible_levels()
 
-    def _batch_match_bytes(
+    def _bulk_match(
         self, indices: list[int], filters: list[Filter]
     ) -> set[int]:
-        """Match filters against byte-buffer message spans."""
+        """Bulk regex on entire buffer for plain-CI filters, per-line fallback for others."""
         if not indices or not filters:
             return set(range(len(indices))) if not filters else set()
 
-        buf = self._buf
-        spans = self.message_spans
+        plain_ci: list[bytes] = []
+        other_filters: list[Filter] = []
+        for f in filters:
+            if f.mode == SearchMode.PLAIN and not f.case_sensitive:
+                plain_ci.append(re.escape(f.pattern).encode("utf-8"))
+            else:
+                other_filters.append(f)
 
-        # Extract byte slices for all candidate indices
-        messages = [
-            bytes(buf[int(spans[idx]["offset"]):int(spans[idx]["offset"]) + int(spans[idx]["length"])])
-            for idx in indices
-        ]
-        return filter_engine.batch_match_bytes(messages, filters)
+        matching_lines: set[int] = set()
+
+        if plain_ci:
+            combined = re.compile(b"|".join(plain_ci), re.IGNORECASE)
+            msg_off = self.message_spans["offset"].astype(np.int64)
+            msg_len = self.message_spans["length"].astype(np.int64)
+
+            positions = np.array(
+                [m.start() for m in combined.finditer(self._buf)], dtype=np.int64
+            )
+            if len(positions) > 0:
+                si = np.searchsorted(msg_off, positions, side="right") - 1
+                valid = (si >= 0) & (si < self.n)
+                si, pv = si[valid], positions[valid]
+                ends = msg_off[si] + msg_len[si]
+                in_msg = (pv >= msg_off[si]) & (pv < ends)
+                matching_lines = set(si[in_msg].tolist())
+
+        if other_filters:
+            buf = self._buf
+            spans = self.message_spans
+            for idx in indices:
+                if idx in matching_lines:
+                    continue
+                off = int(spans[idx]["offset"])
+                ln = int(spans[idx]["length"])
+                msg = buf[off:off + ln].decode("utf-8", errors="replace")
+                for f in other_filters:
+                    if filter_engine.match(msg, f):
+                        matching_lines.add(idx)
+                        break
+
+        return {i for i, idx in enumerate(indices) if idx in matching_lines}
 
     def _count_levels(self) -> None:
         """Count log levels across all lines using vectorized bincount."""

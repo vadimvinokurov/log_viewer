@@ -326,6 +326,7 @@ class MainWindow(QMainWindow):
         """Remove filter from LogStore and refresh."""
         del self.log_store.filters[index]
         del self.log_store.filter_enabled[index]
+        del self.log_store._filter_masks[index]
         self._refresh_log_only()
 
     def _on_highlight_changed(self) -> None:
