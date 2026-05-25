@@ -549,6 +549,14 @@ def scan_line_starts_fast(buf: bytes | bytearray) -> np.ndarray:
     return starts
 
 
+# --- Cython fast path ---
+try:
+    from log_viewer.core._parser_cy import parse_plain_batch_cy as _parse_plain_cy
+    _HAS_CYTHON = True
+except ImportError:
+    _HAS_CYTHON = False
+
+
 def parse_batch_fast(
     buf: bytearray,
     line_starts: np.ndarray,
@@ -574,7 +582,14 @@ def parse_batch_fast(
 
     n = len(line_starts) - 1
 
-    # Pre-allocate output arrays
+    # Cython fast path
+    if _HAS_CYTHON:
+        buf_bytes = bytes(buf)
+        if fmt == "plain":
+            return _parse_plain_cy(buf_bytes, line_starts, n)
+        # ksiva will be added in Task 5
+
+    # Pure Python fallback
     ts_spans = np.empty(n, dtype=SPAN_DTYPE)
     cat_arr = np.empty(n, dtype=np.uint16)
     lvl_arr = np.empty(n, dtype=np.uint8)
