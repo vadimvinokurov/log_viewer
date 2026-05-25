@@ -31,3 +31,7 @@ venv.bak/
 # PyInstaller build artifacts
 packaging/dist/
 packaging/build/
+
+# Cython build artifacts
+build/
+src/log_viewer/core/_parser_cy.c
