@@ -1158,3 +1158,44 @@ class TestReloadStatePreservation:
         assert folder_node.enabled is True
         # Parent still disabled
         assert store.category_tree.children["my_app"].enabled is False
+
+
+class TestLineNumberFilter:
+    """Test LINE_NUMBER filter mode in LogStore."""
+
+    def test_fn_shows_only_specified_line(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.add_filter(Filter(pattern="3", mode=SearchMode.LINE_NUMBER))
+        visible = store.filtered_indices.tolist()
+        assert visible == [2]  # 0-based index for line 3
+
+    def test_fn_multiple_accumulates(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.add_filter(Filter(pattern="1", mode=SearchMode.LINE_NUMBER))
+        store.add_filter(Filter(pattern="3", mode=SearchMode.LINE_NUMBER))
+        visible = store.filtered_indices.tolist()
+        assert visible == [0, 2]  # lines 1 and 3
+
+    def test_fn_out_of_range_shows_nothing(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.add_filter(Filter(pattern="999", mode=SearchMode.LINE_NUMBER))
+        visible = store.filtered_indices.tolist()
+        assert visible == []
+
+    def test_fn_zero_shows_nothing(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.add_filter(Filter(pattern="0", mode=SearchMode.LINE_NUMBER))
+        visible = store.filtered_indices.tolist()
+        assert visible == []
+
+    def test_fn_toggle_disables(self) -> None:
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        store.add_filter(Filter(pattern="3", mode=SearchMode.LINE_NUMBER))
+        store.filter_enabled[0] = False
+        store._apply_filters()
+        assert len(store.filtered_indices) == store.n

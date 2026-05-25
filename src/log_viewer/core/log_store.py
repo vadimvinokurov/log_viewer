@@ -508,6 +508,12 @@ class LogStore:
 
         mask = np.zeros(n, dtype=bool)
 
+        if filt.mode == SearchMode.LINE_NUMBER:
+            idx = int(filt.pattern) - 1
+            if 0 <= idx < n:
+                mask[idx] = True
+            return mask
+
         if filt.mode == SearchMode.PLAIN and not filt.case_sensitive:
             # Buffer-wide regex scan
             combined = re.compile(re.escape(filt.pattern).encode("utf-8"), re.IGNORECASE)
