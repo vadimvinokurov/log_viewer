@@ -22,6 +22,7 @@ _MODE_PREFIX: dict[SearchMode, str] = {
     SearchMode.PLAIN: ":f",
     SearchMode.REGEX: ":fr",
     SearchMode.SIMPLE: ":fs",
+    SearchMode.LINE_NUMBER: ":fn",
 }
 
 

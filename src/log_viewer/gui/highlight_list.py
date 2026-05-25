@@ -24,6 +24,7 @@ _MODE_PREFIX: dict[SearchMode, str] = {
     SearchMode.PLAIN: ":h",
     SearchMode.REGEX: ":hr",
     SearchMode.SIMPLE: ":hs",
+    SearchMode.LINE_NUMBER: ":hn",
 }
 
 
