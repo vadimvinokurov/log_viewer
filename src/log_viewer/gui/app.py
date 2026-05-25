@@ -270,10 +270,9 @@ class MainWindow(QMainWindow):
                 return
             if name == "fn":
                 self.log_store.add_filter(Filter(pattern=str(line_num), mode=SearchMode.LINE_NUMBER))
-                self._refresh_display()
             else:
                 self.log_store.add_highlight(Highlight(pattern=str(line_num), mode=SearchMode.LINE_NUMBER))
-                self._refresh_display()
+            self._refresh_display()
         elif name == "sn":
             line_num = self._parse_line_number(parsed.text, name)
             if line_num is None:

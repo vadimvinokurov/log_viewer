@@ -198,9 +198,9 @@ Lines are parsed as: `timestamp category [LOG_LEVEL] message`
 
 ### Command system
 Typed in the bottom bar with `:` prefix. Grammar: `name text`
-- **Search**: `s` (plain), `sr` (regex), `ss` (simple query) — enters search mode; `↑`/`↓` navigate matches, `Esc` exits
-- **Filter**: `f`, `fr`, `fs` — hide non-matching lines
-- **Highlight**: `h`, `hr`, `hs` — color matching text
+- **Search**: `s` (plain), `sr` (regex), `ss` (simple query), `sn` (line number) — enters search mode; `↑`/`↓` navigate matches, `Esc` exits
+- **Filter**: `f`, `fr`, `fs`, `fn` (line number) — hide non-matching lines
+- **Highlight**: `h`, `hr`, `hs`, `hn` (line number) — color matching text
 - **Categories**: `cate` (enable), `catd` (disable)
 - **Management**: `rmf`, `rmh`
 - **File**: `open <path>`, `reload`
