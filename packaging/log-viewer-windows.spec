@@ -26,6 +26,7 @@ a = Analysis(
         'log_viewer.core.log_store',
         'log_viewer.core.models',
         'log_viewer.core.palette',
+        'log_viewer.core._parser_cy',
         'log_viewer.core.parser',
         'log_viewer.core.preset_manager',
         'log_viewer.core.simple_query',
