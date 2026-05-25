@@ -307,3 +307,35 @@ class TestBatchMatch:
         filters = [Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)]
         result = batch_match(texts, filters, pre_lowered=pre_lowered)
         assert result == {0}
+
+
+class TestLineNumberMatch:
+    """Test LINE_NUMBER mode in match()."""
+
+    def test_line_number_always_matches(self) -> None:
+        f = Filter(pattern="100", mode=SearchMode.LINE_NUMBER)
+        assert match("any text at all", f) is True
+
+    def test_line_number_empty_text(self) -> None:
+        f = Filter(pattern="100", mode=SearchMode.LINE_NUMBER)
+        assert match("", f) is True
+
+    def test_line_number_pattern_ignored(self) -> None:
+        f = Filter(pattern="999", mode=SearchMode.LINE_NUMBER)
+        assert match("unrelated text", f) is True
+
+
+class TestFindSpansLineNumber:
+    """Test find_spans with LINE_NUMBER mode."""
+
+    def test_line_number_full_span(self) -> None:
+        spans = find_spans("hello world", "5", SearchMode.LINE_NUMBER)
+        assert spans == [(0, 11)]
+
+    def test_line_number_empty_text(self) -> None:
+        spans = find_spans("", "5", SearchMode.LINE_NUMBER)
+        assert spans == []
+
+    def test_line_number_pattern_ignored(self) -> None:
+        spans = find_spans("some text", "999", SearchMode.LINE_NUMBER)
+        assert spans == [(0, 9)]

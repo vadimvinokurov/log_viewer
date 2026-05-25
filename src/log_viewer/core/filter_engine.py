@@ -26,6 +26,8 @@ def match(text: str, filt: Filter) -> bool:
         return _match_regex(text, filt.pattern, filt.case_sensitive)
     elif filt.mode == SearchMode.SIMPLE:
         return _match_simple(text, filt.pattern, filt.case_sensitive)
+    elif filt.mode == SearchMode.LINE_NUMBER:
+        return True
     return False
 
 
@@ -64,6 +66,8 @@ def find_spans(
         return _find_regex_spans(text, pattern, case_sensitive)
     elif mode == SearchMode.SIMPLE:
         return _find_simple_spans(text, pattern, case_sensitive)
+    elif mode == SearchMode.LINE_NUMBER:
+        return [(0, len(text))] if text else []
     return []
 
 
