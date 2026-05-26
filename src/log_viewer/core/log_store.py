@@ -26,11 +26,25 @@ SPAN_DTYPE = np.dtype([("offset", np.uint64), ("length", np.uint32)])
 
 
 def _merge_sorted(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Merge two sorted uint32 arrays, removing duplicates."""
+    """Merge two sorted uint32 arrays, removing duplicates.
+
+    Optimized for the common case where b is a small subset of a:
+    uses np.searchsorted + mask instead of np.union1d (which sorts
+    both arrays from scratch).
+    """
     if len(a) == 0:
         return b
     if len(b) == 0:
         return a
+    # Fast path: b likely already contained in a (pinned lines in unfiltered result)
+    if len(b) <= len(a):
+        idx = np.searchsorted(a, b)
+        idx = np.clip(idx, 0, len(a) - 1)
+        already = a[idx] == b
+        if already.all():
+            return a
+        new_items = b[~already]
+        return np.sort(np.concatenate([a, new_items])).astype(np.uint32)
     merged = np.union1d(a, b)
     return merged.astype(np.uint32)
 
