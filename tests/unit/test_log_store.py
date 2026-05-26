@@ -376,12 +376,19 @@ class TestLogStoreSearch:
         assert state.current_index == 0  # bisect_left([1,2], 1) == 0
 
     def test_search_start_line_between_matches(self) -> None:
-        """If selected line is between matches, start from next match."""
+        """start_line between two matches jumps to the next match."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        # No line at index 5 matches "Failed", but line 1 does
-        # After filtering, all 6 lines visible. matches=[1,2]
-        # start_line=5 → bisect_left([1,2], 5) == 2 → wrap to 0
+        # "version" at index 0, "Missing" at index 3 → matches [0, 3]
+        # start_line=1 → bisect_left([0, 3], 1) == 1 → match at index 3
+        state = store.search("version|Missing", SearchMode.REGEX, start_line=1)
+        assert state.matches == [0, 3]
+        assert state.current_index == 1  # jumps to next match
+
+    def test_search_start_line_past_all_matches(self) -> None:
+        """start_line past all matches wraps to first."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
         state = store.search("Failed", SearchMode.PLAIN, start_line=5)
         assert state.matches == [1, 2]
         assert state.current_index == 0  # wraps to first
