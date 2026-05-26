@@ -122,7 +122,7 @@ def test_file_load_updates_table(main_window):
     assert main_window._table_model.rowCount() == 2
 
 
-def test_command_pin_adds_pinned_line(main_window):
+def test_command_pn_adds_pinned_line(main_window):
     main_window.log_store.load_lines(
         [
             "2025-01-01T10:00:00 LOG_INFO app/main first",
@@ -131,11 +131,11 @@ def test_command_pin_adds_pinned_line(main_window):
         file_path="test.log",
     )
     main_window._refresh_display()
-    main_window._handle_command("pin 2")
+    main_window._handle_command("pn 2")
     assert 2 in main_window.log_store.pinned_line_numbers
 
 
-def test_command_rmpin_clears_all(main_window):
+def test_command_rmp_clears_all(main_window):
     main_window.log_store.load_lines(
         [
             "2025-01-01T10:00:00 LOG_INFO app/main first",
@@ -144,13 +144,14 @@ def test_command_rmpin_clears_all(main_window):
         file_path="test.log",
     )
     main_window._refresh_display()
-    main_window._handle_command("pin 1")
-    main_window._handle_command("pin 2")
-    main_window._handle_command("rmpin")
+    main_window._handle_command("pn 1")
+    main_window._handle_command("pn 2")
+    main_window._handle_command("rmp")
     assert main_window.log_store.pinned_line_numbers == set()
 
 
-def test_command_rmpin_specific_line(main_window):
+def test_command_rmp_specific_line_via_gui(main_window):
+    """Single-pin removal is only via GUI (PinnedListWidget), not :rmp command."""
     main_window.log_store.load_lines(
         [
             "2025-01-01T10:00:00 LOG_INFO app/main first",
@@ -159,9 +160,10 @@ def test_command_rmpin_specific_line(main_window):
         file_path="test.log",
     )
     main_window._refresh_display()
-    main_window._handle_command("pin 1")
-    main_window._handle_command("pin 2")
-    main_window._handle_command("rmpin 1")
+    main_window._handle_command("pn 1")
+    main_window._handle_command("pn 2")
+    # Remove via store directly (simulates GUI action)
+    main_window.log_store.unpin_line(1)
     assert 1 not in main_window.log_store.pinned_line_numbers
     assert 2 in main_window.log_store.pinned_line_numbers
 

@@ -70,30 +70,37 @@ class TestBasicParsing:
 
 
 class TestRemoveCommands:
-    """Test rmf and rmh commands."""
-
-    def test_rmf_with_pattern(self) -> None:
-        result = parse_command("rmf ERROR")
-        assert result == ParsedCommand(
-            name="rmf",
-            text="ERROR",
-            raw="rmf ERROR",
-        )
+    """Test rmf, rmh, rmp commands (zero-arg only)."""
 
     def test_rmf_clear_all(self) -> None:
         result = parse_command("rmf")
         assert result.name == "rmf"
         assert result.text == ""
 
-    def test_rmh_with_pattern(self) -> None:
-        result = parse_command("rmh ERROR")
-        assert result.name == "rmh"
+    def test_rmf_with_arg_ignores_text(self) -> None:
+        result = parse_command("rmf ERROR")
+        assert result.name == "rmf"
         assert result.text == "ERROR"
 
     def test_rmh_clear_all(self) -> None:
         result = parse_command("rmh")
         assert result.name == "rmh"
         assert result.text == ""
+
+    def test_rmh_with_arg_ignores_text(self) -> None:
+        result = parse_command("rmh ERROR")
+        assert result.name == "rmh"
+        assert result.text == "ERROR"
+
+    def test_rmp_clear_all(self) -> None:
+        result = parse_command("rmp")
+        assert result.name == "rmp"
+        assert result.text == ""
+
+    def test_rmp_with_arg_ignores_text(self) -> None:
+        result = parse_command("rmp 42")
+        assert result.name == "rmp"
+        assert result.text == "42"
 
 
 class TestCategoryCommands:
@@ -146,29 +153,39 @@ class TestErrors:
 
 
 class TestPinCommands:
-    """Test pin and rmpin commands."""
+    """Test pin mode commands and rmpin."""
 
-    def test_pin_with_line_number(self) -> None:
-        result = parse_command("pin 42")
-        assert result.name == "pin"
+    def test_pn_with_line_number(self) -> None:
+        result = parse_command("pn 42")
+        assert result.name == "pn"
         assert result.text == "42"
 
-    def test_pin_with_different_number(self) -> None:
-        result = parse_command("pin 1")
+    def test_pn_with_different_number(self) -> None:
+        result = parse_command("pn 1")
         assert result.text == "1"
 
-    def test_pin_without_number_errors(self) -> None:
+    def test_pn_without_number_errors(self) -> None:
         with pytest.raises(ParseError, match="[Tt]ext"):
-            parse_command("pin")
+            parse_command("pn")
 
-    def test_rmpin_with_line_number(self) -> None:
-        result = parse_command("rmpin 42")
-        assert result.name == "rmpin"
-        assert result.text == "42"
+    def test_p_plain(self) -> None:
+        result = parse_command("p error")
+        assert result.name == "p"
+        assert result.text == "error"
 
-    def test_rmpin_without_args_clears_all(self) -> None:
-        result = parse_command("rmpin")
-        assert result.name == "rmpin"
+    def test_pr_regex(self) -> None:
+        result = parse_command("pr ^.*$")
+        assert result.name == "pr"
+        assert result.text == "^.*$"
+
+    def test_ps_simple(self) -> None:
+        result = parse_command('ps "error" AND "timeout"')
+        assert result.name == "ps"
+        assert result.text == '"error" AND "timeout"'
+
+    def test_rmp_without_args_clears_all(self) -> None:
+        result = parse_command("rmp")
+        assert result.name == "rmp"
         assert result.text == ""
 
 

@@ -22,7 +22,8 @@ _VALID_COMMANDS: set[str] = {
     "rmf", "rmh",
     "cate", "catd",
     "open", "reload",
-    "pin", "rmpin",
+    "p", "pr", "ps", "pn",
+    "rmp",
     "q",
 }
 
@@ -31,7 +32,7 @@ _ZERO_ARG_COMMANDS: set[str] = {
     "q",
     "reload",
     "rmf", "rmh",
-    "rmpin",
+    "rmp",
 }
 
 

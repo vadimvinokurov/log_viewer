@@ -238,10 +238,7 @@ class MainWindow(QMainWindow):
             self.log_store.add_filter(Filter(pattern=parsed.text, mode=mode))
             self._refresh_display()
         elif name == "rmf":
-            if not parsed.text:
-                self.log_store.clear_filters()
-            else:
-                self.log_store.remove_filter(parsed.text)
+            self.log_store.clear_filters()
             self._refresh_display()
         elif name in ("s", "sr", "ss"):
             mode = {"s": SearchMode.PLAIN, "sr": SearchMode.REGEX, "ss": SearchMode.SIMPLE}[name]
@@ -279,37 +276,37 @@ class MainWindow(QMainWindow):
                 return
             self._navigate_to_line(line_num)
         elif name == "rmh":
-            if not parsed.text:
-                self.log_store.clear_highlights()
-            else:
-                kept = [(h, e) for h, e in zip(self.log_store.highlights, self.log_store.highlight_enabled)
-                        if h.pattern != parsed.text]
-                self.log_store.highlights = [h for h, _ in kept]
-                self.log_store.highlight_enabled = [e for _, e in kept]
+            self.log_store.clear_highlights()
             self._refresh_display()
         elif name == "reload":
             if self.log_store.current_file:
                 self._open_file(self.log_store.current_file)
             else:
                 self.bottom_bar.set_status("No file loaded")
-        elif name == "pin":
-            try:
-                line_num = int(parsed.text.strip())
-            except ValueError:
-                self.bottom_bar.set_status("Error: pin requires a line number")
+        elif name in ("p", "pr", "ps"):
+            from log_viewer.core import filter_engine as fe
+            mode = {"p": SearchMode.PLAIN, "pr": SearchMode.REGEX, "ps": SearchMode.SIMPLE}[name]
+            filt = Filter(pattern=parsed.text, mode=mode)
+            store = self.log_store
+            pinned = [
+                i + 1  # 1-based line numbers
+                for i in range(store.n)
+                if fe.match(store.get_message(i), filt)
+            ]
+            if pinned:
+                store.pin_lines(pinned)
+                self.bottom_bar.set_status(f"Pinned {len(pinned)} line(s)")
+            else:
+                self.bottom_bar.set_status("No matching lines to pin")
+            self._refresh_display()
+        elif name == "pn":
+            line_num = self._parse_line_number(parsed.text, name)
+            if line_num is None:
                 return
             self.log_store.pin_line(line_num)
             self._refresh_display()
-        elif name == "rmpin":
-            if not parsed.text:
-                self.log_store.unpin_all()
-            else:
-                try:
-                    line_num = int(parsed.text.strip())
-                except ValueError:
-                    self.bottom_bar.set_status("Error: rmpin requires a line number")
-                    return
-                self.log_store.unpin_line(line_num)
+        elif name == "rmp":
+            self.log_store.unpin_all()
             self._refresh_display()
 
     def _do_search(
