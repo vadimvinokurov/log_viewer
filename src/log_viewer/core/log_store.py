@@ -36,6 +36,7 @@ class LogStore:
     def __init__(self) -> None:
         # --- Byte buffer ---
         self._buf: bytearray = bytearray()
+        self._buf_lower: Optional[bytes] = None  # cached lowered buffer
 
         # --- SoA column arrays (all length n) ---
         self.n: int = 0
@@ -124,6 +125,7 @@ class LogStore:
         )
 
         self._buf = buf
+        self._buf_lower = None  # invalidate cache
 
         # Scan line boundaries using numpy (SIMD)
         line_starts = scan_line_starts_fast(buf)
@@ -483,19 +485,32 @@ class LogStore:
             return mask
 
         if filt.mode in (SearchMode.PLAIN, SearchMode.REGEX):
-            # Buffer-wide regex scan for both plain and regex modes
+            # Use pre-lowered buffer for fast case-sensitive search
+            if self._buf_lower is None:
+                self._buf_lower = bytes(self._buf).lower()
+            search_buf = self._buf_lower
+
             if filt.mode == SearchMode.PLAIN:
-                pattern = re.escape(filt.pattern).encode("utf-8")
+                pattern = re.escape(filt.pattern.lower()).encode("utf-8")
             else:
-                pattern = filt.pattern.encode("utf-8")
-            try:
-                combined = re.compile(pattern, re.IGNORECASE)
-            except re.error:
-                return mask
+                # For regex: lower the literal parts is complex,
+                # fall back to IGNORECASE on original buffer
+                try:
+                    combined = re.compile(filt.pattern.encode("utf-8"), re.IGNORECASE)
+                except re.error:
+                    return mask
+                search_buf = self._buf
+
+            if filt.mode == SearchMode.PLAIN:
+                try:
+                    combined = re.compile(pattern)  # case-sensitive on lowered buffer
+                except re.error:
+                    return mask
+
             msg_off = self.message_spans["offset"].astype(np.int64)
             msg_len = self.message_spans["length"].astype(np.int64)
             positions = np.array(
-                [m.start() for m in combined.finditer(self._buf)], dtype=np.int64
+                [m.start() for m in combined.finditer(search_buf)], dtype=np.int64
             )
             if len(positions) > 0:
                 si = np.searchsorted(msg_off, positions, side="right") - 1
