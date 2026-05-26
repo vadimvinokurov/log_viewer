@@ -25,29 +25,6 @@ from log_viewer.core.palette import HIGHLIGHT_PALETTE
 SPAN_DTYPE = np.dtype([("offset", np.uint64), ("length", np.uint32)])
 
 
-def _merge_sorted(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Merge two sorted uint32 arrays, removing duplicates.
-
-    Optimized for the common case where b is a small subset of a:
-    uses np.searchsorted + mask instead of np.union1d (which sorts
-    both arrays from scratch).
-    """
-    if len(a) == 0:
-        return b
-    if len(b) == 0:
-        return a
-    # Fast path: b likely already contained in a (pinned lines in unfiltered result)
-    if len(b) <= len(a):
-        idx = np.searchsorted(a, b)
-        idx = np.clip(idx, 0, len(a) - 1)
-        already = a[idx] == b
-        if already.all():
-            return a
-        new_items = b[~already]
-        return np.sort(np.concatenate([a, new_items])).astype(np.uint32)
-    merged = np.union1d(a, b)
-    return merged.astype(np.uint32)
-
 
 class LogStore:
     """Holds parsed log data in Structure-of-Arrays layout.
@@ -607,49 +584,41 @@ class LogStore:
         cat_level_mask = cat_mask & level_mask
         cat_level_indices = np.where(cat_level_mask)[0]
 
-        # Would-be-visible: category + level + text filters
-        if not has_text_filters:
-            would_be_visible = cat_level_indices.astype(np.uint32)
-        else:
-            # Rebuild masks if out of sync (e.g. filters set directly)
+        # Build text filter mask
+        if has_text_filters:
             if len(self._filter_masks) != len(self.filters):
                 self._recompute_all_filter_masks()
-            # Combine active filter masks with OR logic
             active_masks = [m for m, e in zip(self._filter_masks, self.filter_enabled) if e]
             if active_masks:
                 text_mask = np.zeros(self.n, dtype=bool)
                 for m in active_masks:
                     text_mask |= m
-                combined = cat_level_mask & text_mask
             else:
-                combined = cat_level_mask
-            would_be_visible = np.where(combined)[0].astype(np.uint32)
+                text_mask = np.ones(self.n, dtype=bool)
+        else:
+            text_mask = np.ones(self.n, dtype=bool)
+
+        # Combined mask: category & level & text
+        combined = cat_level_mask & text_mask
 
         # Count per level for buttons (category + text filtering, ignoring level toggles)
-        if has_text_filters:
-            self._count_level_buttons_from_indices(would_be_visible)
-        else:
-            self._count_level_buttons_from_mask(cat_mask)
+        self._count_level_buttons_from_mask(cat_mask & text_mask if has_text_filters else cat_mask)
 
-        # Result (with level filter already applied since cat_level_mask includes it)
-        result = would_be_visible
-
-        # Merge pinned lines from active pin rules
+        # OR in pin mask — pinned lines bypass all filters
         if has_pins:
             active_pin_masks = [m for m, e in zip(self._pin_masks, self.pinned_enabled) if e]
             if active_pin_masks:
                 pin_mask = np.zeros(self.n, dtype=bool)
                 for m in active_pin_masks:
                     pin_mask |= m
-                pinned_indices = np.nonzero(pin_mask)[0].astype(np.uint32)
-                self.pinned_line_numbers = {int(idx) + 1 for idx in pinned_indices}
-                result = _merge_sorted(result, pinned_indices)
+                combined = combined | pin_mask
+                self.pinned_line_numbers = {int(idx) + 1 for idx in np.nonzero(pin_mask)[0]}
             else:
                 self.pinned_line_numbers = set()
         else:
             self.pinned_line_numbers = set()
 
-        self.filtered_indices = result
+        self.filtered_indices = np.where(combined)[0].astype(np.uint32)
         self._count_visible_levels()
 
     def _bulk_match(
