@@ -11,6 +11,11 @@ extensions = [
         sources=["src/log_viewer/core/_parser_cy.pyx"],
         include_dirs=[".", numpy.get_include()],
     ),
+    Extension(
+        "log_viewer.core._filter_cy",
+        sources=["src/log_viewer/core/_filter_cy.pyx"],
+        include_dirs=[".", numpy.get_include()],
+    ),
 ]
 
 setup(

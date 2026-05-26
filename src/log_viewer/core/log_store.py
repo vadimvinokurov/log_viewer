@@ -253,11 +253,11 @@ class LogStore:
         self._filter_masks.append(self._compute_filter_mask(filt))
         self._apply_filters()
 
-    def remove_filter(self, pattern: str, case_sensitive: bool = False) -> None:
+    def remove_filter(self, pattern: str) -> None:
         kept = [
             (i, f, e)
             for i, (f, e) in enumerate(zip(self.filters, self.filter_enabled))
-            if not (f.pattern == pattern and f.case_sensitive == case_sensitive)
+            if f.pattern != pattern
         ]
         self.filters = [f for _, f, _ in kept]
         self.filter_enabled = [e for _, _, e in kept]
@@ -281,12 +281,12 @@ class LogStore:
         self.highlight_enabled.append(True)
 
     def remove_highlight(
-        self, pattern: str, case_sensitive: bool = False, color: str = "red"
+        self, pattern: str, color: str = "red"
     ) -> None:
         kept = [
             (h, e)
             for h, e in zip(self.highlights, self.highlight_enabled)
-            if not (h.pattern == pattern and h.case_sensitive == case_sensitive and h.color == color)
+            if not (h.pattern == pattern and h.color == color)
         ]
         self.highlights = [h for h, _ in kept]
         self.highlight_enabled = [e for _, e in kept]
@@ -325,39 +325,15 @@ class LogStore:
         self,
         pattern: str,
         mode: SearchMode,
-        case_sensitive: bool = False,
         direction: SearchDirection = SearchDirection.FORWARD,
     ) -> SearchState:
-        matches: list[int] = []
-        buf = self._buf
-        spans = self.message_spans
-        indices = self.filtered_indices.tolist()
+        filt = Filter(pattern=pattern, mode=mode)
+        mask = self._compute_filter_mask(filt)
 
-        if mode == SearchMode.PLAIN and not case_sensitive:
-            pat_lower = pattern.lower().encode("utf-8")
-            for idx in indices:
-                off = int(spans[idx]["offset"])
-                ln = int(spans[idx]["length"])
-                msg = bytes(buf[off:off + ln])
-                if pat_lower in msg.lower():
-                    matches.append(idx)
-        elif mode == SearchMode.PLAIN and case_sensitive:
-            pat_bytes = pattern.encode("utf-8")
-            for idx in indices:
-                off = int(spans[idx]["offset"])
-                ln = int(spans[idx]["length"])
-                msg = bytes(buf[off:off + ln])
-                if pat_bytes in msg:
-                    matches.append(idx)
-        else:
-            # Regex and simple query: use filter engine on bytes
-            filt = Filter(pattern=pattern, mode=mode, case_sensitive=case_sensitive)
-            for idx in indices:
-                off = int(spans[idx]["offset"])
-                ln = int(spans[idx]["length"])
-                msg = bytes(buf[off:off + ln])
-                if filter_engine.match_bytes(msg, filt):
-                    matches.append(idx)
+        # Intersect with currently visible lines
+        visible_mask = mask[self.filtered_indices]
+        local_indices = np.where(visible_mask)[0]
+        matches = self.filtered_indices[local_indices].tolist()
 
         start = 0
         if matches and direction == SearchDirection.BACKWARD:
@@ -366,7 +342,6 @@ class LogStore:
         state = SearchState(
             pattern=pattern,
             mode=mode,
-            case_sensitive=case_sensitive,
             direction=direction,
             matches=matches,
             current_index=start,
@@ -507,9 +482,16 @@ class LogStore:
                 mask[idx] = True
             return mask
 
-        if filt.mode == SearchMode.PLAIN and not filt.case_sensitive:
-            # Buffer-wide regex scan
-            combined = re.compile(re.escape(filt.pattern).encode("utf-8"), re.IGNORECASE)
+        if filt.mode in (SearchMode.PLAIN, SearchMode.REGEX):
+            # Buffer-wide regex scan for both plain and regex modes
+            if filt.mode == SearchMode.PLAIN:
+                pattern = re.escape(filt.pattern).encode("utf-8")
+            else:
+                pattern = filt.pattern.encode("utf-8")
+            try:
+                combined = re.compile(pattern, re.IGNORECASE)
+            except re.error:
+                return mask
             msg_off = self.message_spans["offset"].astype(np.int64)
             msg_len = self.message_spans["length"].astype(np.int64)
             positions = np.array(
@@ -523,15 +505,28 @@ class LogStore:
                 in_msg = (pv >= msg_off[si]) & (pv < ends)
                 mask[si[in_msg]] = True
         else:
-            # Per-line decode + match
-            buf = self._buf
-            spans = self.message_spans
-            for idx in range(n):
-                off = int(spans[idx]["offset"])
-                ln = int(spans[idx]["length"])
-                msg = buf[off:off + ln].decode("utf-8", errors="replace")
-                if filter_engine.match(msg, filt):
-                    mask[idx] = True
+            # Simple query: try Cython fast path, fallback to Python
+            try:
+                from log_viewer.core._filter_cy import compute_simple_mask
+                from log_viewer.core.simple_query import parse_query
+                ast = parse_query(filt.pattern)
+                mask = compute_simple_mask(
+                    self.message_spans["offset"].astype(np.uint64),
+                    self.message_spans["length"].astype(np.uint32),
+                    n,
+                    self._buf,
+                    ast,
+                )
+            except ImportError:
+                # Fallback: per-line decode + match
+                buf = self._buf
+                spans = self.message_spans
+                for idx in range(n):
+                    off = int(spans[idx]["offset"])
+                    ln = int(spans[idx]["length"])
+                    msg = buf[off:off + ln].decode("utf-8", errors="replace")
+                    if filter_engine.match(msg, filt):
+                        mask[idx] = True
 
         return mask
 
@@ -624,7 +619,7 @@ class LogStore:
         plain_ci: list[bytes] = []
         other_filters: list[Filter] = []
         for f in filters:
-            if f.mode == SearchMode.PLAIN and not f.case_sensitive:
+            if f.mode == SearchMode.PLAIN:
                 plain_ci.append(re.escape(f.pattern).encode("utf-8"))
             else:
                 other_filters.append(f)

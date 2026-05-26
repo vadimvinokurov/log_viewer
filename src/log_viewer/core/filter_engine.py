@@ -1,9 +1,9 @@
 """Filter/search/highlight matching engine.
 
 Supports three matching modes:
-- PLAIN: literal substring match
-- REGEX: regular expression search
-- SIMPLE: AND/OR/NOT query language via simple_query parser
+- PLAIN: literal substring match (always case-insensitive)
+- REGEX: regular expression search (always case-insensitive)
+- SIMPLE: AND/OR/NOT query language via simple_query parser (always case-insensitive)
 """
 
 from __future__ import annotations
@@ -21,65 +21,62 @@ class RegexError(Exception):
 def match(text: str, filt: Filter) -> bool:
     """Check if text matches the filter pattern."""
     if filt.mode == SearchMode.PLAIN:
-        return _match_plain(text, filt.pattern, filt.case_sensitive)
+        return _match_plain(text, filt.pattern)
     elif filt.mode == SearchMode.REGEX:
-        return _match_regex(text, filt.pattern, filt.case_sensitive)
+        return _match_regex(text, filt.pattern)
     elif filt.mode == SearchMode.SIMPLE:
-        return _match_simple(text, filt.pattern, filt.case_sensitive)
+        return _match_simple(text, filt.pattern)
     elif filt.mode == SearchMode.LINE_NUMBER:
         return True
     return False
 
 
-def _match_plain(text: str, pattern: str, case_sensitive: bool) -> bool:
-    """Literal substring match."""
-    if case_sensitive:
-        return pattern in text
+def _match_plain(text: str, pattern: str) -> bool:
+    """Literal substring match (case-insensitive)."""
     return pattern.lower() in text.lower()
 
 
-def _match_regex(text: str, pattern: str, case_sensitive: bool) -> bool:
-    """Regular expression search."""
+def _match_regex(text: str, pattern: str) -> bool:
+    """Regular expression search (case-insensitive)."""
     try:
-        flags = 0 if case_sensitive else re.IGNORECASE
-        return re.search(pattern, text, flags) is not None
+        return re.search(pattern, text, re.IGNORECASE) is not None
     except re.error as e:
         raise RegexError(f"Invalid regex: {e}") from e
 
 
-def _match_simple(text: str, pattern: str, case_sensitive: bool) -> bool:
+def _match_simple(text: str, pattern: str) -> bool:
     """Simple query language match (AND/OR/NOT). Uses cached AST."""
     try:
         ast = parse_query(pattern)
-        return ast.evaluate(text, case_sensitive)
+        return ast.evaluate(text)
     except QuerySyntaxError:
         return False
 
 
 def find_spans(
-    text: str, pattern: str, mode: SearchMode, case_sensitive: bool = False
+    text: str, pattern: str, mode: SearchMode
 ) -> list[tuple[int, int]]:
     """Find all match spans (start, end) for a pattern in text."""
     if mode == SearchMode.PLAIN:
-        return _find_plain_spans(text, pattern, case_sensitive)
+        return _find_plain_spans(text, pattern)
     elif mode == SearchMode.REGEX:
-        return _find_regex_spans(text, pattern, case_sensitive)
+        return _find_regex_spans(text, pattern)
     elif mode == SearchMode.SIMPLE:
-        return _find_simple_spans(text, pattern, case_sensitive)
+        return _find_simple_spans(text, pattern)
     elif mode == SearchMode.LINE_NUMBER:
         return [(0, len(text))] if text else []
     return []
 
 
 def _find_plain_spans(
-    text: str, pattern: str, case_sensitive: bool
+    text: str, pattern: str
 ) -> list[tuple[int, int]]:
-    """Find all substring match spans."""
+    """Find all substring match spans (case-insensitive)."""
     if not pattern:
         return []
     spans: list[tuple[int, int]] = []
-    search_text = text if case_sensitive else text.lower()
-    search_pattern = pattern if case_sensitive else pattern.lower()
+    search_text = text.lower()
+    search_pattern = pattern.lower()
     start = 0
     while True:
         idx = search_text.find(search_pattern, start)
@@ -91,23 +88,22 @@ def _find_plain_spans(
 
 
 def _find_regex_spans(
-    text: str, pattern: str, case_sensitive: bool
+    text: str, pattern: str
 ) -> list[tuple[int, int]]:
-    """Find all regex match spans."""
+    """Find all regex match spans (case-insensitive)."""
     try:
-        flags = 0 if case_sensitive else re.IGNORECASE
-        return [(m.start(), m.end()) for m in re.finditer(pattern, text, flags)]
+        return [(m.start(), m.end()) for m in re.finditer(pattern, text, re.IGNORECASE)]
     except re.error:
         return []
 
 
 def _find_simple_spans(
-    text: str, pattern: str, case_sensitive: bool
+    text: str, pattern: str
 ) -> list[tuple[int, int]]:
     """Find all simple query match spans. Uses cached AST."""
     try:
         ast = parse_query(pattern)
-        return ast.find_spans(text, case_sensitive)
+        return ast.find_spans(text)
     except QuerySyntaxError:
         return []
 
@@ -119,7 +115,7 @@ def batch_match(
 ) -> set[int]:
     """Match multiple filters against multiple texts. Returns set of matching indices.
 
-    Plain case-insensitive filters are merged into a single compiled regex
+    Plain filters are merged into a single compiled regex
     via alternation for O(n) instead of O(n*m) matching.
     """
     if not texts:
@@ -129,18 +125,18 @@ def batch_match(
 
     matching: set[int] = set()
 
-    # Group plain case-insensitive filters for batch regex
-    plain_ci: list[str] = []
+    # Group plain filters for batch regex
+    plain: list[str] = []
     other_filters: list[Filter] = []
     for f in filters:
-        if f.mode == SearchMode.PLAIN and not f.case_sensitive:
-            plain_ci.append(re.escape(f.pattern))
+        if f.mode == SearchMode.PLAIN:
+            plain.append(re.escape(f.pattern))
         else:
             other_filters.append(f)
 
-    # Batch-match all plain CI filters with one compiled regex
-    if plain_ci:
-        combined = re.compile("|".join(plain_ci), re.IGNORECASE)
+    # Batch-match all plain filters with one compiled regex
+    if plain:
+        combined = re.compile("|".join(plain), re.IGNORECASE)
         if pre_lowered is not None:
             for i, low in enumerate(pre_lowered):
                 if combined.search(low):
@@ -169,24 +165,21 @@ def match_bytes(text: bytes, filt: Filter) -> bool:
     Simple query falls back to str decoding.
     """
     if filt.mode == SearchMode.PLAIN:
-        return _match_plain_bytes(text, filt.pattern, filt.case_sensitive)
+        return _match_plain_bytes(text, filt.pattern)
     elif filt.mode == SearchMode.REGEX:
-        return _match_regex_bytes(text, filt.pattern, filt.case_sensitive)
+        return _match_regex_bytes(text, filt.pattern)
     elif filt.mode == SearchMode.SIMPLE:
-        return _match_simple(text.decode("utf-8", errors="replace"), filt.pattern, filt.case_sensitive)
+        return _match_simple(text.decode("utf-8", errors="replace"), filt.pattern)
     return False
 
 
-def _match_plain_bytes(text: bytes, pattern: str, case_sensitive: bool) -> bool:
-    if case_sensitive:
-        return pattern.encode("utf-8") in text
+def _match_plain_bytes(text: bytes, pattern: str) -> bool:
     return pattern.lower().encode("utf-8") in text.lower()
 
 
-def _match_regex_bytes(text: bytes, pattern: str, case_sensitive: bool) -> bool:
+def _match_regex_bytes(text: bytes, pattern: str) -> bool:
     try:
-        flags = 0 if case_sensitive else re.IGNORECASE
-        return re.search(pattern.encode("utf-8"), text, flags) is not None
+        return re.search(pattern.encode("utf-8"), text, re.IGNORECASE) is not None
     except re.error as e:
         raise RegexError(f"Invalid regex: {e}") from e
 
@@ -197,7 +190,7 @@ def batch_match_bytes(
 ) -> set[int]:
     """Match multiple filters against multiple byte messages. Returns set of matching indices.
 
-    Plain case-insensitive filters are merged into a single compiled bytes regex.
+    Plain filters are merged into a single compiled bytes regex.
     """
     if not messages:
         return set()
@@ -206,16 +199,16 @@ def batch_match_bytes(
 
     matching: set[int] = set()
 
-    plain_ci: list[bytes] = []
+    plain: list[bytes] = []
     other_filters: list[Filter] = []
     for f in filters:
-        if f.mode == SearchMode.PLAIN and not f.case_sensitive:
-            plain_ci.append(re.escape(f.pattern).encode("utf-8"))
+        if f.mode == SearchMode.PLAIN:
+            plain.append(re.escape(f.pattern).encode("utf-8"))
         else:
             other_filters.append(f)
 
-    if plain_ci:
-        combined = re.compile(b"|".join(plain_ci), re.IGNORECASE)
+    if plain:
+        combined = re.compile(b"|".join(plain), re.IGNORECASE)
         for i, msg in enumerate(messages):
             if combined.search(msg):
                 matching.add(i)

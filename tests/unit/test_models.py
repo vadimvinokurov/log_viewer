@@ -139,14 +139,13 @@ class TestSearchEnums:
 
 class TestFilter:
     def test_create_filter(self) -> None:
-        f = Filter(pattern="ERROR", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="ERROR", mode=SearchMode.PLAIN)
         assert f.pattern == "ERROR"
         assert f.mode == SearchMode.PLAIN
-        assert not f.case_sensitive
 
     def test_filter_defaults(self) -> None:
-        f = Filter(pattern="test", mode=SearchMode.PLAIN, case_sensitive=False)
-        assert f.case_sensitive is False
+        f = Filter(pattern="test", mode=SearchMode.PLAIN)
+        assert f.pattern == "test"
 
 
 class TestHighlight:
@@ -154,7 +153,6 @@ class TestHighlight:
         h = Highlight(
             pattern="ERROR",
             mode=SearchMode.PLAIN,
-            case_sensitive=False,
             color="red",
         )
         assert h.color == "red"
@@ -165,7 +163,6 @@ class TestSearchState:
         state = SearchState(
             pattern="error",
             mode=SearchMode.PLAIN,
-            case_sensitive=False,
             direction=SearchDirection.FORWARD,
             matches=[1, 5, 10],
             current_index=0,
@@ -179,7 +176,6 @@ def test_search_state_in_search_defaults_false():
     state = SearchState(
         pattern="test",
         mode=SearchMode.PLAIN,
-        case_sensitive=False,
         direction=SearchDirection.FORWARD,
     )
     assert state.in_search is False

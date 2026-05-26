@@ -12,37 +12,32 @@ class TestPlainMatch:
     """Test plain text matching."""
 
     def test_plain_match_found(self) -> None:
-        f = Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="error", mode=SearchMode.PLAIN)
         assert match("An error occurred", f) is True
 
     def test_plain_match_not_found(self) -> None:
-        f = Filter(pattern="timeout", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="timeout", mode=SearchMode.PLAIN)
         assert match("An error occurred", f) is False
 
     def test_plain_case_insensitive(self) -> None:
-        f = Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="error", mode=SearchMode.PLAIN)
         assert match("An ERROR occurred", f) is True
         assert match("An Error occurred", f) is True
 
-    def test_plain_case_sensitive(self) -> None:
-        f = Filter(pattern="ERROR", mode=SearchMode.PLAIN, case_sensitive=True)
-        assert match("An ERROR occurred", f) is True
-        assert match("An error occurred", f) is False
-
     def test_plain_substring_match(self) -> None:
-        f = Filter(pattern="fail", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="fail", mode=SearchMode.PLAIN)
         assert match("Failed to open", f) is True
 
     def test_plain_empty_pattern(self) -> None:
-        f = Filter(pattern="", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="", mode=SearchMode.PLAIN)
         assert match("any text", f) is True
 
     def test_plain_empty_text(self) -> None:
-        f = Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="error", mode=SearchMode.PLAIN)
         assert match("", f) is False
 
     def test_plain_matches_full_line(self) -> None:
-        f = Filter(pattern="LOG_ERROR", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="LOG_ERROR", mode=SearchMode.PLAIN)
         line = "2024-01-01 app LOG_ERROR Something broke"
         assert match(line, f) is True
 
@@ -51,36 +46,29 @@ class TestRegexMatch:
     """Test regex matching."""
 
     def test_regex_match(self) -> None:
-        f = Filter(pattern=r"error_\d+", mode=SearchMode.REGEX, case_sensitive=False)
+        f = Filter(pattern=r"error_\d+", mode=SearchMode.REGEX)
         assert match("error_42 occurred", f) is True
 
     def test_regex_no_match(self) -> None:
-        f = Filter(pattern=r"error_\d+", mode=SearchMode.REGEX, case_sensitive=False)
+        f = Filter(pattern=r"error_\d+", mode=SearchMode.REGEX)
         assert match("no match here", f) is False
 
     def test_regex_case_insensitive(self) -> None:
-        f = Filter(pattern=r"error_\d+", mode=SearchMode.REGEX, case_sensitive=False)
+        f = Filter(pattern=r"error_\d+", mode=SearchMode.REGEX)
         assert match("ERROR_42 occurred", f) is True
 
-    def test_regex_case_sensitive(self) -> None:
-        f = Filter(pattern=r"error_\d+", mode=SearchMode.REGEX, case_sensitive=True)
-        assert match("error_42 occurred", f) is True
-        assert match("ERROR_42 occurred", f) is False
-
     def test_regex_invalid_raises(self) -> None:
-        f = Filter(pattern=r"[invalid", mode=SearchMode.REGEX, case_sensitive=False)
+        f = Filter(pattern=r"[invalid", mode=SearchMode.REGEX)
         with pytest.raises(RegexError):
             match("some text", f)
 
     def test_regex_complex_pattern(self) -> None:
-        f = Filter(
-            pattern=r"\d{4}-\d{2}-\d{2}", mode=SearchMode.REGEX, case_sensitive=False
-        )
+        f = Filter(pattern=r"\d{4}-\d{2}-\d{2}", mode=SearchMode.REGEX)
         assert match("Date: 2024-01-15", f) is True
         assert match("No date here", f) is False
 
     def test_regex_word_boundary(self) -> None:
-        f = Filter(pattern=r"\berror\b", mode=SearchMode.REGEX, case_sensitive=False)
+        f = Filter(pattern=r"\berror\b", mode=SearchMode.REGEX)
         assert match("error occurred", f) is True
         assert match("errors occurred", f) is False
 
@@ -89,46 +77,31 @@ class TestSimpleMatch:
     """Test simple query matching (AND/OR/NOT)."""
 
     def test_simple_single_term(self) -> None:
-        f = Filter(pattern='"error"', mode=SearchMode.SIMPLE, case_sensitive=False)
+        f = Filter(pattern='"error"', mode=SearchMode.SIMPLE)
         assert match("An error occurred", f) is True
 
     def test_simple_single_term_no_match(self) -> None:
-        f = Filter(pattern='"error"', mode=SearchMode.SIMPLE, case_sensitive=False)
+        f = Filter(pattern='"error"', mode=SearchMode.SIMPLE)
         assert match("No issues", f) is False
 
     def test_simple_and(self) -> None:
-        f = Filter(
-            pattern='"Failed" AND "config"', mode=SearchMode.SIMPLE, case_sensitive=False
-        )
+        f = Filter(pattern='"Failed" AND "config"', mode=SearchMode.SIMPLE)
         assert match("Failed to load config", f) is True
         assert match("Failed to open file", f) is False
 
     def test_simple_or(self) -> None:
-        f = Filter(
-            pattern='"Failed" OR "Successfully"',
-            mode=SearchMode.SIMPLE,
-            case_sensitive=False,
-        )
+        f = Filter(pattern='"Failed" OR "Successfully"', mode=SearchMode.SIMPLE)
         assert match("Failed to load", f) is True
         assert match("Successfully loaded", f) is True
         assert match("Error occurred", f) is False
 
     def test_simple_not(self) -> None:
-        f = Filter(
-            pattern='NOT "warning"', mode=SearchMode.SIMPLE, case_sensitive=False
-        )
+        f = Filter(pattern='NOT "warning"', mode=SearchMode.SIMPLE)
         assert match("error occurred", f) is True
         assert match("warning issued", f) is False
 
-    def test_simple_case_sensitive(self) -> None:
-        f = Filter(
-            pattern='"ERROR"', mode=SearchMode.SIMPLE, case_sensitive=True
-        )
-        assert match("ERROR occurred", f) is True
-        assert match("error occurred", f) is False
-
     def test_simple_invalid_query_returns_false(self) -> None:
-        f = Filter(pattern="unquoted", mode=SearchMode.SIMPLE, case_sensitive=False)
+        f = Filter(pattern="unquoted", mode=SearchMode.SIMPLE)
         assert match("some text", f) is False
 
 
@@ -148,15 +121,7 @@ class TestFindSpansPlain:
         assert spans == []
 
     def test_plain_case_insensitive(self) -> None:
-        spans = find_spans("An ERROR occurred", "error", SearchMode.PLAIN, case_sensitive=False)
-        assert spans == [(3, 8)]
-
-    def test_plain_case_sensitive(self) -> None:
-        spans = find_spans("An ERROR occurred", "error", SearchMode.PLAIN, case_sensitive=True)
-        assert spans == []
-
-    def test_plain_case_sensitive_match(self) -> None:
-        spans = find_spans("An ERROR occurred", "ERROR", SearchMode.PLAIN, case_sensitive=True)
+        spans = find_spans("An ERROR occurred", "error", SearchMode.PLAIN)
         assert spans == [(3, 8)]
 
     def test_plain_empty_text(self) -> None:
@@ -184,12 +149,8 @@ class TestFindSpansRegex:
         assert spans == []
 
     def test_regex_case_insensitive(self) -> None:
-        spans = find_spans("ERROR_42", r"error_\d+", SearchMode.REGEX, case_sensitive=False)
+        spans = find_spans("ERROR_42", r"error_\d+", SearchMode.REGEX)
         assert spans == [(0, 8)]
-
-    def test_regex_case_sensitive(self) -> None:
-        spans = find_spans("ERROR_42", r"error_\d+", SearchMode.REGEX, case_sensitive=True)
-        assert spans == []
 
     def test_regex_invalid_pattern_returns_empty(self) -> None:
         spans = find_spans("some text", r"[invalid", SearchMode.REGEX)
@@ -228,7 +189,7 @@ class TestBatchMatch:
     def test_batch_match_plain_single_filter(self) -> None:
         from log_viewer.core.filter_engine import batch_match
         texts = ["error occurred", "all fine", "timeout hit"]
-        filters = [Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)]
+        filters = [Filter(pattern="error", mode=SearchMode.PLAIN)]
         result = batch_match(texts, filters)
         assert result == {0}
 
@@ -236,8 +197,8 @@ class TestBatchMatch:
         from log_viewer.core.filter_engine import batch_match
         texts = ["error occurred", "all fine", "timeout hit"]
         filters = [
-            Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False),
-            Filter(pattern="timeout", mode=SearchMode.PLAIN, case_sensitive=False),
+            Filter(pattern="error", mode=SearchMode.PLAIN),
+            Filter(pattern="timeout", mode=SearchMode.PLAIN),
         ]
         result = batch_match(texts, filters)
         assert result == {0, 2}
@@ -245,21 +206,14 @@ class TestBatchMatch:
     def test_batch_match_plain_case_insensitive(self) -> None:
         from log_viewer.core.filter_engine import batch_match
         texts = ["ERROR occurred"]
-        filters = [Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)]
+        filters = [Filter(pattern="error", mode=SearchMode.PLAIN)]
         result = batch_match(texts, filters)
         assert result == {0}
-
-    def test_batch_match_plain_case_sensitive(self) -> None:
-        from log_viewer.core.filter_engine import batch_match
-        texts = ["ERROR occurred", "error occurred"]
-        filters = [Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=True)]
-        result = batch_match(texts, filters)
-        assert result == {1}
 
     def test_batch_match_regex_filter(self) -> None:
         from log_viewer.core.filter_engine import batch_match
         texts = ["error_42 occurred", "no match", "error_99 again"]
-        filters = [Filter(pattern=r"error_\d+", mode=SearchMode.REGEX, case_sensitive=False)]
+        filters = [Filter(pattern=r"error_\d+", mode=SearchMode.REGEX)]
         result = batch_match(texts, filters)
         assert result == {0, 2}
 
@@ -267,8 +221,8 @@ class TestBatchMatch:
         from log_viewer.core.filter_engine import batch_match
         texts = ["error occurred", "timeout hit", "all fine"]
         filters = [
-            Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False),
-            Filter(pattern=r"time\w+", mode=SearchMode.REGEX, case_sensitive=False),
+            Filter(pattern="error", mode=SearchMode.PLAIN),
+            Filter(pattern=r"time\w+", mode=SearchMode.REGEX),
         ]
         result = batch_match(texts, filters)
         assert result == {0, 1}
@@ -276,7 +230,7 @@ class TestBatchMatch:
     def test_batch_match_no_matches(self) -> None:
         from log_viewer.core.filter_engine import batch_match
         texts = ["all fine", "nothing here"]
-        filters = [Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)]
+        filters = [Filter(pattern="error", mode=SearchMode.PLAIN)]
         result = batch_match(texts, filters)
         assert result == set()
 
@@ -288,14 +242,14 @@ class TestBatchMatch:
 
     def test_batch_match_empty_texts(self) -> None:
         from log_viewer.core.filter_engine import batch_match
-        filters = [Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)]
+        filters = [Filter(pattern="error", mode=SearchMode.PLAIN)]
         result = batch_match([], filters)
         assert result == set()
 
     def test_batch_match_simple_query(self) -> None:
         from log_viewer.core.filter_engine import batch_match
         texts = ["error and timeout", "just error", "nothing"]
-        filters = [Filter(pattern='"error" AND "timeout"', mode=SearchMode.SIMPLE, case_sensitive=False)]
+        filters = [Filter(pattern='"error" AND "timeout"', mode=SearchMode.SIMPLE)]
         result = batch_match(texts, filters)
         assert result == {0}
 
@@ -304,7 +258,7 @@ class TestBatchMatch:
         from log_viewer.core.filter_engine import batch_match
         texts = ["ERROR OCCURRED", "all fine"]
         pre_lowered = ["error occurred", "all fine"]
-        filters = [Filter(pattern="error", mode=SearchMode.PLAIN, case_sensitive=False)]
+        filters = [Filter(pattern="error", mode=SearchMode.PLAIN)]
         result = batch_match(texts, filters, pre_lowered=pre_lowered)
         assert result == {0}
 

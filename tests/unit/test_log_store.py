@@ -170,7 +170,7 @@ class TestLogStoreFilters:
     def test_add_single_filter(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        f = Filter(pattern="Failed", mode=SearchMode.PLAIN, case_sensitive=False)
+        f = Filter(pattern="Failed", mode=SearchMode.PLAIN)
         store.add_filter(f)
         assert len(store.filters) == 1
         # "Failed to open" and "Read failed" both contain "Failed"
@@ -212,22 +212,10 @@ class TestLogStoreFilters:
         store.add_filter(f2)
         assert len(store.filters) == 2
 
-        store.remove_filter("Failed", case_sensitive=False)
+        store.remove_filter("Failed")
         assert len(store.filters) == 1
         # Only "test_os" line remains
         assert len(store.filtered_indices) == 1
-
-    def test_remove_filter_case_sensitive_match(self) -> None:
-        store = LogStore()
-        store.load_lines(SAMPLE_LINES)
-        f = Filter(pattern="Failed", mode=SearchMode.PLAIN, case_sensitive=True)
-        store.add_filter(f)
-        # Removing with wrong case_sensitive won't match
-        store.remove_filter("Failed", case_sensitive=False)
-        assert len(store.filters) == 1  # Still there
-
-        store.remove_filter("Failed", case_sensitive=True)
-        assert len(store.filters) == 0
 
     def test_clear_filters(self) -> None:
         store = LogStore()
@@ -296,7 +284,7 @@ class TestLogStoreHighlights:
         store.load_lines(SAMPLE_LINES)
         h = Highlight(pattern="ERROR", mode=SearchMode.PLAIN)
         store.add_highlight(h)
-        store.remove_highlight("ERROR", case_sensitive=False, color="#FFD700")
+        store.remove_highlight("ERROR", color="#FFD700")
         assert len(store.highlights) == 0
 
     def test_clear_highlights(self) -> None:
@@ -331,37 +319,30 @@ class TestLogStoreSearch:
     def test_search_plain_forward_finds_matches(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        state = store.search("Failed", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.FORWARD)
+        state = store.search("Failed", SearchMode.PLAIN, direction=SearchDirection.FORWARD)
         # "Failed to open" (idx 1) and "Read failed" (idx 2)
         assert state.matches == [1, 2]
         assert state.current_index == 0
         assert state.pattern == "Failed"
 
-    def test_search_case_sensitive(self) -> None:
-        store = LogStore()
-        store.load_lines(SAMPLE_LINES)
-        state = store.search("failed", SearchMode.PLAIN, case_sensitive=True, direction=SearchDirection.FORWARD)
-        # Only "Read failed" has lowercase "failed"
-        assert state.matches == [2]
-
     def test_search_regex(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        state = store.search(r"Failed|Missing", SearchMode.REGEX, case_sensitive=False, direction=SearchDirection.FORWARD)
+        state = store.search(r"Failed|Missing", SearchMode.REGEX, direction=SearchDirection.FORWARD)
         # "Failed to open" (idx 1), "Read failed" (idx 2), "Missing file" (idx 3)
         assert state.matches == [1, 2, 3]
 
     def test_search_no_matches(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        state = store.search("NONEXISTENT", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.FORWARD)
+        state = store.search("NONEXISTENT", SearchMode.PLAIN, direction=SearchDirection.FORWARD)
         assert state.matches == []
         assert state.current_index == 0
 
     def test_search_backward_starts_from_last(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        state = store.search("Failed", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.BACKWARD)
+        state = store.search("Failed", SearchMode.PLAIN, direction=SearchDirection.BACKWARD)
         assert state.matches == [1, 2]
         assert state.current_index == 1  # Last match
 
@@ -372,7 +353,7 @@ class TestLogStoreSearch:
         store.add_filter(Filter(pattern="Failed", mode=SearchMode.PLAIN))
         assert store.filtered_indices.tolist() == [1, 2]
         # Search within filtered view
-        state = store.search("Failed", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.FORWARD)
+        state = store.search("Failed", SearchMode.PLAIN, direction=SearchDirection.FORWARD)
         # Only indices 1 and 2 are visible, both contain "Failed"
         assert state.matches == [1, 2]
 
@@ -381,7 +362,7 @@ class TestLogStoreSearch:
         store.load_lines(SAMPLE_LINES)
         # Filter to show only "test_os" line (index 4)
         store.add_filter(Filter(pattern="test_os", mode=SearchMode.PLAIN))
-        state = store.search("Failed", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.FORWARD)
+        state = store.search("Failed", SearchMode.PLAIN, direction=SearchDirection.FORWARD)
         # "Failed" is not in the "test_os" message
         assert state.matches == []
 
@@ -392,7 +373,7 @@ class TestLogStoreSearchNavigation:
     def _store_with_search(self) -> LogStore:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.search("Failed", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.FORWARD)
+        store.search("Failed", SearchMode.PLAIN, direction=SearchDirection.FORWARD)
         return store
 
     def test_next_match_advances(self) -> None:
@@ -434,7 +415,7 @@ class TestLogStoreSearchNavigation:
     def test_next_match_no_results_returns_none(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.search("NONEXISTENT", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.FORWARD)
+        store.search("NONEXISTENT", SearchMode.PLAIN, direction=SearchDirection.FORWARD)
         assert store.next_match() is None
 
     def test_clear_search(self) -> None:
@@ -585,7 +566,7 @@ class TestLogStoreCategoryEnableDisable:
         store.load_lines(SAMPLE_LINES)
         store.disable_category("my_app")
         # "Failed" only exists in my_app lines
-        state = store.search("Failed", SearchMode.PLAIN, case_sensitive=False, direction=SearchDirection.FORWARD)
+        state = store.search("Failed", SearchMode.PLAIN, direction=SearchDirection.FORWARD)
         assert state.matches == []
 
     def test_leaf_enable_under_disabled_parent_shows_in_filtered(self) -> None:

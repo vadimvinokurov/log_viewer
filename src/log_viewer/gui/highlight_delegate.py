@@ -17,21 +17,21 @@ class HighlightDelegate(QStyledItemDelegate):
 
     def __init__(self) -> None:
         super().__init__()
-        self._span_cache: dict[tuple[str, str, str, bool], list[tuple[int, int]]] = {}
+        self._span_cache: dict[tuple[str, str, str], list[tuple[int, int]]] = {}
         self._cache_version: int = 0
         self._highlights_version: int = -1
 
     def _get_spans(
-        self, text: str, pattern: str, mode: str, case_sensitive: bool, hl_sig: int
+        self, text: str, pattern: str, mode: str, hl_sig: int
     ) -> list[tuple[int, int]]:
         """Get cached spans or compute and cache them."""
         if hl_sig != self._highlights_version:
             self._span_cache.clear()
             self._highlights_version = hl_sig
 
-        key = (text, pattern, mode, case_sensitive)
+        key = (text, pattern, mode)
         if key not in self._span_cache:
-            self._span_cache[key] = find_spans(text, pattern, mode, case_sensitive)
+            self._span_cache[key] = find_spans(text, pattern, mode)
         return self._span_cache[key]
 
     def paint(
@@ -62,11 +62,11 @@ class HighlightDelegate(QStyledItemDelegate):
 
         if do_highlight:
             # Version tracks highlight changes for cache invalidation
-            hl_sig = hash(frozenset((h.pattern, h.mode.value, h.case_sensitive, h.color) for h in highlights))
+            hl_sig = hash(frozenset((h.pattern, h.mode.value, h.color) for h in highlights))
             metrics = QFontMetrics(option.font)
             painter.setClipRect(option.rect)
             for hl in highlights:
-                spans = self._get_spans(text, hl.pattern, hl.mode, hl.case_sensitive, hl_sig)
+                spans = self._get_spans(text, hl.pattern, hl.mode, hl_sig)
                 color = QColor(hl.color)
                 color.setAlpha(60)
                 for start, end in spans:

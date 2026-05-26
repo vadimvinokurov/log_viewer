@@ -110,14 +110,12 @@ class LogLine:
 class Filter:
     pattern: str
     mode: SearchMode
-    case_sensitive: bool = False
 
 
 @dataclass
 class Highlight:
     pattern: str
     mode: SearchMode
-    case_sensitive: bool = False
     color: str = "0"
 
 
@@ -125,7 +123,6 @@ class Highlight:
 class SearchState:
     pattern: str
     mode: SearchMode
-    case_sensitive: bool
     direction: SearchDirection
     matches: list[int] = field(default_factory=list)
     current_index: int = 0

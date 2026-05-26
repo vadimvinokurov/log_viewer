@@ -34,20 +34,15 @@ class TestSingleTerm:
 
     def test_term_evaluate_matches(self) -> None:
         node = parse_query('"error"')
-        assert node.evaluate("An error occurred", case_sensitive=False) is True
+        assert node.evaluate("An error occurred") is True
 
     def test_term_evaluate_no_match(self) -> None:
         node = parse_query('"timeout"')
-        assert node.evaluate("An error occurred", case_sensitive=False) is False
-
-    def test_term_evaluate_case_sensitive(self) -> None:
-        node = parse_query('"ERROR"')
-        assert node.evaluate("An error occurred", case_sensitive=True) is False
-        assert node.evaluate("An ERROR occurred", case_sensitive=True) is True
+        assert node.evaluate("An error occurred") is False
 
     def test_term_evaluate_case_insensitive_default(self) -> None:
         node = parse_query('"error"')
-        assert node.evaluate("An ERROR occurred", case_sensitive=False) is True
+        assert node.evaluate("An ERROR occurred") is True
 
 
 class TestAndNode:
@@ -61,21 +56,21 @@ class TestAndNode:
 
     def test_and_evaluate_both_match(self) -> None:
         node = parse_query('"Failed" AND "config"')
-        assert node.evaluate("Failed to load config file", case_sensitive=False) is True
+        assert node.evaluate("Failed to load config file") is True
 
     def test_and_evaluate_one_match(self) -> None:
         node = parse_query('"Failed" AND "config"')
-        assert node.evaluate("Failed to open file", case_sensitive=False) is False
+        assert node.evaluate("Failed to open file") is False
 
     def test_and_evaluate_none_match(self) -> None:
         node = parse_query('"Failed" AND "config"')
-        assert node.evaluate("Successfully loaded", case_sensitive=False) is False
+        assert node.evaluate("Successfully loaded") is False
 
     def test_three_terms_and(self) -> None:
         node = parse_query('"a" AND "b" AND "c"')
         assert isinstance(node, AndNode)
-        assert node.evaluate("a b c", case_sensitive=False) is True
-        assert node.evaluate("a b", case_sensitive=False) is False
+        assert node.evaluate("a b c") is True
+        assert node.evaluate("a b") is False
 
 
 class TestOrNode:
@@ -87,20 +82,20 @@ class TestOrNode:
 
     def test_or_evaluate_first_match(self) -> None:
         node = parse_query('"Failed" OR "Successfully"')
-        assert node.evaluate("Failed to open", case_sensitive=False) is True
+        assert node.evaluate("Failed to open") is True
 
     def test_or_evaluate_second_match(self) -> None:
         node = parse_query('"Failed" OR "Successfully"')
-        assert node.evaluate("Successfully loaded", case_sensitive=False) is True
+        assert node.evaluate("Successfully loaded") is True
 
     def test_or_evaluate_none_match(self) -> None:
         node = parse_query('"Failed" OR "Successfully"')
-        assert node.evaluate("Error occurred", case_sensitive=False) is False
+        assert node.evaluate("Error occurred") is False
 
     def test_three_terms_or(self) -> None:
         node = parse_query('"a" OR "b" OR "c"')
-        assert node.evaluate("x c y", case_sensitive=False) is True
-        assert node.evaluate("x y z", case_sensitive=False) is False
+        assert node.evaluate("x c y") is True
+        assert node.evaluate("x y z") is False
 
 
 class TestNotNode:
@@ -113,11 +108,11 @@ class TestNotNode:
 
     def test_not_evaluate_match(self) -> None:
         node = parse_query('NOT "warning"')
-        assert node.evaluate("this is a warning", case_sensitive=False) is False
+        assert node.evaluate("this is a warning") is False
 
     def test_not_evaluate_no_match(self) -> None:
         node = parse_query('NOT "warning"')
-        assert node.evaluate("this is an error", case_sensitive=False) is True
+        assert node.evaluate("this is an error") is True
 
 
 class TestPrecedence:
@@ -169,15 +164,15 @@ class TestComplexExpressions:
         node = parse_query('NOT "warning" AND "error"')
         # (NOT "warning") AND "error"
         assert isinstance(node, AndNode)
-        assert node.evaluate("error occurred", case_sensitive=False) is True
-        assert node.evaluate("warning error", case_sensitive=False) is False
+        assert node.evaluate("error occurred") is True
+        assert node.evaluate("warning error") is False
 
     def test_full_complex(self) -> None:
         # NOT "debug" AND ("error" OR "critical")
         node = parse_query('NOT "debug" AND ("error" OR "critical")')
-        assert node.evaluate("error occurred", case_sensitive=False) is True
-        assert node.evaluate("debug error", case_sensitive=False) is False
-        assert node.evaluate("info message", case_sensitive=False) is False
+        assert node.evaluate("error occurred") is True
+        assert node.evaluate("debug error") is False
+        assert node.evaluate("info message") is False
 
 
 class TestCaseInsensitiveKeywords:
@@ -186,19 +181,19 @@ class TestCaseInsensitiveKeywords:
     def test_lowercase_or(self) -> None:
         node = parse_query('"Channel 0" or "my_lib"')
         assert isinstance(node, OrNode)
-        assert node.evaluate("Channel 0 active", case_sensitive=False) is True
-        assert node.evaluate("my_lib connected", case_sensitive=False) is True
-        assert node.evaluate("random text", case_sensitive=False) is False
+        assert node.evaluate("Channel 0 active") is True
+        assert node.evaluate("my_lib connected") is True
+        assert node.evaluate("random text") is False
 
     def test_lowercase_and(self) -> None:
         node = parse_query('"error" and "config"')
         assert isinstance(node, AndNode)
-        assert node.evaluate("error in config file", case_sensitive=False) is True
+        assert node.evaluate("error in config file") is True
 
     def test_lowercase_not(self) -> None:
         node = parse_query('not "warning"')
         assert isinstance(node, NotNode)
-        assert node.evaluate("this is an error", case_sensitive=False) is True
+        assert node.evaluate("this is an error") is True
 
     def test_mixed_case_keywords(self) -> None:
         node = parse_query('"a" Or "b"')
@@ -255,37 +250,32 @@ class TestFindSpans:
 
     def test_term_find_spans_single(self) -> None:
         node = parse_query('"error"')
-        assert node.find_spans("An error occurred", case_sensitive=False) == [(3, 8)]
+        assert node.find_spans("An error occurred") == [(3, 8)]
 
     def test_term_find_spans_multiple(self) -> None:
         node = parse_query('"error"')
-        spans = node.find_spans("error and error again", case_sensitive=False)
+        spans = node.find_spans("error and error again")
         assert spans == [(0, 5), (10, 15)]
-
-    def test_term_find_spans_case_sensitive(self) -> None:
-        node = parse_query('"ERROR"')
-        assert node.find_spans("An ERROR occurred", case_sensitive=True) == [(3, 8)]
-        assert node.find_spans("An error occurred", case_sensitive=True) == []
 
     def test_term_find_spans_no_match(self) -> None:
         node = parse_query('"timeout"')
-        assert node.find_spans("An error occurred", case_sensitive=False) == []
+        assert node.find_spans("An error occurred") == []
 
     def test_and_find_spans_combines_children(self) -> None:
         node = parse_query('"Failed" AND "config"')
-        spans = node.find_spans("Failed to load config", case_sensitive=False)
+        spans = node.find_spans("Failed to load config")
         assert (0, 6) in spans  # "Failed"
         assert (15, 21) in spans  # "config"
 
     def test_or_find_spans_combines_children(self) -> None:
         node = parse_query('"Failed" OR "ok"')
-        spans = node.find_spans("Failed but ok", case_sensitive=False)
+        spans = node.find_spans("Failed but ok")
         assert (0, 6) in spans  # "Failed"
         assert (11, 13) in spans  # "ok"
 
     def test_not_find_spans_returns_empty(self) -> None:
         node = parse_query('NOT "warning"')
-        assert node.find_spans("warning issued", case_sensitive=False) == []
+        assert node.find_spans("warning issued") == []
 
 
 class TestParseQueryCache:

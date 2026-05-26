@@ -9,6 +9,8 @@ Grammar:
     STRING     := '"' ... '"'
 
 Precedence: NOT > AND > OR
+
+All matching is case-insensitive.
 """
 
 from __future__ import annotations
@@ -26,27 +28,34 @@ class QueryNode(ABC):
     """Base class for query AST nodes."""
 
     @abstractmethod
-    def evaluate(self, text: str, case_sensitive: bool = False) -> bool: ...
+    def evaluate(self, text: str) -> bool: ...
 
     @abstractmethod
-    def find_spans(self, text: str, case_sensitive: bool = False) -> list[tuple[int, int]]: ...
+    def evaluate_bytes(self, text: bytes) -> bool: ...
+
+    @abstractmethod
+    def find_spans(self, text: str) -> list[tuple[int, int]]: ...
 
 
 @dataclass
 class TermNode(QueryNode):
-    """Leaf node — matches substring in text."""
+    """Leaf node — matches substring in text (case-insensitive)."""
 
     text: str
 
-    def evaluate(self, text: str, case_sensitive: bool = False) -> bool:
-        if case_sensitive:
-            return self.text in text
-        return self.text.lower() in text.lower()
+    def __post_init__(self) -> None:
+        self._lower_bytes: bytes = self.text.lower().encode("utf-8")
 
-    def find_spans(self, text: str, case_sensitive: bool = False) -> list[tuple[int, int]]:
+    def evaluate(self, text: str) -> bool:
+        return self._lower_bytes in text.lower().encode("utf-8")
+
+    def evaluate_bytes(self, text: bytes) -> bool:
+        return self._lower_bytes in text.lower()
+
+    def find_spans(self, text: str) -> list[tuple[int, int]]:
         spans: list[tuple[int, int]] = []
-        search_text = text if case_sensitive else text.lower()
-        search_term = self.text if case_sensitive else self.text.lower()
+        search_text = text.lower()
+        search_term = self.text.lower()
         start = 0
         while True:
             idx = search_text.find(search_term, start)
@@ -64,13 +73,14 @@ class AndNode(QueryNode):
     left: QueryNode
     right: QueryNode
 
-    def evaluate(self, text: str, case_sensitive: bool = False) -> bool:
-        return self.left.evaluate(text, case_sensitive) and self.right.evaluate(
-            text, case_sensitive
-        )
+    def evaluate(self, text: str) -> bool:
+        return self.left.evaluate(text) and self.right.evaluate(text)
 
-    def find_spans(self, text: str, case_sensitive: bool = False) -> list[tuple[int, int]]:
-        return self.left.find_spans(text, case_sensitive) + self.right.find_spans(text, case_sensitive)
+    def evaluate_bytes(self, text: bytes) -> bool:
+        return self.left.evaluate_bytes(text) and self.right.evaluate_bytes(text)
+
+    def find_spans(self, text: str) -> list[tuple[int, int]]:
+        return self.left.find_spans(text) + self.right.find_spans(text)
 
 
 @dataclass
@@ -80,13 +90,14 @@ class OrNode(QueryNode):
     left: QueryNode
     right: QueryNode
 
-    def evaluate(self, text: str, case_sensitive: bool = False) -> bool:
-        return self.left.evaluate(text, case_sensitive) or self.right.evaluate(
-            text, case_sensitive
-        )
+    def evaluate(self, text: str) -> bool:
+        return self.left.evaluate(text) or self.right.evaluate(text)
 
-    def find_spans(self, text: str, case_sensitive: bool = False) -> list[tuple[int, int]]:
-        return self.left.find_spans(text, case_sensitive) + self.right.find_spans(text, case_sensitive)
+    def evaluate_bytes(self, text: bytes) -> bool:
+        return self.left.evaluate_bytes(text) or self.right.evaluate_bytes(text)
+
+    def find_spans(self, text: str) -> list[tuple[int, int]]:
+        return self.left.find_spans(text) + self.right.find_spans(text)
 
 
 @dataclass
@@ -95,10 +106,13 @@ class NotNode(QueryNode):
 
     child: QueryNode
 
-    def evaluate(self, text: str, case_sensitive: bool = False) -> bool:
-        return not self.child.evaluate(text, case_sensitive)
+    def evaluate(self, text: str) -> bool:
+        return not self.child.evaluate(text)
 
-    def find_spans(self, text: str, case_sensitive: bool = False) -> list[tuple[int, int]]:
+    def evaluate_bytes(self, text: bytes) -> bool:
+        return not self.child.evaluate_bytes(text)
+
+    def find_spans(self, text: str) -> list[tuple[int, int]]:
         return []
 
 
