@@ -520,28 +520,37 @@ class LogStore:
                 in_msg = (pv >= msg_off[si]) & (pv < ends)
                 mask[si[in_msg]] = True
         else:
-            # Simple query: try Cython fast path, fallback to Python
-            try:
-                from log_viewer.core._filter_cy import compute_simple_mask
-                from log_viewer.core.simple_query import parse_query
-                ast = parse_query(filt.pattern)
-                mask = compute_simple_mask(
-                    self.message_spans["offset"].astype(np.uint64),
-                    self.message_spans["length"].astype(np.uint32),
-                    n,
-                    self._buf,
-                    ast,
+            # Simple query: decompose AST into terms, buffer-scan each,
+            # then combine masks via AND/OR/NOT numpy operations
+            from log_viewer.core.simple_query import parse_query
+            ast = parse_query(filt.pattern)
+            unique_terms = list(set(ast.collect_terms()))
+
+            if self._buf_lower is None:
+                self._buf_lower = bytes(self._buf).lower()
+
+            msg_off = self.message_spans["offset"].astype(np.int64)
+            msg_len = self.message_spans["length"].astype(np.int64)
+
+            term_masks: dict[str, np.ndarray] = {}
+            for term in unique_terms:
+                tmask = np.zeros(n, dtype=bool)
+                pattern = re.escape(term.lower()).encode("utf-8")
+                combined = re.compile(pattern)
+                positions = np.array(
+                    [m.start() for m in combined.finditer(self._buf_lower)],
+                    dtype=np.int64,
                 )
-            except ImportError:
-                # Fallback: per-line decode + match
-                buf = self._buf
-                spans = self.message_spans
-                for idx in range(n):
-                    off = int(spans[idx]["offset"])
-                    ln = int(spans[idx]["length"])
-                    msg = buf[off:off + ln].decode("utf-8", errors="replace")
-                    if filter_engine.match(msg, filt):
-                        mask[idx] = True
+                if len(positions) > 0:
+                    si = np.searchsorted(msg_off, positions, side="right") - 1
+                    valid = (si >= 0) & (si < n)
+                    si, pv = si[valid], positions[valid]
+                    ends = msg_off[si] + msg_len[si]
+                    in_msg = (pv >= msg_off[si]) & (pv < ends)
+                    tmask[si[in_msg]] = True
+                term_masks[term] = tmask
+
+            mask = ast.eval_masks(term_masks, n)
 
         return mask
 

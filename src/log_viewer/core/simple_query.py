@@ -18,6 +18,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 class QuerySyntaxError(Exception):
@@ -35,6 +39,12 @@ class QueryNode(ABC):
 
     @abstractmethod
     def find_spans(self, text: str) -> list[tuple[int, int]]: ...
+
+    @abstractmethod
+    def collect_terms(self) -> list[str]: ...
+
+    @abstractmethod
+    def eval_masks(self, term_masks: dict[str, "np.ndarray"], n: int) -> "np.ndarray": ...
 
 
 @dataclass
@@ -65,6 +75,12 @@ class TermNode(QueryNode):
             start = idx + 1
         return spans
 
+    def collect_terms(self) -> list[str]:
+        return [self.text]
+
+    def eval_masks(self, term_masks: dict[str, "np.ndarray"], n: int) -> "np.ndarray":
+        return term_masks[self.text]
+
 
 @dataclass
 class AndNode(QueryNode):
@@ -81,6 +97,13 @@ class AndNode(QueryNode):
 
     def find_spans(self, text: str) -> list[tuple[int, int]]:
         return self.left.find_spans(text) + self.right.find_spans(text)
+
+    def collect_terms(self) -> list[str]:
+        return self.left.collect_terms() + self.right.collect_terms()
+
+    def eval_masks(self, term_masks: dict[str, "np.ndarray"], n: int) -> "np.ndarray":
+        import numpy as np
+        return self.left.eval_masks(term_masks, n) & self.right.eval_masks(term_masks, n)
 
 
 @dataclass
@@ -99,6 +122,13 @@ class OrNode(QueryNode):
     def find_spans(self, text: str) -> list[tuple[int, int]]:
         return self.left.find_spans(text) + self.right.find_spans(text)
 
+    def collect_terms(self) -> list[str]:
+        return self.left.collect_terms() + self.right.collect_terms()
+
+    def eval_masks(self, term_masks: dict[str, "np.ndarray"], n: int) -> "np.ndarray":
+        import numpy as np
+        return self.left.eval_masks(term_masks, n) | self.right.eval_masks(term_masks, n)
+
 
 @dataclass
 class NotNode(QueryNode):
@@ -114,6 +144,13 @@ class NotNode(QueryNode):
 
     def find_spans(self, text: str) -> list[tuple[int, int]]:
         return []
+
+    def collect_terms(self) -> list[str]:
+        return self.child.collect_terms()
+
+    def eval_masks(self, term_masks: dict[str, "np.ndarray"], n: int) -> "np.ndarray":
+        import numpy as np
+        return ~self.child.eval_masks(term_masks, n)
 
 
 class _Parser:
