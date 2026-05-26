@@ -89,6 +89,7 @@ cdef inline unsigned char _lookup_level(const char *data,
 cdef inline bint _field_is_level(const char* ptr, Py_ssize_t length) noexcept nogil:
     """Check if a byte string matches any known level prefix (exact match)."""
     cdef int j
+    _init_level_table()
     for j in range(12):
         if length == _LEVEL_TABLE[j].length and memcmp(ptr, _LEVEL_TABLE[j].data, length) == 0:
             return True
