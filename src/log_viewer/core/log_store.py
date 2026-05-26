@@ -72,7 +72,6 @@ class LogStore:
         self._highlight_color_index: int = 0
         self.pinned_rules: list[Filter] = []
         self.pinned_enabled: list[bool] = []
-        self.pinned_line_numbers: set[int] = set()  # computed from rules
         self._pin_masks: list[np.ndarray] = []  # one bool mask per pin rule
         self._filter_masks: list[np.ndarray] = []  # one bool mask per filter
 
@@ -554,7 +553,6 @@ class LogStore:
 
         # Fast path: nothing filtered, no pins
         if no_filters and not has_pins:
-            self.pinned_line_numbers = set()
             self.filtered_indices = np.arange(self.n, dtype=np.uint32)
             self._count_visible_levels()
             self.level_button_counts = dict(self.level_counts)
@@ -612,11 +610,6 @@ class LogStore:
                 for m in active_pin_masks:
                     pin_mask |= m
                 combined = combined | pin_mask
-                self.pinned_line_numbers = {int(idx) + 1 for idx in np.nonzero(pin_mask)[0]}
-            else:
-                self.pinned_line_numbers = set()
-        else:
-            self.pinned_line_numbers = set()
 
         self.filtered_indices = np.where(combined)[0].astype(np.uint32)
         self._count_visible_levels()

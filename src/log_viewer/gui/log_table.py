@@ -39,7 +39,6 @@ class LogTableModel(QAbstractTableModel):
         super().__init__()
         self._store = store
         self._highlights: list[Highlight] = []
-        self._pinned_line_numbers: set[int] = set()
         self._prev_len: int = 0
         self._prev_indices: np.ndarray = np.empty(0, dtype=np.uint32)
 
@@ -103,11 +102,6 @@ class LogTableModel(QAbstractTableModel):
             if 0 <= level_id < len(_LEVEL_LIST):
                 color_name = _LEVEL_COLORS.get(_LEVEL_LIST[level_id].name)
                 return QColor(color_name) if color_name else None
-            return None
-
-        if role == Qt.ItemDataRole.BackgroundRole:
-            if (idx + 1) in self._pinned_line_numbers:
-                return QColor(_t("pinned_bg"))
             return None
 
         if role == Qt.ItemDataRole.UserRole:
@@ -270,9 +264,6 @@ class LogTableModel(QAbstractTableModel):
     def set_highlights(self, highlights: list[Highlight]) -> None:
         self._highlights = highlights
 
-    def set_pinned_line_numbers(self, line_numbers: set[int]) -> None:
-        self._pinned_line_numbers = line_numbers
-
     def highlights(self) -> list[Highlight]:
         return self._highlights
 
@@ -379,7 +370,7 @@ class LogTableView(QTableView):
     def contextMenuEvent(self, event):  # noqa: N802
         """Right-click context menu for selected rows."""
         lines = self._selected_lines()
-        pinned = {line.line_number for line in lines if line.line_number in self._pinned_line_numbers()}
+        pinned = {line.line_number for line in lines if self._is_pinned(line.index)}
         unpinned_count = len(lines) - len(pinned)
 
         menu = QMenu(self)
@@ -400,9 +391,13 @@ class LogTableView(QTableView):
         elif action == unpin_action:
             self._unpin_selected_lines()
 
-    def _pinned_line_numbers(self) -> set[int]:
-        """Get pinned line numbers from the model."""
+    def _is_pinned(self, idx: int) -> bool:
+        """Check if line index is matched by any active pin rule."""
         model = self.model()
-        if model is not None and hasattr(model, '_pinned_line_numbers'):
-            return model._pinned_line_numbers
-        return set()
+        if model is None or model._store is None:
+            return False
+        store = model._store
+        for mask, enabled in zip(store._pin_masks, store.pinned_enabled):
+            if enabled and idx < len(mask) and mask[idx]:
+                return True
+        return False

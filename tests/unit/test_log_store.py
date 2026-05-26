@@ -787,21 +787,21 @@ class TestLogStorePinnedLines:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         self._pin(store, 2)
-        assert 2 in store.pinned_line_numbers
+        assert any(m[1] for m, e in zip(store._pin_masks, store.pinned_enabled) if e)
 
     def test_pin_line_idempotent(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         self._pin(store, 2)
         self._pin(store, 2)
-        assert store.pinned_line_numbers == {2}
+        assert store._pin_masks[0][1] and store._pin_masks[1][1]
 
     def test_remove_pin(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         self._pin(store, 2)
         store.remove_pin(0)
-        assert store.pinned_line_numbers == set()
+        assert len(store._pin_masks) == 0
 
     def test_unpin_all_clears(self) -> None:
         store = LogStore()
@@ -809,7 +809,7 @@ class TestLogStorePinnedLines:
         self._pin(store, 1)
         self._pin(store, 3)
         store.unpin_all()
-        assert store.pinned_line_numbers == set()
+        assert len(store._pin_masks) == 0
 
     def test_pinned_line_visible_with_filter(self) -> None:
         """Pinned line stays visible even when text filter would hide it."""
@@ -862,7 +862,7 @@ class TestLogStorePinnedLines:
         store.load_lines(SAMPLE_LINES)
         self._pin(store, 2)
         store.load_lines(SAMPLE_LINES)
-        assert store.pinned_line_numbers == set()
+        assert len(store._pin_masks) == 0
 
     def test_pin_multiple_lines(self) -> None:
         """Multiple LINE_NUMBER pins."""
@@ -871,7 +871,11 @@ class TestLogStorePinnedLines:
         self._pin(store, 1)
         self._pin(store, 3)
         self._pin(store, 5)
-        assert store.pinned_line_numbers == {1, 3, 5}
+        pinned = set()
+        for m, e in zip(store._pin_masks, store.pinned_enabled):
+            if e:
+                pinned |= {i + 1 for i in range(len(m)) if m[i]}
+        assert pinned == {1, 3, 5}
 
 
 class TestLogStorePlainFormat:
@@ -1110,7 +1114,7 @@ class TestReloadStatePreservation:
         store.add_pin(Filter(pattern="1", mode=SearchMode.LINE_NUMBER))
         store.add_pin(Filter(pattern="3", mode=SearchMode.LINE_NUMBER))
         store.load_lines(SAMPLE_LINES)
-        assert store.pinned_line_numbers == set()
+        assert len(store._pin_masks) == 0
 
     def test_clears_search_on_reload(self) -> None:
         store = LogStore()

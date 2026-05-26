@@ -136,17 +136,6 @@ def test_model_update_lines(model):
     assert model.data(model.index(0, 3)) == "CPU: 45%"
 
 
-def test_pinned_row_has_background(model):
-    model.set_pinned_line_numbers({1})
-    bg = model.data(model.index(0, 0), Qt.ItemDataRole.BackgroundRole)
-    assert bg is not None
-
-
-def test_non_pinned_row_has_no_background(model):
-    model.set_pinned_line_numbers({2})
-    bg = model.data(model.index(0, 0), Qt.ItemDataRole.BackgroundRole)
-    assert bg is None
-
 
 def test_update_lines_same_skips_reset(model):
     """update_indices with identical indices should not trigger a model reset."""

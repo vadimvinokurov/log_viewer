@@ -386,7 +386,6 @@ class MainWindow(QMainWindow):
             selection_model=self.log_table.selectionModel(),
             table_view=self.log_table,
         )
-        self._table_model.set_pinned_line_numbers(store.pinned_line_numbers)
         active_highlights = [h for h, e in zip(store.highlights, store.highlight_enabled) if e]
         self._table_model.set_highlights(active_highlights)
         self._update_status()
@@ -398,7 +397,6 @@ class MainWindow(QMainWindow):
             selection_model=self.log_table.selectionModel(),
             table_view=self.log_table,
         )
-        self._table_model.set_pinned_line_numbers(store.pinned_line_numbers)
         active_highlights = [h for h, e in zip(store.highlights, store.highlight_enabled) if e]
         self._table_model.set_highlights(active_highlights)
         self._refresh_side_panel()
