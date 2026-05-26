@@ -303,7 +303,14 @@ class MainWindow(QMainWindow):
     ) -> None:
         if not pattern:
             return
-        self.log_store.search(pattern, mode, direction=direction)
+        start_line = 0
+        sel = self.log_table.selectionModel().selectedRows()
+        if sel:
+            pos = sel[0].row()
+            indices = self.log_store.filtered_indices
+            if pos < len(indices):
+                start_line = int(indices[pos])
+        self.log_store.search(pattern, mode, direction=direction, start_line=start_line)
         ss = self.log_store.search_state
         if ss and ss.matches:
             ss.in_search = True

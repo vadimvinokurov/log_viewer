@@ -326,3 +326,51 @@ def test_file_reload_resets_search_mode(main_window):
     )
     assert "Search" not in main_window.windowTitle()
     assert "other.log" in main_window.windowTitle()
+
+
+def test_search_starts_from_selected_row(main_window):
+    lines = [
+        "2025-01-01T10:00:00 LOG_INFO app/main hello",
+        "2025-01-01T10:00:01 LOG_INFO app/main error one",
+        "2025-01-01T10:00:02 LOG_INFO app/main ok",
+        "2025-01-01T10:00:03 LOG_INFO app/main error two",
+    ]
+    main_window._on_file_loaded(_buf(*lines), "test.log")
+    # Select row 2 (global index 2, "ok") — not a match
+    main_window.log_table.selectRow(2)
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    ss = main_window.log_store.search_state
+    assert ss is not None
+    # matches are [1, 3], start_line=2 → bisect_left([1,3], 2) == 1 → match at index 3
+    assert ss.matches[ss.current_index] == 3
+
+
+def test_search_starts_from_selected_row_when_match(main_window):
+    lines = [
+        "2025-01-01T10:00:00 LOG_INFO app/main hello",
+        "2025-01-01T10:00:01 LOG_INFO app/main error one",
+        "2025-01-01T10:00:02 LOG_INFO app/main error two",
+    ]
+    main_window._on_file_loaded(_buf(*lines), "test.log")
+    # Select row 1 (global index 1, "error one") — a match
+    main_window.log_table.selectRow(1)
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    ss = main_window.log_store.search_state
+    assert ss is not None
+    # matches are [1, 2], start_line=1 → bisect_left([1,2], 1) == 0 → match at index 1
+    assert ss.matches[ss.current_index] == 1
+
+
+def test_search_starts_from_top_when_no_selection(main_window):
+    lines = [
+        "2025-01-01T10:00:00 LOG_INFO app/main hello",
+        "2025-01-01T10:00:01 LOG_INFO app/main error one",
+        "2025-01-01T10:00:02 LOG_INFO app/main error two",
+    ]
+    main_window._on_file_loaded(_buf(*lines), "test.log")
+    # Clear selection
+    main_window.log_table.clearSelection()
+    main_window._do_search("error", SearchMode.PLAIN, SearchDirection.FORWARD)
+    ss = main_window.log_store.search_state
+    assert ss is not None
+    assert ss.matches[ss.current_index] == 1  # first match from top
