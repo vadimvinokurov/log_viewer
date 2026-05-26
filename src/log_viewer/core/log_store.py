@@ -79,7 +79,10 @@ class LogStore:
         self.disabled_levels: set[int] = set()  # level_ids
         self.disabled_categories: set[int] = set()  # category_ids
         self._highlight_color_index: int = 0
-        self.pinned_line_numbers: set[int] = set()
+        self.pinned_rules: list[Filter] = []
+        self.pinned_enabled: list[bool] = []
+        self.pinned_line_numbers: set[int] = set()  # computed from rules
+        self._pin_masks: list[np.ndarray] = []  # one bool mask per pin rule
         self._filter_masks: list[np.ndarray] = []  # one bool mask per filter
 
     # ------------------------------------------------------------------ #
@@ -182,7 +185,9 @@ class LogStore:
         self.current_file = file_path
         # disabled_levels intentionally not reset — preserved across reload
         self.disabled_categories = set()
-        self.pinned_line_numbers = set()
+        self.pinned_rules = []
+        self.pinned_enabled = []
+        self._pin_masks = []
         self.search_state = None
 
         # Restore disabled categories by name (new IDs)
@@ -304,24 +309,22 @@ class LogStore:
     #  Pinned lines                                                       #
     # ------------------------------------------------------------------ #
 
-    def pin_line(self, line_number: int) -> None:
-        self.pinned_line_numbers.add(line_number)
+    def add_pin(self, filt: Filter) -> None:
+        self.pinned_rules.append(filt)
+        self.pinned_enabled.append(True)
+        self._pin_masks.append(self._compute_filter_mask(filt))
         self._apply_filters()
 
-    def pin_lines(self, line_numbers: list[int]) -> None:
-        self.pinned_line_numbers.update(line_numbers)
-        self._apply_filters()
-
-    def unpin_line(self, line_number: int) -> None:
-        self.pinned_line_numbers.discard(line_number)
-        self._apply_filters()
-
-    def unpin_lines(self, line_numbers: list[int]) -> None:
-        self.pinned_line_numbers.difference_update(line_numbers)
+    def remove_pin(self, index: int) -> None:
+        del self.pinned_rules[index]
+        del self.pinned_enabled[index]
+        del self._pin_masks[index]
         self._apply_filters()
 
     def unpin_all(self) -> None:
-        self.pinned_line_numbers.clear()
+        self.pinned_rules.clear()
+        self.pinned_enabled.clear()
+        self._pin_masks.clear()
         self._apply_filters()
 
     # ------------------------------------------------------------------ #
@@ -555,11 +558,12 @@ class LogStore:
         has_text_filters = any(self.filter_enabled)
         has_level_filters = bool(self.disabled_levels)
         has_cat_filters = bool(self.disabled_categories)
-        has_pins = bool(self.pinned_line_numbers)
+        has_pins = any(self.pinned_enabled)
         no_filters = not has_text_filters and not has_level_filters and not has_cat_filters
 
         # Fast path: nothing filtered, no pins
         if no_filters and not has_pins:
+            self.pinned_line_numbers = set()
             self.filtered_indices = np.arange(self.n, dtype=np.uint32)
             self._count_visible_levels()
             self.level_button_counts = dict(self.level_counts)
@@ -616,13 +620,20 @@ class LogStore:
         # Result (with level filter already applied since cat_level_mask includes it)
         result = would_be_visible
 
-        # Merge pinned lines
+        # Merge pinned lines from active pin rules
         if has_pins:
-            pinned_indices = np.array(
-                sorted(n - 1 for n in self.pinned_line_numbers if 0 <= n - 1 < self.n),
-                dtype=np.uint32,
-            )
-            result = _merge_sorted(result, pinned_indices)
+            active_pin_masks = [m for m, e in zip(self._pin_masks, self.pinned_enabled) if e]
+            if active_pin_masks:
+                pin_mask = np.zeros(self.n, dtype=bool)
+                for m in active_pin_masks:
+                    pin_mask |= m
+                pinned_indices = np.nonzero(pin_mask)[0].astype(np.uint32)
+                self.pinned_line_numbers = {int(idx) + 1 for idx in pinned_indices}
+                result = _merge_sorted(result, pinned_indices)
+            else:
+                self.pinned_line_numbers = set()
+        else:
+            self.pinned_line_numbers = set()
 
         self.filtered_indices = result
         self._count_visible_levels()

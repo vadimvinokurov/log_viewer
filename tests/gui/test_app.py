@@ -163,7 +163,7 @@ def test_command_rmp_specific_line_via_gui(main_window):
     main_window._handle_command("pn 1")
     main_window._handle_command("pn 2")
     # Remove via store directly (simulates GUI action)
-    main_window.log_store.unpin_line(1)
+    main_window.log_store.remove_pin(0)
     assert 1 not in main_window.log_store.pinned_line_numbers
     assert 2 in main_window.log_store.pinned_line_numbers
 

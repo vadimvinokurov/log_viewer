@@ -777,33 +777,37 @@ PLAIN_LINES = [
 
 
 class TestLogStorePinnedLines:
-    """Test pin_line, unpin_line, unpin_all, and pinned visibility."""
+    """Test add_pin, remove_pin, unpin_all, and pinned visibility."""
+
+    def _pin(self, store: LogStore, line_number: int) -> None:
+        """Helper: pin a line number."""
+        store.add_pin(Filter(pattern=str(line_number), mode=SearchMode.LINE_NUMBER))
 
     def test_pin_line_adds_to_pinned(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.pin_line(2)
+        self._pin(store, 2)
         assert 2 in store.pinned_line_numbers
 
     def test_pin_line_idempotent(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.pin_line(2)
-        store.pin_line(2)
+        self._pin(store, 2)
+        self._pin(store, 2)
         assert store.pinned_line_numbers == {2}
 
-    def test_unpin_line_removes(self) -> None:
+    def test_remove_pin(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.pin_line(2)
-        store.unpin_line(2)
+        self._pin(store, 2)
+        store.remove_pin(0)
         assert store.pinned_line_numbers == set()
 
     def test_unpin_all_clears(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.pin_line(1)
-        store.pin_line(3)
+        self._pin(store, 1)
+        self._pin(store, 3)
         store.unpin_all()
         assert store.pinned_line_numbers == set()
 
@@ -813,7 +817,7 @@ class TestLogStorePinnedLines:
         store.load_lines(SAMPLE_LINES)
         store.add_filter(Filter(pattern="NONEXISTENT", mode=SearchMode.PLAIN))
         assert len(store.filtered_indices) == 0
-        store.pin_line(2)  # line_number=2 → index 1
+        self._pin(store, 2)  # line_number=2 → index 1
         assert 1 in store.filtered_indices
 
     def test_pinned_line_visible_with_disabled_category(self) -> None:
@@ -823,7 +827,7 @@ class TestLogStorePinnedLines:
         store.disable_category("my_app")
         # my_app lines are hidden
         assert 1 not in store.filtered_indices
-        store.pin_line(2)  # line_number=2 → index 1
+        self._pin(store, 2)  # line_number=2 → index 1
         assert 1 in store.filtered_indices
 
     def test_pinned_line_visible_with_disabled_level(self) -> None:
@@ -833,40 +837,40 @@ class TestLogStorePinnedLines:
         store.toggle_level(LogLevel.ERROR)
         # ERROR lines hidden
         assert 1 not in store.filtered_indices
-        store.pin_line(2)  # line_number=2 → index 1
+        self._pin(store, 2)  # line_number=2 → index 1
         assert 1 in store.filtered_indices
 
     def test_multiple_pinned_lines(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         store.add_filter(Filter(pattern="NONEXISTENT", mode=SearchMode.PLAIN))
-        store.pin_line(2)  # line_number=2 → index 1
-        store.pin_line(5)  # line_number=5 → index 4
+        self._pin(store, 2)  # line_number=2 → index 1
+        self._pin(store, 5)  # line_number=5 → index 4
         assert store.filtered_indices.tolist() == [1, 4]
 
     def test_pin_nonexistent_line_is_noop(self) -> None:
-        """Pinning a line number that doesn't exist in the file should still add it,
-        but it won't appear in filtered_indices since the line doesn't exist."""
+        """Pinning a line number that doesn't exist won't appear in filtered_indices."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.pin_line(999)
-        assert 999 in store.pinned_line_numbers
-        # But 999 is not a valid index, so it won't appear
+        self._pin(store, 999)
+        # 999 is not a valid index, so it won't appear
         assert 999 not in store.filtered_indices
 
     def test_load_lines_clears_pins(self) -> None:
         """Pinned lines are cleared on file reload."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.pin_line(2)
+        self._pin(store, 2)
         store.load_lines(SAMPLE_LINES)
         assert store.pinned_line_numbers == set()
 
-    def test_pin_lines_batch(self) -> None:
-        """pin_lines pins multiple lines at once."""
+    def test_pin_multiple_lines(self) -> None:
+        """Multiple LINE_NUMBER pins."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.pin_lines([1, 3, 5])
+        self._pin(store, 1)
+        self._pin(store, 3)
+        self._pin(store, 5)
         assert store.pinned_line_numbers == {1, 3, 5}
 
 
@@ -1103,8 +1107,8 @@ class TestReloadStatePreservation:
     def test_clears_pins_on_reload(self) -> None:
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
-        store.pin_line(1)
-        store.pin_line(3)
+        store.add_pin(Filter(pattern="1", mode=SearchMode.LINE_NUMBER))
+        store.add_pin(Filter(pattern="3", mode=SearchMode.LINE_NUMBER))
         store.load_lines(SAMPLE_LINES)
         assert store.pinned_line_numbers == set()
 

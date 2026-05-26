@@ -115,6 +115,7 @@ class MainWindow(QMainWindow):
         self.side_panel.highlight_list.highlight_changed.connect(self._on_highlight_changed)
         self.side_panel.highlight_list.highlight_color_changed.connect(self._on_highlight_color_changed)
         self.side_panel.highlight_list.highlight_removed.connect(self._on_highlight_removed)
+        self.side_panel.pinned_list.pin_changed.connect(self._on_pin_changed)
         self.side_panel.pinned_list.pin_removed.connect(self._on_pin_removed)
         self.bottom_bar.level_bar.level_clicked.connect(self._on_level_clicked)
         self.bottom_bar.open_clicked.connect(self._file_open_dialog)
@@ -284,26 +285,14 @@ class MainWindow(QMainWindow):
             else:
                 self.bottom_bar.set_status("No file loaded")
         elif name in ("p", "pr", "ps"):
-            from log_viewer.core import filter_engine as fe
             mode = {"p": SearchMode.PLAIN, "pr": SearchMode.REGEX, "ps": SearchMode.SIMPLE}[name]
-            filt = Filter(pattern=parsed.text, mode=mode)
-            store = self.log_store
-            pinned = [
-                i + 1  # 1-based line numbers
-                for i in range(store.n)
-                if fe.match(store.get_message(i), filt)
-            ]
-            if pinned:
-                store.pin_lines(pinned)
-                self.bottom_bar.set_status(f"Pinned {len(pinned)} line(s)")
-            else:
-                self.bottom_bar.set_status("No matching lines to pin")
+            self.log_store.add_pin(Filter(pattern=parsed.text, mode=mode))
             self._refresh_display()
         elif name == "pn":
             line_num = self._parse_line_number(parsed.text, name)
             if line_num is None:
                 return
-            self.log_store.pin_line(line_num)
+            self.log_store.add_pin(Filter(pattern=str(line_num), mode=SearchMode.LINE_NUMBER))
             self._refresh_display()
         elif name == "rmp":
             self.log_store.unpin_all()
@@ -356,19 +345,31 @@ class MainWindow(QMainWindow):
         del self.log_store.highlight_enabled[index]
         self._refresh_log_only()
 
-    def _on_pin_removed(self, line_number: int) -> None:
-        """Unpin a line from the side panel and refresh."""
-        self.log_store.unpin_line(line_number)
+    def _on_pin_changed(self) -> None:
+        """Sync pin toggle state from side panel to store."""
+        self.log_store.pinned_enabled = list(self.side_panel.pinned_list._enabled)
+        self._refresh_log_only()
+
+    def _on_pin_removed(self, index: int) -> None:
+        """Remove a pin rule by index and refresh."""
+        self.log_store.remove_pin(index)
         self._refresh_display()
 
     def _on_pin_lines_requested(self, line_numbers: list[int]) -> None:
-        """Pin multiple lines from context menu and refresh."""
-        self.log_store.pin_lines(line_numbers)
+        """Pin multiple lines from context menu — each as a LINE_NUMBER rule."""
+        for ln in line_numbers:
+            self.log_store.add_pin(Filter(pattern=str(ln), mode=SearchMode.LINE_NUMBER))
         self._refresh_display()
 
     def _on_unpin_lines_requested(self, line_numbers: list[int]) -> None:
-        """Unpin multiple lines from context menu and refresh."""
-        self.log_store.unpin_lines(line_numbers)
+        """Unpin multiple lines from context menu — remove matching LINE_NUMBER rules."""
+        to_remove = [str(ln) for ln in line_numbers]
+        indices = [
+            i for i, r in enumerate(self.log_store.pinned_rules)
+            if r.mode == SearchMode.LINE_NUMBER and r.pattern in to_remove
+        ]
+        for i in reversed(indices):
+            self.log_store.remove_pin(i)
         self._refresh_display()
 
     def _on_level_clicked(self, level: LogLevel) -> None:
@@ -408,8 +409,7 @@ class MainWindow(QMainWindow):
         self.side_panel.category_tree.rebuild(store.category_tree)
         self.side_panel.filter_list.set_filters(store.filters, store.filter_enabled)
         self.side_panel.highlight_list.set_highlights(store.highlights, store.highlight_enabled)
-        pinned_lines = {ln: RowRef(ln - 1, store) for ln in store.pinned_line_numbers if 0 <= ln - 1 < store.n}
-        self.side_panel.pinned_list.set_pins(sorted(store.pinned_line_numbers), pinned_lines)
+        self.side_panel.pinned_list.set_pins(store.pinned_rules, store.pinned_enabled)
 
     def _update_status(self) -> None:
         store = self.log_store
