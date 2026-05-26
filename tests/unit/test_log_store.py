@@ -366,6 +366,40 @@ class TestLogStoreSearch:
         # "Failed" is not in the "test_os" message
         assert state.matches == []
 
+    def test_search_start_line_matches_selected(self) -> None:
+        """If selected line is a match, it becomes current_index."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        # matches for "Failed" are indices [1, 2]
+        state = store.search("Failed", SearchMode.PLAIN, start_line=1)
+        assert state.matches == [1, 2]
+        assert state.current_index == 0  # bisect_left([1,2], 1) == 0
+
+    def test_search_start_line_between_matches(self) -> None:
+        """If selected line is between matches, start from next match."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        # No line at index 5 matches "Failed", but line 1 does
+        # After filtering, all 6 lines visible. matches=[1,2]
+        # start_line=5 → bisect_left([1,2], 5) == 2 → wrap to 0
+        state = store.search("Failed", SearchMode.PLAIN, start_line=5)
+        assert state.matches == [1, 2]
+        assert state.current_index == 0  # wraps to first
+
+    def test_search_start_line_before_first_match(self) -> None:
+        """start_line=0 behaves like default (first match)."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        state = store.search("Failed", SearchMode.PLAIN, start_line=0)
+        assert state.current_index == 0
+
+    def test_search_start_line_with_backward_direction(self) -> None:
+        """start_line is ignored for BACKWARD direction (stays at last)."""
+        store = LogStore()
+        store.load_lines(SAMPLE_LINES)
+        state = store.search("Failed", SearchMode.PLAIN, direction=SearchDirection.BACKWARD, start_line=1)
+        assert state.current_index == 1  # last match, backward ignores start_line
+
 
 class TestLogStoreSearchNavigation:
     """Test next_match / prev_match cycling."""

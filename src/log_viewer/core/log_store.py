@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_left
 from typing import Optional
 
 import numpy as np
@@ -328,6 +329,7 @@ class LogStore:
         pattern: str,
         mode: SearchMode,
         direction: SearchDirection = SearchDirection.FORWARD,
+        start_line: int = 0,
     ) -> SearchState:
         filt = Filter(pattern=pattern, mode=mode)
         mask = self._compute_filter_mask(filt)
@@ -340,6 +342,9 @@ class LogStore:
         start = 0
         if matches and direction == SearchDirection.BACKWARD:
             start = len(matches) - 1
+        elif matches:
+            idx = bisect_left(matches, start_line)
+            start = 0 if idx == len(matches) else idx
 
         state = SearchState(
             pattern=pattern,
