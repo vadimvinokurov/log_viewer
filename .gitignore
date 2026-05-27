@@ -35,3 +35,8 @@ packaging/build/
 # Cython build artifacts
 build/
 src/log_viewer/core/_parser_cy.c
+# Cython compiled output
+*.so
+*.pyd
+*.c
+src/log_viewer.egg-info/
