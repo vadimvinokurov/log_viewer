@@ -811,3 +811,173 @@ def _parse_ksiva_batch(
             _lvl[i] = 3
             _msg_off[i] = start + fld_start
             _msg_len[i] = ll - fld_start
+
+
+def parse_columns(raw: bytes, cat_names: list[str], fmt: str) -> tuple[str, str, str, str]:
+    """Parse a raw byte line into display columns for visible-row rendering.
+
+    Args:
+        raw: Raw bytes of a single line (may include trailing newline).
+        cat_names: Category names list (unused, kept for API symmetry).
+        fmt: "ksiva" or "plain".
+
+    Returns:
+        (timestamp, category, level_name, message) -- all strings.
+    """
+    line = raw.decode("utf-8", errors="replace").strip()
+
+    if not line:
+        return ("", UNCATEGORIZED, "INFO", "")
+
+    if fmt == "plain":
+        parts = _SPLIT_RE.split(line, maxsplit=4)
+        if len(parts) < 5:
+            return (
+                parts[0] if parts else "",
+                UNCATEGORIZED,
+                "INFO",
+                " ".join(parts[1:]) if len(parts) > 1 else "",
+            )
+        level = LogLevel.from_short_code(parts[2])
+        level_name = level.name if level is not None else "INFO"
+        return (parts[0], parts[3], level_name, parts[4])
+
+    # KSIVA format
+    parts = _SPLIT_RE.split(line, maxsplit=3)
+
+    if len(parts) == 1:
+        return ("", UNCATEGORIZED, "INFO", parts[0])
+
+    time_only = parts[0].split("T")[-1]
+
+    if len(parts) == 2:
+        return (time_only, UNCATEGORIZED, "INFO", parts[1])
+
+    category = parts[1]
+    maybe_level = parts[2].strip("[]")
+    level_match = LogLevel.from_log_prefix(maybe_level)
+
+    if level_match is not None:
+        message = parts[3] if len(parts) == 4 else ""
+        return (time_only, category, level_match.name, message)
+
+    message = parts[2] if len(parts) == 3 else f"{parts[2]} {parts[3]}"
+    return (time_only, category, "INFO", message)
+
+
+# --- Minimal parsing (category_id + level_id only) ---
+
+
+def parse_minimal_ksiva(
+    raw: bytes,
+    cat_bytes_to_id: dict[bytes, int],
+    cat_names: list[str],
+) -> tuple[int, int]:
+    """Parse KSIVA format line extracting only category_id and level_id.
+
+    Format: timestamp category [LOG_LEVEL] message
+    Returns (category_id, level_id).
+    """
+    # Strip trailing \n\r
+    if raw and raw[-1] == 10:
+        raw = raw[:-1]
+    if raw and raw[-1] == 13:
+        raw = raw[:-1]
+
+    parts = raw.split(None, 3)
+
+    if len(parts) < 3:
+        return (0, 3)  # uncategorized, INFO
+
+    # Category
+    cat_bytes = parts[1]
+    if cat_bytes not in cat_bytes_to_id:
+        cat_str = cat_bytes.decode("utf-8", errors="replace")
+        new_id = len(cat_names)
+        cat_bytes_to_id[cat_bytes] = new_id
+        cat_names.append(cat_str)
+    cat_id = cat_bytes_to_id[cat_bytes]
+
+    # Level — strip brackets: [LOG_INFO] -> LOG_INFO
+    fld = parts[2]
+    if len(fld) >= 2 and fld[0] == 91 and fld[-1] == 93:
+        fld = fld[1:-1]
+    level_id = _LEVEL_BYTES.get(fld, 3)  # default INFO=3
+
+    return (cat_id, level_id)
+
+
+def parse_minimal_plain(
+    raw: bytes,
+    cat_bytes_to_id: dict[bytes, int],
+    cat_names: list[str],
+) -> tuple[int, int]:
+    """Parse PLAIN format line extracting only category_id and level_id.
+
+    Format: timestamp elapsed level_short category message
+    Returns (category_id, level_id).
+    """
+    # Strip trailing \n\r
+    if raw and raw[-1] == 10:
+        raw = raw[:-1]
+    if raw and raw[-1] == 13:
+        raw = raw[:-1]
+
+    parts = raw.split(None, 4)
+
+    if len(parts) < 5:
+        return (0, 3)  # uncategorized, INFO
+
+    # Level (parts[2] = level_short)
+    level_id = _LEVEL_BYTES.get(parts[2], 3)
+
+    # Category (parts[3])
+    cat_bytes = parts[3]
+    if cat_bytes not in cat_bytes_to_id:
+        cat_str = cat_bytes.decode("utf-8", errors="replace")
+        new_id = len(cat_names)
+        cat_bytes_to_id[cat_bytes] = new_id
+        cat_names.append(cat_str)
+    cat_id = cat_bytes_to_id[cat_bytes]
+
+    return (cat_id, level_id)
+
+
+def parse_minimal_batch(
+    buf: bytes | bytearray,
+    line_starts: np.ndarray,
+    fmt: str,
+) -> tuple[list[str], dict[str, int], np.ndarray, np.ndarray]:
+    """Batch-parse lines extracting only category_ids and levels.
+
+    Args:
+        buf: Entire file as bytes/bytearray.
+        line_starts: uint64[n+1] array from scan_line_starts_fast.
+        fmt: "ksiva" or "plain".
+
+    Returns:
+        (cat_names, cat_name_to_id, category_ids, levels)
+        - cat_names: list[str]
+        - cat_name_to_id: dict[str, int]
+        - category_ids: ndarray[uint16, n]
+        - levels: ndarray[uint8, n]
+    """
+    n = len(line_starts) - 1
+    category_ids = np.empty(n, dtype=np.uint16)
+    levels = np.empty(n, dtype=np.uint8)
+
+    cat_bytes_to_id: dict[bytes, int] = {b"uncategorized": 0}
+    cat_names: list[str] = ["uncategorized"]
+
+    worker = parse_minimal_plain if fmt == "plain" else parse_minimal_ksiva
+
+    for i in range(n):
+        start = int(line_starts[i])
+        end = int(line_starts[i + 1])
+        raw = buf[start:end]
+        cat_id, lvl_id = worker(raw, cat_bytes_to_id, cat_names)
+        category_ids[i] = cat_id
+        levels[i] = lvl_id
+
+    cat_name_to_id = {name: idx for idx, name in enumerate(cat_names)}
+    return cat_names, cat_name_to_id, category_ids, levels

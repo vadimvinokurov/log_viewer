@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import re
-from bisect import bisect_left
 from typing import Optional
 
 import numpy as np
 
-from log_viewer.core import filter_engine
+from log_viewer.core.filter_pipeline import FilterPipeline
 from log_viewer.core.models import (
     CategoryNode,
     Filter,
@@ -20,7 +18,7 @@ from log_viewer.core.models import (
     SearchState,
     _LEVEL_LIST,
 )
-from log_viewer.core.palette import HIGHLIGHT_PALETTE
+from log_viewer.core.search_engine import SearchEngine
 
 # dtype for message spans: offset into _buf and length
 SPAN_DTYPE = np.dtype([("offset", np.uint64), ("length", np.uint32)])
@@ -38,17 +36,18 @@ class LogStore:
         # --- Byte buffer ---
         self._buf: bytearray = bytearray()
         self._buf_lower: Optional[bytes] = None  # cached lowered buffer
+        self._buf_str: Optional[str] = None  # lazy decoded string (for regex)
 
         # --- SoA column arrays (all length n) ---
         self.n: int = 0
-        self.timestamps: np.ndarray = np.empty(0, dtype=np.uint64)
-        self.timestamp_spans: np.ndarray = np.empty(0, dtype=SPAN_DTYPE)
         self.category_ids: np.ndarray = np.empty(0, dtype=np.uint16)
         self.levels: np.ndarray = np.empty(0, dtype=np.uint8)
-        self.message_spans: np.ndarray = np.empty(0, dtype=SPAN_DTYPE)
 
         # --- Line boundaries (length n+1, last = len(_buf)) ---
         self.line_starts: np.ndarray = np.empty(0, dtype=np.uint64)
+
+        # --- Detected format ---
+        self._format: str = "ksiva"
 
         # --- Category mapping ---
         self._category_names: list[str] = []
@@ -61,21 +60,107 @@ class LogStore:
         self.visible_level_counts: dict[LogLevel, int] = {}
         self.level_button_counts: dict[LogLevel, int] = {}
 
-        # --- Filter state ---
+        # --- Filter state (delegated to pipeline) ---
         self.current_file: Optional[str] = None
         self.filtered_indices: np.ndarray = np.empty(0, dtype=np.uint32)
-        self.filters: list[Filter] = []
-        self.highlights: list[Highlight] = []
-        self.filter_enabled: list[bool] = []
-        self.highlight_enabled: list[bool] = []
-        self.search_state: Optional[SearchState] = None
-        self.disabled_levels: set[int] = set()  # level_ids
-        self.disabled_categories: set[int] = set()  # category_ids
-        self._highlight_color_index: int = 0
-        self.pinned_rules: list[Filter] = []
-        self.pinned_enabled: list[bool] = []
-        self._pin_masks: list[np.ndarray] = []  # one bool mask per pin rule
-        self._filter_masks: list[np.ndarray] = []  # one bool mask per filter
+        self.pipeline = FilterPipeline()
+        self.search_engine = SearchEngine()
+
+    # ------------------------------------------------------------------ #
+    #  Pipeline delegation properties                                      #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def filters(self) -> list[Filter]:
+        return self.pipeline.filters
+
+    @filters.setter
+    def filters(self, value: list[Filter]) -> None:
+        self.pipeline.filters = value
+
+    @property
+    def filter_enabled(self) -> list[bool]:
+        return self.pipeline.filter_enabled
+
+    @filter_enabled.setter
+    def filter_enabled(self, value: list[bool]) -> None:
+        self.pipeline.filter_enabled = value
+
+    @property
+    def highlights(self) -> list[Highlight]:
+        return self.pipeline.highlights
+
+    @highlights.setter
+    def highlights(self, value: list[Highlight]) -> None:
+        self.pipeline.highlights = value
+
+    @property
+    def highlight_enabled(self) -> list[bool]:
+        return self.pipeline.highlight_enabled
+
+    @highlight_enabled.setter
+    def highlight_enabled(self, value: list[bool]) -> None:
+        self.pipeline.highlight_enabled = value
+
+    @property
+    def disabled_levels(self) -> set[int]:
+        return self.pipeline.disabled_levels
+
+    @disabled_levels.setter
+    def disabled_levels(self, value: set[int]) -> None:
+        self.pipeline.disabled_levels = value
+
+    @property
+    def disabled_categories(self) -> set[int]:
+        return self.pipeline.disabled_categories
+
+    @disabled_categories.setter
+    def disabled_categories(self, value: set[int]) -> None:
+        self.pipeline.disabled_categories = value
+
+    @property
+    def _filter_masks(self) -> list[np.ndarray]:
+        return self.pipeline._filter_masks
+
+    @_filter_masks.setter
+    def _filter_masks(self, value: list[np.ndarray]) -> None:
+        self.pipeline._filter_masks = value
+
+    @property
+    def _highlight_color_index(self) -> int:
+        return self.pipeline._highlight_color_index
+
+    @_highlight_color_index.setter
+    def _highlight_color_index(self, value: int) -> None:
+        self.pipeline._highlight_color_index = value
+
+    @property
+    def pinned_rules(self) -> list[Filter]:
+        return self.pipeline.pinned_rules
+
+    @pinned_rules.setter
+    def pinned_rules(self, value: list[Filter]) -> None:
+        self.pipeline.pinned_rules = value
+
+    @property
+    def pinned_enabled(self) -> list[bool]:
+        return self.pipeline.pinned_enabled
+
+    @pinned_enabled.setter
+    def pinned_enabled(self, value: list[bool]) -> None:
+        self.pipeline.pinned_enabled = value
+
+    @property
+    def _pin_masks(self) -> list[np.ndarray]:
+        return self.pipeline._pin_masks
+
+    @_pin_masks.setter
+    def _pin_masks(self, value: list[np.ndarray]) -> None:
+        self.pipeline._pin_masks = value
+
+    @property
+    def search_state(self):
+        return self.search_engine.search_state
 
     # ------------------------------------------------------------------ #
     #  Backward-compatible properties                                      #
@@ -120,25 +205,25 @@ class LogStore:
     def load_bytes(self, buf: bytearray, file_path: Optional[str] = None) -> None:
         """Parse a byte buffer and rebuild all indices."""
         from log_viewer.core.parser import (
+            _HAS_CYTHON,
             detect_format_bytes,
             parse_batch_fast,
+            parse_minimal_batch,
             scan_line_starts_fast,
         )
 
         self._buf = buf
-        self._buf_lower = None  # invalidate cache
+        self._buf_lower = None  # lazy, created on first filter/search
+        self._buf_str = None  # lazy, decoded on first regex request
 
-        # Scan line boundaries using numpy (SIMD)
+        # Pass 1: scan line boundaries
         line_starts = scan_line_starts_fast(buf)
         n = len(line_starts) - 1
         self.n = n
 
         if n == 0:
-            self.timestamps = np.empty(0, dtype=np.uint64)
-            self.timestamp_spans = np.empty(0, dtype=SPAN_DTYPE)
             self.category_ids = np.empty(0, dtype=np.uint16)
             self.levels = np.empty(0, dtype=np.uint8)
-            self.message_spans = np.empty(0, dtype=SPAN_DTYPE)
             self.line_starts = line_starts
             self._finalize_load(file_path)
             return
@@ -147,17 +232,22 @@ class LogStore:
 
         # Detect format
         fmt = detect_format_bytes(bytes(buf))
+        self._format = fmt
 
-        # Batch parse
-        ts_spans, cat_names, cat_name_to_id, cat_ids, levels, msg_spans = parse_batch_fast(
-            buf, line_starts, fmt
-        )
+        # Pass 2: parse category_ids and levels
+        # Use Cython-accelerated parse_batch_fast when available (much faster
+        # for large files). It returns extra arrays we discard immediately.
+        if _HAS_CYTHON:
+            _ts, cat_names, cat_name_to_id, cat_ids, levels, _msg = parse_batch_fast(
+                buf, line_starts, fmt
+            )
+        else:
+            cat_names, cat_name_to_id, cat_ids, levels = parse_minimal_batch(
+                bytes(buf), line_starts, fmt
+            )
 
-        self.timestamp_spans = ts_spans
-        self.timestamps = np.empty(0, dtype=np.uint64)  # legacy, unused in fast path
         self.category_ids = cat_ids
         self.levels = levels
-        self.message_spans = msg_spans
         self._category_names = cat_names
         self._category_name_to_id = cat_name_to_id
 
@@ -173,15 +263,14 @@ class LogStore:
         """Common post-load logic: restore state, build tree, apply filters."""
         # Snapshot disabled category paths from tree (includes intermediate nodes)
         disabled_cat_names: set[str] = set()
-        self._collect_disabled_paths(self.category_tree, disabled_cat_names)
+        self.pipeline.collect_disabled_paths(self.category_tree, disabled_cat_names)
 
         self.current_file = file_path
         # disabled_levels intentionally not reset — preserved across reload
         self.disabled_categories = set()
-        self.pinned_rules = []
-        self.pinned_enabled = []
-        self._pin_masks = []
-        self.search_state = None
+        self.pipeline.reset_pins()
+        self.search_engine.clear_search()
+        self.pipeline.invalidate_cache()
 
         # Restore disabled categories by name (new IDs)
         for name in disabled_cat_names:
@@ -192,51 +281,33 @@ class LogStore:
 
         # Sync tree node.enabled flags with restored disabled set.
         for name in disabled_cat_names:
-            node = self._find_category_node(name)
+            node = self.pipeline.find_category_node(self, name)
             if node:
                 node.enabled = False
 
         self._count_levels()
-        self._recompute_all_filter_masks()
-        self._apply_filters()
+        self.pipeline.recompute_masks(self)
+        self.pipeline.apply(self)
 
     # ------------------------------------------------------------------ #
     #  Message / raw line access                                           #
     # ------------------------------------------------------------------ #
 
-    def get_message(self, index: int) -> str:
-        """Decode message text on demand from byte buffer."""
+    def get_columns(self, index: int) -> tuple[str, str, str, str]:
+        """Return (timestamp, category, level_name, message) for one line."""
         if index < 0 or index >= self.n:
-            return ""
-        off = int(self.message_spans[index]["offset"])
-        ln = int(self.message_spans[index]["length"])
-        return self._buf[off:off + ln].decode("utf-8", errors="replace")
+            return ("", "", "", "")
+        raw = self._buf[self.line_starts[index]:self.line_starts[index + 1]]
+        from log_viewer.core.parser import parse_columns
+        return parse_columns(raw, self._category_names, self._format)
 
-    def get_message_bytes(self, index: int) -> bytes:
-        """Return message as bytes (zero-copy view)."""
-        if index < 0 or index >= self.n:
-            return b""
-        off = int(self.message_spans[index]["offset"])
-        ln = int(self.message_spans[index]["length"])
-        return bytes(self._buf[off:off + ln])
+    def get_message(self, index: int) -> str:
+        """Decode message text on demand."""
+        return self.get_columns(index)[3]
 
     def get_timestamp(self, index: int) -> str:
-        """Decode timestamp on demand from byte buffer or legacy uint64 array."""
-        if index < 0 or index >= self.n:
-            return ""
-        # Fast path: byte spans from parse_batch_fast
-        if len(self.timestamp_spans) > 0:
-            off = int(self.timestamp_spans[index]["offset"])
-            ln = int(self.timestamp_spans[index]["length"])
-            if ln == 0:
-                return ""
-            raw = self._buf[off:off + ln].decode("utf-8", errors="replace")
-            return raw.split("T")[-1] if "T" in raw else raw
-        # Legacy path: pre-parsed uint64 milliseconds
-        if len(self.timestamps) > 0:
-            from log_viewer.core.models import format_timestamp
-            return format_timestamp(int(self.timestamps[index]))
-        return ""
+        """Decode timestamp on demand."""
+        return self.get_columns(index)[0]
 
     def get_raw(self, index: int) -> str:
         """Return raw line text from byte buffer."""
@@ -251,74 +322,41 @@ class LogStore:
     # ------------------------------------------------------------------ #
 
     def add_filter(self, filt: Filter) -> None:
-        self.filters.append(filt)
-        self.filter_enabled.append(True)
-        self._filter_masks.append(self._compute_filter_mask(filt))
-        self._apply_filters()
+        self.pipeline.add_filter(self, filt)
 
     def remove_filter(self, pattern: str) -> None:
-        kept = [
-            (i, f, e)
-            for i, (f, e) in enumerate(zip(self.filters, self.filter_enabled))
-            if f.pattern != pattern
-        ]
-        self.filters = [f for _, f, _ in kept]
-        self.filter_enabled = [e for _, _, e in kept]
-        self._filter_masks = [self._filter_masks[i] for i, _, _ in kept]
-        self._apply_filters()
+        self.pipeline.remove_filter(self, pattern)
 
     def clear_filters(self) -> None:
-        self.filters = []
-        self.filter_enabled = []
-        self._filter_masks = []
-        self._apply_filters()
+        self.pipeline.clear_filters(self)
 
     # ------------------------------------------------------------------ #
     #  Highlights                                                         #
     # ------------------------------------------------------------------ #
 
     def add_highlight(self, h: Highlight) -> None:
-        h.color = HIGHLIGHT_PALETTE[self._highlight_color_index % len(HIGHLIGHT_PALETTE)]
-        self._highlight_color_index += 1
-        self.highlights.append(h)
-        self.highlight_enabled.append(True)
+        self.pipeline.add_highlight(h)
 
     def remove_highlight(
         self, pattern: str, color: str = "red"
     ) -> None:
-        kept = [
-            (h, e)
-            for h, e in zip(self.highlights, self.highlight_enabled)
-            if not (h.pattern == pattern and h.color == color)
-        ]
-        self.highlights = [h for h, _ in kept]
-        self.highlight_enabled = [e for _, e in kept]
+        self.pipeline.remove_highlight(pattern, color)
 
     def clear_highlights(self) -> None:
-        self.highlights = []
-        self.highlight_enabled = []
+        self.pipeline.clear_highlights()
 
     # ------------------------------------------------------------------ #
     #  Pinned lines                                                       #
     # ------------------------------------------------------------------ #
 
     def add_pin(self, filt: Filter) -> None:
-        self.pinned_rules.append(filt)
-        self.pinned_enabled.append(True)
-        self._pin_masks.append(self._compute_filter_mask(filt))
-        self._apply_filters()
+        self.pipeline.add_pin(self, filt)
 
     def remove_pin(self, index: int) -> None:
-        del self.pinned_rules[index]
-        del self.pinned_enabled[index]
-        del self._pin_masks[index]
-        self._apply_filters()
+        self.pipeline.remove_pin(self, index)
 
     def unpin_all(self) -> None:
-        self.pinned_rules.clear()
-        self.pinned_enabled.clear()
-        self._pin_masks.clear()
-        self._apply_filters()
+        self.pipeline.unpin_all(self)
 
     # ------------------------------------------------------------------ #
     #  Search                                                             #
@@ -331,361 +369,57 @@ class LogStore:
         direction: SearchDirection = SearchDirection.FORWARD,
         start_line: int = 0,
     ) -> SearchState:
-        filt = Filter(pattern=pattern, mode=mode)
-        mask = self._compute_filter_mask(filt)
-
-        # Intersect with currently visible lines
-        visible_mask = mask[self.filtered_indices]
-        local_indices = np.where(visible_mask)[0]
-        matches = self.filtered_indices[local_indices].tolist()
-
-        start = 0
-        if matches and direction == SearchDirection.BACKWARD:
-            start = len(matches) - 1
-        elif matches:
-            idx = bisect_left(matches, start_line)
-            start = 0 if idx == len(matches) else idx
-
-        state = SearchState(
-            pattern=pattern,
-            mode=mode,
-            direction=direction,
-            matches=matches,
-            current_index=start,
-        )
-        self.search_state = state
-        return state
+        return self.search_engine.search(self, self.pipeline, pattern, mode, direction, start_line)
 
     def next_match(self) -> Optional[SearchState]:
-        if self.search_state is None or not self.search_state.matches:
-            return None
-        self.search_state.current_index = (
-            self.search_state.current_index + 1
-        ) % len(self.search_state.matches)
-        return self.search_state
+        return self.search_engine.next_match()
 
     def prev_match(self) -> Optional[SearchState]:
-        if self.search_state is None or not self.search_state.matches:
-            return None
-        self.search_state.current_index = (
-            self.search_state.current_index - 1
-        ) % len(self.search_state.matches)
-        return self.search_state
+        return self.search_engine.prev_match()
 
     def clear_search(self) -> None:
-        self.search_state = None
+        self.search_engine.clear_search()
 
     # ------------------------------------------------------------------ #
     #  Level toggles                                                      #
     # ------------------------------------------------------------------ #
 
     def toggle_level(self, level: LogLevel) -> None:
-        level_id = _LEVEL_LIST.index(level)
-        if level_id in self.disabled_levels:
-            self.disabled_levels.discard(level_id)
-        else:
-            self.disabled_levels.add(level_id)
-        self._apply_filters()
+        self.pipeline.toggle_level(self, level)
 
     def set_level_enabled(self, level: LogLevel, enabled: bool) -> None:
-        level_id = _LEVEL_LIST.index(level)
-        if enabled:
-            self.disabled_levels.discard(level_id)
-        else:
-            self.disabled_levels.add(level_id)
-        self._apply_filters()
+        self.pipeline.set_level_enabled(self, level, enabled)
 
     # ------------------------------------------------------------------ #
     #  Category toggles                                                   #
     # ------------------------------------------------------------------ #
 
     def enable_category(self, path: str) -> None:
-        for node in self._match_categories(path):
-            self._set_enabled_recursive(node, True)
-        self._apply_filters()
+        self.pipeline.enable_category(self, path)
 
     def disable_category(self, path: str) -> None:
-        for node in self._match_categories(path):
-            self._set_enabled_recursive(node, False)
-        self._apply_filters()
+        self.pipeline.disable_category(self, path)
 
     def enable_all_categories(self) -> None:
-        self._set_enabled_recursive(self.category_tree, True)
-        self.disabled_categories.clear()
-        self._apply_filters()
+        self.pipeline.enable_all_categories(self)
 
     def disable_all_categories(self) -> None:
-        self._set_enabled_recursive(self.category_tree, False)
-        self._apply_filters()
+        self.pipeline.disable_all_categories(self)
 
     def set_disabled_categories(self, paths: list[str]) -> None:
-        self._set_enabled_recursive(self.category_tree, True)
-        self.disabled_categories.clear()
-        for path in paths:
-            node = self._find_category_node(path)
-            if node:
-                self._set_enabled_recursive(node, False)
-        self._apply_filters()
-
-    def _collect_disabled_paths(
-        self, node: CategoryNode, out: set[str]
-    ) -> None:
-        if not node.enabled and node.full_path:
-            out.add(node.full_path)
-        for child in node.children.values():
-            self._collect_disabled_paths(child, out)
-
-    def _find_category_node(self, path: str) -> Optional[CategoryNode]:
-        if not path:
-            return self.category_tree
-        parts = path.rstrip("/").split("/")
-        node = self.category_tree
-        for part in parts:
-            if part not in node.children:
-                return None
-            node = node.children[part]
-        return node
-
-    def _match_categories(self, pattern: str) -> list[CategoryNode]:
-        if "*" not in pattern:
-            node = self._find_category_node(pattern)
-            return [node] if node else []
-        regex = re.compile(".*".join(re.escape(p) for p in pattern.split("*")))
-        return [
-            self._find_category_node(path)
-            for path in self.category_counts
-            if regex.search(path)
-        ]
-
-    def _set_enabled_recursive(self, node: CategoryNode, enabled: bool) -> None:
-        node.enabled = enabled
-        # Update disabled_categories set
-        full = node.full_path
-        if full:
-            cat_id = self._category_name_to_id.get(full)
-            if cat_id is not None:
-                if enabled:
-                    self.disabled_categories.discard(cat_id)
-                else:
-                    self.disabled_categories.add(cat_id)
-        for child in node.children.values():
-            self._set_enabled_recursive(child, enabled)
-
-    # ------------------------------------------------------------------ #
-    #  Filtering (core)                                                   #
-    # ------------------------------------------------------------------ #
-
-    def _compute_filter_mask(self, filt: Filter) -> np.ndarray:
-        """Compute boolean mask for ALL lines matching a single filter."""
-        n = self.n
-        if n == 0:
-            return np.empty(0, dtype=bool)
-
-        mask = np.zeros(n, dtype=bool)
-
-        if filt.mode == SearchMode.LINE_NUMBER:
-            idx = int(filt.pattern) - 1
-            if 0 <= idx < n:
-                mask[idx] = True
-            return mask
-
-        if filt.mode in (SearchMode.PLAIN, SearchMode.REGEX):
-            # Use pre-lowered buffer for fast case-sensitive search
-            if self._buf_lower is None:
-                self._buf_lower = bytes(self._buf).lower()
-            search_buf = self._buf_lower
-
-            if filt.mode == SearchMode.PLAIN:
-                pattern = re.escape(filt.pattern.lower()).encode("utf-8")
-            else:
-                # For regex: lower the literal parts is complex,
-                # fall back to IGNORECASE on original buffer
-                try:
-                    combined = re.compile(filt.pattern.encode("utf-8"), re.IGNORECASE)
-                except re.error:
-                    return mask
-                search_buf = self._buf
-
-            if filt.mode == SearchMode.PLAIN:
-                try:
-                    combined = re.compile(pattern)  # case-sensitive on lowered buffer
-                except re.error:
-                    return mask
-
-            msg_off = self.message_spans["offset"].astype(np.int64)
-            msg_len = self.message_spans["length"].astype(np.int64)
-            positions = np.array(
-                [m.start() for m in combined.finditer(search_buf)], dtype=np.int64
-            )
-            if len(positions) > 0:
-                si = np.searchsorted(msg_off, positions, side="right") - 1
-                valid = (si >= 0) & (si < n)
-                si, pv = si[valid], positions[valid]
-                ends = msg_off[si] + msg_len[si]
-                in_msg = (pv >= msg_off[si]) & (pv < ends)
-                mask[si[in_msg]] = True
-        else:
-            # Simple query: decompose AST into terms, buffer-scan each,
-            # then combine masks via AND/OR/NOT numpy operations
-            from log_viewer.core.simple_query import parse_query
-            ast = parse_query(filt.pattern)
-            unique_terms = list(set(ast.collect_terms()))
-
-            if self._buf_lower is None:
-                self._buf_lower = bytes(self._buf).lower()
-
-            msg_off = self.message_spans["offset"].astype(np.int64)
-            msg_len = self.message_spans["length"].astype(np.int64)
-
-            term_masks: dict[str, np.ndarray] = {}
-            for term in unique_terms:
-                tmask = np.zeros(n, dtype=bool)
-                pattern = re.escape(term.lower()).encode("utf-8")
-                combined = re.compile(pattern)
-                positions = np.array(
-                    [m.start() for m in combined.finditer(self._buf_lower)],
-                    dtype=np.int64,
-                )
-                if len(positions) > 0:
-                    si = np.searchsorted(msg_off, positions, side="right") - 1
-                    valid = (si >= 0) & (si < n)
-                    si, pv = si[valid], positions[valid]
-                    ends = msg_off[si] + msg_len[si]
-                    in_msg = (pv >= msg_off[si]) & (pv < ends)
-                    tmask[si[in_msg]] = True
-                term_masks[term] = tmask
-
-            mask = ast.eval_masks(term_masks, n)
-
-        return mask
-
-    def _recompute_all_filter_masks(self) -> None:
-        """Rebuild all filter masks (called after file load)."""
-        self._filter_masks = [self._compute_filter_mask(f) for f in self.filters]
+        self.pipeline.set_disabled_categories(self, paths)
 
     def _apply_filters(self) -> None:
-        """Recompute filtered_indices using vectorized numpy + byte matching."""
-        if self.n == 0:
-            self.filtered_indices = np.empty(0, dtype=np.uint32)
-            return
+        """Delegate to pipeline for backward compat (GUI calls this directly)."""
+        self.pipeline.apply(self)
 
-        has_text_filters = any(self.filter_enabled)
-        has_level_filters = bool(self.disabled_levels)
-        has_cat_filters = bool(self.disabled_categories)
-        has_pins = any(self.pinned_enabled)
-        no_filters = not has_text_filters and not has_level_filters and not has_cat_filters
+    def _find_category_node(self, path: str) -> Optional[CategoryNode]:
+        """Delegate to pipeline for backward compat."""
+        return self.pipeline.find_category_node(self, path)
 
-        # Fast path: nothing filtered, no pins
-        if no_filters and not has_pins:
-            self.filtered_indices = np.arange(self.n, dtype=np.uint32)
-            self._count_visible_levels()
-            self.level_button_counts = dict(self.level_counts)
-            return
-
-        # Build category mask: True = category enabled
-        if has_cat_filters:
-            enabled_cats = np.array(
-                [i for i in range(len(self._category_names)) if i not in self.disabled_categories],
-                dtype=np.uint16,
-            )
-            cat_mask = np.isin(self.category_ids, enabled_cats)
-        else:
-            cat_mask = np.ones(self.n, dtype=bool)
-
-        # Build level mask: True = level enabled
-        if has_level_filters:
-            enabled_levels = np.array(
-                [i for i in range(len(_LEVEL_LIST)) if i not in self.disabled_levels],
-                dtype=np.uint8,
-            )
-            level_mask = np.isin(self.levels, enabled_levels)
-        else:
-            level_mask = np.ones(self.n, dtype=bool)
-
-        # Category + level combined (before text filter, for level button counts)
-        cat_level_mask = cat_mask & level_mask
-        cat_level_indices = np.where(cat_level_mask)[0]
-
-        # Build text filter mask
-        if has_text_filters:
-            if len(self._filter_masks) != len(self.filters):
-                self._recompute_all_filter_masks()
-            active_masks = [m for m, e in zip(self._filter_masks, self.filter_enabled) if e]
-            if active_masks:
-                text_mask = np.zeros(self.n, dtype=bool)
-                for m in active_masks:
-                    text_mask |= m
-            else:
-                text_mask = np.ones(self.n, dtype=bool)
-        else:
-            text_mask = np.ones(self.n, dtype=bool)
-
-        # Combined mask: category & level & text
-        combined = cat_level_mask & text_mask
-
-        # Count per level for buttons (category + text filtering, ignoring level toggles)
-        self._count_level_buttons_from_mask(cat_mask & text_mask if has_text_filters else cat_mask)
-
-        # OR in pin mask — pinned lines bypass all filters
-        if has_pins:
-            active_pin_masks = [m for m, e in zip(self._pin_masks, self.pinned_enabled) if e]
-            if active_pin_masks:
-                pin_mask = np.zeros(self.n, dtype=bool)
-                for m in active_pin_masks:
-                    pin_mask |= m
-                combined = combined | pin_mask
-
-        self.filtered_indices = np.where(combined)[0].astype(np.uint32)
-        self._count_visible_levels()
-
-    def _bulk_match(
-        self, indices: list[int], filters: list[Filter]
-    ) -> set[int]:
-        """Bulk regex on entire buffer for plain-CI filters, per-line fallback for others."""
-        if not indices or not filters:
-            return set(range(len(indices))) if not filters else set()
-
-        plain_ci: list[bytes] = []
-        other_filters: list[Filter] = []
-        for f in filters:
-            if f.mode == SearchMode.PLAIN:
-                plain_ci.append(re.escape(f.pattern).encode("utf-8"))
-            else:
-                other_filters.append(f)
-
-        matching_lines: set[int] = set()
-
-        if plain_ci:
-            combined = re.compile(b"|".join(plain_ci), re.IGNORECASE)
-            msg_off = self.message_spans["offset"].astype(np.int64)
-            msg_len = self.message_spans["length"].astype(np.int64)
-
-            positions = np.array(
-                [m.start() for m in combined.finditer(self._buf)], dtype=np.int64
-            )
-            if len(positions) > 0:
-                si = np.searchsorted(msg_off, positions, side="right") - 1
-                valid = (si >= 0) & (si < self.n)
-                si, pv = si[valid], positions[valid]
-                ends = msg_off[si] + msg_len[si]
-                in_msg = (pv >= msg_off[si]) & (pv < ends)
-                matching_lines = set(si[in_msg].tolist())
-
-        if other_filters:
-            buf = self._buf
-            spans = self.message_spans
-            for idx in indices:
-                if idx in matching_lines:
-                    continue
-                off = int(spans[idx]["offset"])
-                ln = int(spans[idx]["length"])
-                msg = buf[off:off + ln].decode("utf-8", errors="replace")
-                for f in other_filters:
-                    if filter_engine.match(msg, f):
-                        matching_lines.add(idx)
-                        break
-
-        return {i for i, idx in enumerate(indices) if idx in matching_lines}
+    # ------------------------------------------------------------------ #
+    #  Level counting                                                     #
+    # ------------------------------------------------------------------ #
 
     def _count_levels(self) -> None:
         """Count log levels across all lines using vectorized bincount."""
@@ -709,29 +443,6 @@ class LogStore:
         visible_levels = self.levels[self.filtered_indices]
         counts = np.bincount(visible_levels, minlength=len(_LEVEL_LIST))
         self.visible_level_counts = {
-            _LEVEL_LIST[i]: int(counts[i]) for i in range(len(_LEVEL_LIST)) if counts[i] > 0
-        }
-
-    def _count_level_buttons_from_mask(self, cat_mask: np.ndarray) -> None:
-        """Count per level for category-enabled lines (used by level buttons)."""
-        cat_indices = np.where(cat_mask)[0]
-        if len(cat_indices) == 0:
-            self.level_button_counts = {}
-            return
-        cat_levels = self.levels[cat_indices]
-        counts = np.bincount(cat_levels, minlength=len(_LEVEL_LIST))
-        self.level_button_counts = {
-            _LEVEL_LIST[i]: int(counts[i]) for i in range(len(_LEVEL_LIST)) if counts[i] > 0
-        }
-
-    def _count_level_buttons_from_indices(self, indices: np.ndarray) -> None:
-        """Count per level for given indices (category + text filtered, used by level buttons)."""
-        if len(indices) == 0:
-            self.level_button_counts = {}
-            return
-        idx_levels = self.levels[indices]
-        counts = np.bincount(idx_levels, minlength=len(_LEVEL_LIST))
-        self.level_button_counts = {
             _LEVEL_LIST[i]: int(counts[i]) for i in range(len(_LEVEL_LIST)) if counts[i] > 0
         }
 

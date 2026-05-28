@@ -247,18 +247,18 @@ class TestLogStoreFilters:
         store.add_filter(Filter(pattern="ZZZZNONEXISTENT", mode=SearchMode.PLAIN))
         assert len(store.filtered_indices) == 0
 
-    def test_filter_matches_message_not_raw(self) -> None:
-        """Filtering operates on message field, not the raw line."""
+    def test_filter_searches_full_buffer(self) -> None:
+        """Filtering searches the full raw line, including metadata fields."""
         store = LogStore()
         store.load_lines(SAMPLE_LINES)
         # "Failed" is in messages of lines 1 ("Failed to open") and 2 ("Read failed")
         store.add_filter(Filter(pattern="Failed", mode=SearchMode.PLAIN))
         assert len(store.filtered_indices) == 2
-        # "LOG_ERROR" is in raw but NOT in any message — should match nothing
+        # "LOG_ERROR" appears in raw lines — full-buffer search matches it
         store2 = LogStore()
         store2.load_lines(SAMPLE_LINES)
         store2.add_filter(Filter(pattern="LOG_ERROR", mode=SearchMode.PLAIN))
-        assert len(store2.filtered_indices) == 0
+        assert len(store2.filtered_indices) == 2  # lines with LOG_ERROR
 
 
 class TestLogStoreHighlights:

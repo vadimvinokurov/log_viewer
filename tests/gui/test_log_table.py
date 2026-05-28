@@ -6,60 +6,50 @@ import numpy as np
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtWidgets import QApplication
 
-from log_viewer.core.log_store import LogStore, SPAN_DTYPE
+from log_viewer.core.log_store import LogStore
 from log_viewer.core.models import LogLine, LogLevel, _LEVEL_LIST, RowRef
 from log_viewer.gui.log_table import LogTableModel, LogTableView
 
 
 def _populate_store(store: LogStore, lines: list[LogLine]) -> None:
     """Populate SoA arrays on an existing LogStore from LogLine objects."""
-    from log_viewer.core.parser import _parse_time_to_ms
-
     n = len(lines)
     store.n = n
     if n == 0:
         store._apply_filters()
         return
 
-    # Build byte buffer from messages
+    # Build byte buffer from full formatted lines
     buf = bytearray()
     line_starts_list = [0]
-    msg_offsets = []
-    msg_lengths = []
-    for l in lines:
-        msg_bytes = l.message.encode("utf-8")
-        msg_offsets.append(len(buf))
-        msg_lengths.append(len(msg_bytes))
-        buf.extend(msg_bytes)
-        line_starts_list.append(len(buf))
-    store._buf = buf
-    store.line_starts = np.array(line_starts_list, dtype=np.uint64)
-    store.message_spans = np.array(
-        list(zip(msg_offsets, msg_lengths)),
-        dtype=SPAN_DTYPE,
-    )
-
-    store.timestamps = np.array(
-        [_parse_time_to_ms(l.timestamp) for l in lines], dtype=np.uint64
-    )
-
     cat_name_to_id: dict[str, int] = {"uncategorized": 0}
     cat_names: list[str] = ["uncategorized"]
     cat_ids: list[int] = []
+    level_ids: list[int] = []
+
     for l in lines:
+        line_text = f"{l.timestamp} {l.category} [LOG_{l.level.name}] {l.message}\n"
+        buf.extend(line_text.encode("utf-8"))
+        line_starts_list.append(len(buf))
+
         cat = l.category
         if cat not in cat_name_to_id:
             cat_name_to_id[cat] = len(cat_names)
             cat_names.append(cat)
         cat_ids.append(cat_name_to_id[cat])
+
+        level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
+        level_ids.append(level_map.get(l.level, 3))
+
+    store._buf = buf
+    store._buf_lower = bytes(buf).lower()
+    store._buf_str = None
+    store.line_starts = np.array(line_starts_list, dtype=np.uint64)
     store.category_ids = np.array(cat_ids, dtype=np.uint16)
     store._category_names = cat_names
     store._category_name_to_id = cat_name_to_id
-
-    level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
-    store.levels = np.array(
-        [level_map.get(l.level, 3) for l in lines], dtype=np.uint8
-    )
+    store.levels = np.array(level_ids, dtype=np.uint8)
+    store._format = "ksiva"
 
     store._build_category_tree()
     store._count_levels()
@@ -110,7 +100,7 @@ def test_model_data_line_number(model):
 
 
 def test_model_data_time(model):
-    assert model.data(model.index(0, 1)) == "12:30:01.000"
+    assert model.data(model.index(0, 1)) == "12:30:01"
 
 
 def test_model_data_category(model):

@@ -23,12 +23,12 @@ class TestLoadBytes:
         store.load_bytes(bytearray(SAMPLE_BYTES))
         assert store.n == 6
 
-    def test_load_bytes_populates_timestamps(self) -> None:
+    def test_load_bytes_populates_format(self) -> None:
         store = LogStore()
         store.load_bytes(bytearray(SAMPLE_BYTES))
-        # Fast path stores timestamp_spans (SPAN_DTYPE) instead of uint64 ms
-        assert len(store.timestamp_spans) == 6
-        assert store.timestamp_spans.dtype.names == ("offset", "length")
+        assert store._format == "ksiva"
+        assert len(store.category_ids) == 6
+        assert len(store.levels) == 6
 
     def test_load_bytes_populates_levels(self) -> None:
         store = LogStore()
@@ -46,11 +46,11 @@ class TestLoadBytes:
         assert len(store.line_starts) == store.n + 1
         assert store.line_starts[0] == 0
 
-    def test_load_bytes_populates_message_spans(self) -> None:
+    def test_load_bytes_buf_lower_lazy(self) -> None:
         store = LogStore()
         store.load_bytes(bytearray(SAMPLE_BYTES))
-        assert store.message_spans.dtype.names == ("offset", "length")
-        assert len(store.message_spans) == 6
+        assert store._buf_lower is None  # lazy, created on first filter
+        assert store._buf_str is None  # lazy, not yet decoded
 
     def test_load_bytes_builds_category_tree(self) -> None:
         store = LogStore()

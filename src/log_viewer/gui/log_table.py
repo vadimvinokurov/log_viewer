@@ -9,7 +9,6 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QWheelEvent
 from PySide6.QtWidgets import QApplication, QMenu, QTableView
 
-from log_viewer.core.log_store import SPAN_DTYPE
 from log_viewer.core.models import Highlight, RowRef, _LEVEL_LIST
 from log_viewer.core.themes import _t
 from log_viewer.gui.highlight_delegate import HighlightDelegate
@@ -89,12 +88,14 @@ class LogTableModel(QAbstractTableModel):
             col = index.column()
             if col == 0:
                 return str(idx + 1)  # line_number = idx + 1
+            # Parse columns lazily — one parse per data() call
+            timestamp, category, level_name, message = store.get_columns(idx)
             if col == 1:
-                return store.get_timestamp(idx)
+                return timestamp
             if col == 2:
-                return store._category_names[store.category_ids[idx]]
+                return category
             if col == 3:
-                return store.get_message(idx)
+                return message
             return None
 
         if role == Qt.ItemDataRole.ForegroundRole:
@@ -202,60 +203,54 @@ class LogTableModel(QAbstractTableModel):
         else:
             # LogLine path — repopulate store from scratch
             from log_viewer.core.models import _LEVEL_LIST
-            from log_viewer.core.parser import _parse_time_to_ms
 
             n = len(lines)
             store = self._store
             store.n = n
             if n == 0:
                 store._buf = bytearray()
-                store.timestamps = np.empty(0, dtype=np.uint64)
+                store._buf_lower = None
+                store._buf_str = None
                 store.category_ids = np.empty(0, dtype=np.uint16)
                 store.levels = np.empty(0, dtype=np.uint8)
                 store.line_starts = np.empty(0, dtype=np.uint64)
-                store.message_spans = np.empty(0, dtype=SPAN_DTYPE)
                 store._apply_filters()
                 self.update_indices(store.filtered_indices, selection_model, table_view)
                 return
 
-            # Build byte buffer from LogLine messages
+            # Build byte buffer from full formatted LogLine entries
             buf = bytearray()
             line_starts_list = [0]
-            msg_offsets = []
-            msg_lengths = []
-            for ln in lines:
-                msg_bytes = ln.message.encode("utf-8")
-                msg_offsets.append(len(buf))
-                msg_lengths.append(len(msg_bytes))
-                buf.extend(msg_bytes)
-                line_starts_list.append(len(buf))
-
-            store._buf = buf
-            store.line_starts = np.array(line_starts_list, dtype=np.uint64)
-            store.message_spans = np.array(
-                list(zip(msg_offsets, msg_lengths)),
-                dtype=SPAN_DTYPE,
-            )
-            store.timestamps = np.array(
-                [_parse_time_to_ms(ln.timestamp) for ln in lines], dtype=np.uint64
-            )
             cat_name_to_id: dict[str, int] = {"uncategorized": 0}
             cat_names: list[str] = ["uncategorized"]
             cat_ids: list[int] = []
+            level_ids: list[int] = []
+
             for ln in lines:
+                # Format as: timestamp category [LOG_LEVEL] message
+                line_text = f"{ln.timestamp} {ln.category} [LOG_{ln.level.name}] {ln.message}\n"
+                buf.extend(line_text.encode("utf-8"))
+                line_starts_list.append(len(buf))
+
                 cat = ln.category
                 if cat not in cat_name_to_id:
                     cat_name_to_id[cat] = len(cat_names)
                     cat_names.append(cat)
                 cat_ids.append(cat_name_to_id[cat])
+
+                level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
+                level_ids.append(level_map.get(ln.level, 3))
+
+            store._buf = buf
+            store._buf_lower = None  # lazy
+            store._buf_str = None
+            store.line_starts = np.array(line_starts_list, dtype=np.uint64)
             store.category_ids = np.array(cat_ids, dtype=np.uint16)
+            store.levels = np.array(level_ids, dtype=np.uint8)
             store._category_names = cat_names
             store._category_name_to_id = cat_name_to_id
+            store._format = "ksiva"
 
-            level_map = {lvl: i for i, lvl in enumerate(_LEVEL_LIST)}
-            store.levels = np.array(
-                [level_map.get(ln.level, 3) for ln in lines], dtype=np.uint8
-            )
             store._build_category_tree()
             store._count_levels()
             store._apply_filters()
