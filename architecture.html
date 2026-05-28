@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Viewer — Архитектура движка</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --heading: #f0f6fc;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --accent3: #d2a8ff;
+    --accent4: #f0883e;
+    --accent5: #ff7b72;
+    --code-bg: #1c2128;
+    --tag-bg: #1f2937;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem 2rem 4rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 2.2rem;
+    color: var(--heading);
+    margin-bottom: 0.3rem;
+    letter-spacing: -0.03em;
+  }
+  .subtitle {
+    color: var(--accent);
+    font-size: 1.05rem;
+    margin-bottom: 2.5rem;
+    opacity: 0.85;
+  }
+  h2 {
+    font-size: 1.5rem;
+    color: var(--heading);
+    margin-top: 3rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 0.9rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  h3 {
+    font-size: 1.15rem;
+    color: var(--accent);
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+  p { margin-bottom: 0.8rem; }
+  code {
+    background: var(--code-bg);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    color: var(--accent2);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    margin: 0.8rem 0 1.2rem;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  }
+  pre .kw { color: var(--accent5); }
+  pre .fn { color: var(--accent); }
+  pre .str { color: var(--accent2); }
+  pre .cm { color: #6e7681; }
+  pre .ty { color: var(--accent3); }
+
+  .flow-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin: 1rem 0 1.5rem;
+    overflow-x: auto;
+  }
+  .flow-box .step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .flow-box .step.blue   { background: #1a3a5c; color: var(--accent); }
+  .flow-box .step.green  { background: #1a3c2a; color: var(--accent2); }
+  .flow-box .step.purple { background: #2d1f4e; color: var(--accent3); }
+  .flow-box .step.orange { background: #3d2a10; color: var(--accent4); }
+  .flow-box .arrow {
+    display: inline-flex;
+    color: #484f58;
+    font-size: 1.1rem;
+    margin: 0 0.2rem;
+  }
+  .flow-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.6rem; }
+  .flow-row:last-child { margin-bottom: 0; }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1rem 0;
+  }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+  }
+  .card h4 {
+    font-size: 0.95rem;
+    color: var(--heading);
+    margin-bottom: 0.4rem;
+  }
+  .card p { font-size: 0.88rem; margin-bottom: 0.3rem; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8rem 0 1.2rem;
+    font-size: 0.88rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.5rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--heading);
+    font-weight: 600;
+    background: var(--surface);
+  }
+  td code { font-size: 0.82em; }
+
+  .tag {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .tag-blue   { background: #1a3a5c; color: var(--accent); }
+  .tag-green  { background: #1a3c2a; color: var(--accent2); }
+  .tag-purple { background: #2d1f4e; color: var(--accent3); }
+  .tag-orange { background: #3d2a10; color: var(--accent4); }
+  .tag-red    { background: #3d1a1a; color: var(--accent5); }
+
+  ul { margin: 0.4rem 0 0.8rem 1.2rem; }
+  li { margin-bottom: 0.25rem; }
+
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .toc h3 { margin-top: 0; color: var(--heading); }
+  .toc ol { margin-left: 1.2rem; }
+  .toc li { margin-bottom: 0.2rem; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<h1>Log Viewer &mdash; Архитектура движка</h1>
+<p class="subtitle">Десктопный просмотрщик логов на Python / PySide6 с высокопроизводительным SoA-хранилищем</p>
+
+<nav class="toc">
+  <h3>Содержание</h3>
+  <ol>
+    <li><a href="#overview">Общая архитектура</a></li>
+    <li><a href="#loading">Загрузка файлов</a></li>
+    <li><a href="#parser">Парсер логов</a></li>
+    <li><a href="#storage">Хранилище данных (LogStore)</a></li>
+    <li><a href="#models">Модели данных</a></li>
+    <li><a href="#filter-engine">Движок фильтрации</a></li>
+    <li><a href="#simple-query">Язык запросов Simple Query</a></li>
+    <li><a href="#search">Поиск</a></li>
+    <li><a href="#filtering">Фильтрация и видимые строки</a></li>
+    <li><a href="#highlighting">Подсветка</a></li>
+    <li><a href="#categories">Категории</a></li>
+    <li><a href="#commands">Командная система</a></li>
+    <li><a href="#gui">GUI и отображение</a></li>
+    <li><a href="#perf">Оптимизации производительности</a></li>
+  </ol>
+</nav>
+
+<!-- ===== 1. ОБЩАЯ АРХИТЕКТУРА ===== -->
+<h2 id="overview"><span class="num">1</span> Общая архитектура</h2>
+
+<p>
+  Проект построен по паттерну, близкому к MVP (Model-View-Presenter). Логика полностью отделена от GUI:
+  модуль <code>core/</code> не импортирует Qt, модуль <code>gui/</code> только отображает данные
+  и реагирует на действия пользователя. Координатором выступает <code>MainWindow</code>.
+</p>
+
+<div class="flow-box">
+  <div class="flow-row">
+    <span class="step blue">Пользователь</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">MainWindow (GUI)</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">CommandParser</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">LogStore (core)</span>
+  </div>
+  <div class="flow-row">
+    <span class="step green">LogStore</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step purple">FilterEngine</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step purple">SimpleQuery</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step orange">filtered_indices[]</span>
+  </div>
+  <div class="flow-row">
+    <span class="step orange">filtered_indices[]</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">LogTableModel</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">LogTableView</span>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h4>core/ — модель и логика</h4>
+    <p><code>models.py</code> — дата-классы данных</p>
+    <p><code>parser.py</code> — парсер лог-строк</p>
+    <p><code>log_store.py</code> — центральное хранилище SoA</p>
+    <p><code>filter_engine.py</code> — движок сопоставления</p>
+    <p><code>simple_query.py</code> — булев язык запросов</p>
+    <p><code>command_parser.py</code> — парсер команд</p>
+  </div>
+  <div class="card">
+    <h4>gui/ — Qt-виджеты</h4>
+    <p><code>app.py</code> — MainWindow, координация</p>
+    <p><code>log_table.py</code> — модель и представление таблицы</p>
+    <p><code>side_panel.py</code> — боковая панель</p>
+    <p><code>bottom_bar.py</code> — статус + ввод команд</p>
+    <p><code>highlight_delegate.py</code> — делегат подсветки</p>
+    <p><code>styles.py</code> — QSS-стили (единый источник)</p>
+  </div>
+</div>
+
+<!-- ===== 2. ЗАГРУЗКА ФАЙЛОВ ===== -->
+<h2 id="loading"><span class="num">2</span> Загрузка файлов</h2>
+
+<p>Файлы загружаются в три этапа: чтение в фоновом потоке, пакетный парсинг, перестроение индексов.</p>
+
+<h3>2.1 Фоновое чтение</h3>
+<p>
+  Класс <code>_FileLoadWorker</code> (QThread) считывает файл целиком в <code>bytearray</code> через
+  <code>Path.read_bytes()</code>. Это позволяет не блокировать GUI. После завершения испускается сигнал
+  <code>loaded(buf, path)</code>.
+</p>
+
+<h3>2.2 Приём в MainWindow</h3>
+<p>
+  Слот <code>_on_file_loaded()</code> передаёт буфер в <code>LogStore.load_bytes()</code>,
+  удаляет свою ссылку на буфер (LogStore хранит свою копию) и вызывает <code>_refresh_display()</code>
+  для обновления всех виджетов.
+</p>
+
+<h3>2.3 Внутри LogStore.load_bytes()</h3>
+<div class="flow-box">
+  <div class="flow-row">
+    <span class="step blue">bytearray</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">scan_line_starts_fast()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">detect_format_bytes()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">parse_batch_fast()</span>
+  </div>
+  <div class="flow-row">
+    <span class="step green">parse_batch_fast()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step purple">Cython / Python fallback</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step orange">numpy-массивы</span>
+  </div>
+</div>
+<p>Способы открытия файла: диалог (Ctrl+O), drag & drop, аргумент командной строки, команда <code>:open &lt;path&gt;</code>.</p>
+
+<!-- ===== 3. ПАРСЕР ===== -->
+<h2 id="parser"><span class="num">3</span> Парсер логов</h2>
+
+<p>Поддерживаются два формата. Автоопределение происходит по первой непустой строке.</p>
+
+<div class="grid-2">
+  <div class="card">
+    <h4><span class="tag tag-blue">KSIVA</span> (основной)</h4>
+    <p><code>timestamp category [LOG_LEVEL] message</code></p>
+    <p>Разбиение по пробелам (maxsplit=3). Позиция 2 проверяется на LOG_* — если найдена, это уровень; иначе сливается с позицией 3 в сообщение, уровень = INFO.</p>
+  </div>
+  <div class="card">
+    <h4><span class="tag tag-green">PLAIN</span></h4>
+    <p><code>timestamp elapsed level_short category message</code></p>
+    <p>Разбиение по пробелам (maxsplit=4). Короткие коды уровней: wrn/msg/dbg/err/crt. Поле elapsed отбрасывается.</p>
+  </div>
+</div>
+
+<h3>3.1 Пакетный парсинг (parse_batch_fast)</h3>
+<p>
+  Вместо создания Python-объектов на каждую строку, парсер заполняет numpy-массивы напрямую.
+  Есть Cython-ускоритель (<code>_parser_cy</code>); если он не скомпилирован — fallback на чистый Python.
+</p>
+<pre>
+<span class="cm"># Возвращаемые массивы:</span>
+<span class="ty">timestamp_spans</span> : ndarray[SPAN_DTYPE]  <span class="cm"># (offset, length) в байтовом буфере</span>
+<span class="ty">category_ids</span>     : ndarray[uint16]      <span class="cm"># ID категории (индекс в _category_names)</span>
+<span class="ty">levels</span>           : ndarray[uint8]       <span class="cm"># 0=CRITICAL .. 5=TRACE</span>
+<span class="ty">message_spans</span>    : ndarray[SPAN_DTYPE]  <span class="cm"># (offset, length) в байтовом буфере</span>
+</pre>
+
+<h3>3.2 Сканирование границ строк</h3>
+<p>
+  Функция <code>scan_line_starts_fast()</code> использует numpy для SIMD-обнаружения символов <code>\n</code>.
+  Возвращает массив uint64 длины n+1: строка i = <code>buf[starts[i]:starts[i+1]]</code>.
+</p>
+
+<h3>3.3 Дефолтные значения</h3>
+<ul>
+  <li>Пустая строка &rarr; категория "uncategorized", уровень INFO, пустое сообщение</li>
+  <li>Отсутствует уровень &rarr; INFO</li>
+  <li>Отсутствует категория &rarr; "uncategorized"</li>
+  <li>Строки интернированы через <code>sys.intern()</code> для экономии памяти</li>
+</ul>
+
+<!-- ===== 4. ХРАНИЛИЩЕ ===== -->
+<h2 id="storage"><span class="num">4</span> Хранилище данных (LogStore)</h2>
+
+<p>
+  <code>LogStore</code> — центральное хранилище, построенное по архитектуре <strong>Structure of Arrays (SoA)</strong>.
+  Вместо списка Python-объектов данные хранятся в одном байтовом буфере + набор numpy-массивов индексов.
+</p>
+
+<h3>4.1 Буфер и массивы</h3>
+<pre>
+<span class="kw">class</span> <span class="ty">LogStore</span>:
+    _buf            : <span class="ty">bytearray</span>       <span class="cm"># Единый буфер всего файла</span>
+    _buf_lower      : <span class="ty">bytes | None</span>    <span class="cm"># Кэш buf.lower() для быстрого поиска</span>
+    n               : <span class="ty">int</span>             <span class="cm"># Количество строк</span>
+
+    <span class="cm"># SoA-колонки (длины n):</span>
+    timestamp_spans : ndarray[SPAN_DTYPE]  <span class="cm"># (offset, length) в _buf</span>
+    category_ids    : ndarray[uint16]      <span class="cm"># ID категории</span>
+    levels          : ndarray[uint8]       <span class="cm"># ID уровня</span>
+    message_spans   : ndarray[SPAN_DTYPE]  <span class="cm"># (offset, length) в _buf</span>
+    line_starts     : ndarray[uint64]      <span class="cm"># Границы строк (длина n+1)</span>
+
+    <span class="cm"># Фильтрация:</span>
+    filtered_indices: ndarray[uint32]      <span class="cm"># Индексы видимых строк</span>
+    _filter_masks   : list[ndarray[bool]]  <span class="cm"># Маска на каждый фильтр</span>
+    _pin_masks      : list[ndarray[bool]]  <span class="cm"># Маска на каждый pin</span>
+</pre>
+
+<h3>4.2 Ленивый доступ к данным</h3>
+<p>
+  Сообщения и таймстемпы не декодируются при загрузке. Вместо этого <code>get_message(i)</code>
+  читает срез <code>_buf[offset:offset+length]</code> и декодирует в UTF-8 по запросу.
+  Для GUI это прозрачно через прокси-объект <code>RowRef</code>.
+</p>
+
+<h3>4.3 RowRef — лёгкий прокси</h3>
+<p>
+  <code>RowRef</code> хранит только индекс строки + ссылку на LogStore.
+  Свойства (<code>message</code>, <code>timestamp</code>, <code>category</code>, <code>level</code>)
+  вычисляются на лету. Создаётся ~50 штук для видимых строк, не хранится в bulk.
+</p>
+
+<!-- ===== 5. МОДЕЛИ ДАННЫХ ===== -->
+<h2 id="models"><span class="num">5</span> Модели данных</h2>
+
+<table>
+  <thead>
+    <tr><th>Класс</th><th>Описание</th><th>Ключевые поля</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LogLine</code></td>
+      <td>Полная распарсенная строка (для обратной совместимости)</td>
+      <td>line_number, timestamp, category, level, message, file_offset, line_length</td>
+    </tr>
+    <tr>
+      <td><code>Filter</code></td>
+      <td>Правило фильтрации / поиска</td>
+      <td>pattern: str, mode: SearchMode</td>
+    </tr>
+    <tr>
+      <td><code>Highlight</code></td>
+      <td>Правило подсветки</td>
+      <td>pattern: str, mode: SearchMode, color: str</td>
+    </tr>
+    <tr>
+      <td><code>SearchState</code></td>
+      <td>Текущее состояние поиска</td>
+      <td>pattern, mode, direction, matches[], current_index, in_search</td>
+    </tr>
+    <tr>
+      <td><code>CategoryNode</code></td>
+      <td>Узел дерева категорий</td>
+      <td>name, full_path, enabled, line_count, children{}</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>5.1 Перечисления</h3>
+<table>
+  <thead><tr><th>Enum</th><th>Значения</th><th>Назначение</th></tr></thead>
+  <tbody>
+    <tr><td><code>LogLevel</code></td><td>CRITICAL, ERROR, WARNING, INFO, DEBUG, TRACE</td><td>Уровень логирования (0&ndash;5)</td></tr>
+    <tr><td><code>SearchMode</code></td><td>PLAIN, REGEX, SIMPLE, LINE_NUMBER</td><td>Режим поиска/фильтрации</td></tr>
+    <tr><td><code>SearchDirection</code></td><td>FORWARD, BACKWARD</td><td>Направление навигации по совпадениям</td></tr>
+    <tr><td><code>LogFormat</code></td><td>KSIVA, PLAIN</td><td>Формат лог-файла</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 Маппинг уровней</h3>
+<p>Для скорости уровни хранятся как uint8. Таблица <code>_LEVEL_NAMES</code> маппит оба представления:</p>
+<pre>
+<span class="str">"LOG_CRITICAL"</span> &rarr; 0    <span class="str">"crt"</span> &rarr; 0
+<span class="str">"LOG_ERROR"</span>    &rarr; 1    <span class="str">"err"</span> &rarr; 1
+<span class="str">"LOG_WARNING"</span>  &rarr; 2    <span class="str">"wrn"</span> &rarr; 2
+<span class="str">"LOG_INFO"</span>     &rarr; 3    <span class="str">"msg"</span> &rarr; 3
+<span class="str">"LOG_DEBUG"</span>    &rarr; 4    <span class="str">"dbg"</span> &rarr; 4
+<span class="str">"LOG_TRACE"</span>    &rarr; 5    <span class="str">"trc"</span> &rarr; 5
+</pre>
+
+<!-- ===== 6. ДВИЖОК ФИЛЬТРАЦИИ ===== -->
+<h2 id="filter-engine"><span class="num">6</span> Движок фильтрации (FilterEngine)</h2>
+
+<p>Модуль <code>filter_engine.py</code> предоставляет два типа операций: проверка совпадения и поиск спанов.</p>
+
+<h3>6.1 Режимы сопоставления</h3>
+<table>
+  <thead><tr><th>Режим</th><th>Описание</th><th>Алгоритм</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="tag tag-blue">PLAIN</span></td>
+      <td>Подстрока (без учёта регистра)</td>
+      <td><code>pattern.lower() in text.lower()</code></td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-green">REGEX</span></td>
+      <td>Регулярное выражение (IGNORECASE)</td>
+      <td><code>re.search(pattern, text, IGNORECASE)</code></td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-purple">SIMPLE</span></td>
+      <td>Булев запрос AND/OR/NOT</td>
+      <td>Парсинг в AST &rarr; <code>ast.evaluate(text)</code></td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-orange">LINE_NUMBER</span></td>
+      <td>Точная строка по номеру</td>
+      <td><code>idx = int(pattern) - 1</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>6.2 Пакетное сопоставление (batch_match)</h3>
+<p>
+  Все PLAIN-фильтры объединяются в один компилированный regex через альтернацию:
+  <code>re.compile("|".join(escaped_patterns))</code>.
+  Это O(n) вместо O(n*m). Остальные фильтры применяются индивидуально.
+</p>
+
+<h3>6.3 Буферный поиск в LogStore</h3>
+<p>
+  В <code>_compute_filter_mask()</code> поиск идёт не по отдельным строкам, а по всему буферу целиком:
+</p>
+<ol>
+  <li>Выполняется <code>regex.finditer(buf_lower)</code> — получаем все позиции совпадений</li>
+  <li><code>np.searchsorted(msg_offsets, positions)</code> — маппим позиции на строки за O(n log n)</li>
+  <li>Проверка, что совпадение попало в пределы сообщения (offset &le; pos &lt; offset + length)</li>
+  <li>Устанавливаем <code>mask[line_idx] = True</code></li>
+</ol>
+<p>Для SIMPLE-запросов каждый терм ищется отдельно, затем маски комбинируются через AND/OR/NOT numpy-операции.</p>
+
+<!-- ===== 7. SIMPLE QUERY ===== -->
+<h2 id="simple-query"><span class="num">7</span> Язык запросов Simple Query</h2>
+
+<p>Рекурсивный descent-парсер с LRU-кэшем (256 записей).</p>
+
+<h3>7.1 Грамматика</h3>
+<pre>
+expression := or_expr
+or_expr    := and_expr (<span class="kw">"OR"</span>  and_expr)*
+and_expr   := not_expr (<span class="kw">"AND"</span> not_expr)*
+not_expr   := <span class="kw">"NOT"</span> not_expr | primary
+primary    := <span class="str">"("</span> expression <span class="str">")"</span> | STRING
+STRING     := <span class="str">'"'</span> ... <span class="str">'"'</span>
+</pre>
+<p>Приоритет: NOT &gt; AND &gt; OR. Все строки обязаны быть в двойных кавычках.</p>
+
+<h3>7.2 AST-узлы</h3>
+<table>
+  <thead><tr><th>Узел</th><th>evaluate()</th><th>find_spans()</th><th>eval_masks()</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>TermNode(text)</code></td>
+      <td>Подстрока в тексте</td>
+      <td>Все (start, end)</td>
+      <td><code>term_masks[text]</code></td>
+    </tr>
+    <tr>
+      <td><code>AndNode(left, right)</code></td>
+      <td>left AND right</td>
+      <td>Объединение спанов</td>
+      <td><code>left &amp; right</code></td>
+    </tr>
+    <tr>
+      <td><code>OrNode(left, right)</code></td>
+      <td>left OR right</td>
+      <td>Объединение спанов</td>
+      <td><code>left | right</code></td>
+    </tr>
+    <tr>
+      <td><code>NotNode(child)</code></td>
+      <td>NOT child</td>
+      <td>Пустой список</td>
+      <td><code>~child</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>7.3 Примеры</h3>
+<pre>
+<span class="str">"error" AND "timeout"</span>          <span class="cm"># Оба терма в строке</span>
+<span class="str">"error" OR "warning"</span>            <span class="cm"># Хотя бы один терм</span>
+<span class="str">NOT "info"</span>                       <span class="cm"># Строка не содержит "info"</span>
+<span class="str">("a" OR "b") AND NOT "c"</span>        <span class="cm"># Сложное выражение</span>
+</pre>
+
+<!-- ===== 8. ПОИСК ===== -->
+<h2 id="search"><span class="num">8</span> Поиск</h2>
+
+<h3>8.1 Полный поток поиска</h3>
+<div class="flow-box">
+  <div class="flow-row">
+    <span class="step blue">Пользователь: :s pattern</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">CommandParser</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">MainWindow._do_search()</span>
+  </div>
+  <div class="flow-row">
+    <span class="step green">_do_search()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step purple">LogStore.search()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step purple">_compute_filter_mask()</span>
+  </div>
+  <div class="flow-row">
+    <span class="step purple">mask[filtered_indices]</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step orange">SearchState.matches[]</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">_jump_to_search_match()</span>
+  </div>
+</div>
+
+<h3>8.2 Логика поиска</h3>
+<ol>
+  <li>Строится маска совпадений для ВСЕХ строк (<code>_compute_filter_mask</code>)</li>
+  <li>Маска пересекается с текущими <code>filtered_indices</code> — поиск только среди видимых строк</li>
+  <li>Совпадения сохраняются в <code>SearchState.matches</code> как список абсолютных индексов</li>
+  <li>Стартовая позиция — строка под курсором (<code>selectedRows()</code>) или 0</li>
+  <li><code>bisect_left()</code> определяет ближайшее совпадение к старту</li>
+</ol>
+
+<h3>8.3 Навигация</h3>
+<p>
+  После входа в режим поиска (<code>in_search = True</code>):
+</p>
+<ul>
+  <li><strong>&darr;</strong> &rarr; <code>next_match()</code> — переход к следующему совпадению (циклический)</li>
+  <li><strong>&uarr;</strong> &rarr; <code>prev_match()</code> — переход к предыдущему совпадению</li>
+  <li><strong>Esc</strong> &rarr; выход из режима поиска</li>
+</ul>
+<p>Навигация использует модульную арифметику: <code>(current_index &plusmn; 1) % len(matches)</code>.</p>
+
+<!-- ===== 9. ФИЛЬТРАЦИЯ ===== -->
+<h2 id="filtering"><span class="num">9</span> Фильтрация и видимые строки</h2>
+
+<h3>9.1 Иерархия фильтров</h3>
+<p>Итоговая видимость строки определяется формулой:</p>
+<pre>
+<span class="fn">visible</span> = <span class="fn">Pinned</span> OR (Category AND Level AND TextFilters)
+</pre>
+<p>Pin-правила обходят ВСЕ остальные фильтры — закреплённая строка видна всегда.</p>
+
+<h3>9.2 _apply_filters() — метод пересчёта</h3>
+<ol>
+  <li><strong>Category mask:</strong> <code>np.isin(category_ids, enabled_ids)</code></li>
+  <li><strong>Level mask:</strong> <code>np.isin(levels, enabled_level_ids)</code></li>
+  <li><strong>Text mask:</strong> OR всех активных <code>_filter_masks</code></li>
+  <li><strong>Combined:</strong> <code>cat_mask &amp; level_mask &amp; text_mask</code></li>
+  <li><strong>Pin mask:</strong> OR всех активных <code>_pin_masks</code></li>
+  <li><strong>Result:</strong> <code>combined = combined | pin_mask</code></li>
+  <li><code>filtered_indices = np.where(combined)[0]</code></li>
+</ol>
+
+<h3>9.3 Кэширование масок</h3>
+<p>
+  Каждый фильтр хранит предвычисленную маску в <code>_filter_masks</code>.
+  При добавлении/удалении фильтра маска пересчитывается только для него.
+  При перезагрузке файла все маски перестраиваются через <code>_recompute_all_filter_masks()</code>.
+</p>
+
+<h3>9.4 Подсчёт уровней</h3>
+<p>
+  <code>level_button_counts</code> — количество строк каждого уровня с учётом категорий и текстовых фильтров,
+  но без учёта переключателей уровней. Это позволяет кнопке показывать "скрытое" количество.
+  Используется <code>np.bincount()</code> для быстрого подсчёта.
+</p>
+
+<!-- ===== 10. ПОДСВЕТКА ===== -->
+<h2 id="highlighting"><span class="num">10</span> Подсветка</h2>
+
+<h3>10.1 Поток подсветки</h3>
+<div class="flow-box">
+  <div class="flow-row">
+    <span class="step blue">:h pattern</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">LogStore.add_highlight()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">HIGHLIGHT_PALETTE[color_idx]</span>
+  </div>
+  <div class="flow-row">
+    <span class="step green">Highlight(color, pattern, mode)</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step purple">HighlightDelegate.paint()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">Цветной фон в таблице</span>
+  </div>
+</div>
+
+<h3>10.2 Рендеринг</h3>
+<p>
+  <code>HighlightDelegate</code> (QStyledItemDelegate) перехватывает отрисовку ячеек.
+  Для каждого видимого правила подсветки вызывается <code>filter_engine.find_spans()</code>,
+  который возвращает список пар (start, end). Делегат рисует цветные прямоугольники под текстом.
+</p>
+
+<h3>10.3 Цвета</h3>
+<p>
+  Цвета назначаются циклически из палитры <code>HIGHLIGHT_PALETTE</code>.
+  Счётчик <code>_highlight_color_index</code> инкрементируется при каждом добавлении.
+  Цвет можно сменить через GUI (color picker в боковой панели).
+</p>
+
+<!-- ===== 11. КАТЕГОРИИ ===== -->
+<h2 id="categories"><span class="num">11</span> Категории</h2>
+
+<h3>11.1 Извлечение</h3>
+<p>
+  Категории извлекаются из поля <code>category</code> каждой лог-строки.
+  Иерархические пути разделены символом <code>/</code> (например, <code>app/main</code>, <code>network/tcp/ssl</code>).
+</p>
+
+<h3>11.2 Дерево</h3>
+<p>
+  Дерево строится в <code>_build_category_tree()</code>:
+</p>
+<ol>
+  <li><code>np.unique(category_ids, return_counts=True)</code> — подсчёт каждой категории</li>
+  <li>Имя категории разбивается по <code>/</code></li>
+  <li>Каждый сегмент становится узлом <code>CategoryNode</code>, если его ещё нет</li>
+  <li>Каждый узел накапливает <code>line_count</code></li>
+</ol>
+
+<h3>11.3 Фильтрация по категориям</h3>
+<p>
+  В GUI &mdash; <code>QTreeWidget</code> с чекбоксами. При изменении чекбокса:
+</p>
+<ol>
+  <li><code>CategoryTreeWidget</code> собирает отключённые пути</li>
+  <li>Вызывается <code>LogStore.set_disabled_categories(paths)</code></li>
+  <li>Маски пересчитываются через <code>_set_enabled_recursive()</code></li>
+  <li>Вызывается <code>_apply_filters()</code></li>
+</ol>
+<p>
+  Поддерживаются wildcard-шаблоны (<code>*</code>) в командах <code>:cate</code> и <code>:catd</code>.
+  При перезагрузке файла отключённые категории восстанавливаются по имени (новым ID).
+</p>
+
+<!-- ===== 12. КОМАНДЫ ===== -->
+<h2 id="commands"><span class="num">12</span> Командная система</h2>
+
+<h3>12.1 Парсер</h3>
+<p>
+  Команда вводится после <code>:</code> в нижней панели. Формат: <code>name text</code> или просто <code>name</code>
+  (для zero-arg команд).
+</p>
+
+<h3>12.2 Таблица команд</h3>
+<table>
+  <thead><tr><th>Группа</th><th>Команды</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr>
+      <td rowspan="3"><span class="tag tag-blue">Поиск</span></td>
+      <td><code>s</code>, <code>sr</code>, <code>ss</code></td>
+      <td>Поиск: plain / regex / simple query</td>
+    </tr>
+    <tr>
+      <td><code>sn</code></td>
+      <td>Переход к строке по номеру</td>
+    </tr>
+    <tr>
+      <td><code>&uarr;</code> <code>&darr;</code> <code>Esc</code></td>
+      <td>Навигация по совпадениям / выход</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><span class="tag tag-green">Фильтры</span></td>
+      <td><code>f</code>, <code>fr</code>, <code>fs</code></td>
+      <td>Добавить фильтр: plain / regex / simple</td>
+    </tr>
+    <tr>
+      <td><code>fn</code>, <code>rmf</code></td>
+      <td>Фильтр по номеру / удалить все фильтры</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><span class="tag tag-purple">Подсветка</span></td>
+      <td><code>h</code>, <code>hr</code>, <code>hs</code></td>
+      <td>Добавить подсветку: plain / regex / simple</td>
+    </tr>
+    <tr>
+      <td><code>hn</code>, <code>rmh</code></td>
+      <td>Подсветка по номеру / удалить все</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><span class="tag tag-orange">Категории</span></td>
+      <td><code>cate</code></td>
+      <td>Включить категорию (без аргумента = все)</td>
+    </tr>
+    <tr>
+      <td><code>catd</code></td>
+      <td>Отключить категорию (без аргумента = все)</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><span class="tag tag-red">Pin</span></td>
+      <td><code>p</code>, <code>pr</code>, <code>ps</code>, <code>pn</code></td>
+      <td>Закрепить строки по шаблону / номеру</td>
+    </tr>
+    <tr>
+      <td><code>rmp</code></td>
+      <td>Удалить все закрепления</td>
+    </tr>
+    <tr>
+      <td rowspan="3">Прочее</td>
+      <td><code>open &lt;path&gt;</code></td>
+      <td>Открыть файл</td>
+    </tr>
+    <tr>
+      <td><code>reload</code></td>
+      <td>Перезагрузить текущий файл</td>
+    </tr>
+    <tr>
+      <td><code>q</code></td>
+      <td>Выход</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>12.3 Диспетчеризация</h3>
+<p>
+  <code>MainWindow._handle_command()</code> — большой if/elif, который маппит имя команды на действие.
+  Режимы SearchMode определяются по имени: <code>s</code>&rarr;PLAIN, <code>sr</code>&rarr;REGEX, <code>ss</code>&rarr;SIMPLE.
+</p>
+
+<!-- ===== 13. GUI ===== -->
+<h2 id="gui"><span class="num">13</span> GUI и отображение</h2>
+
+<h3>13.1 Layout</h3>
+<pre>
+QMainWindow
+&boxv;
+&boxur;&boxh;&boxh; Central Widget (QVBoxLayout)
+    &boxv;
+    &boxur;&boxh;&boxh; QSplitter (Horizontal)
+    &boxv;   &boxur;&boxh;&boxh; LogTableView   (stretch=1, ширина ~920px)
+    &boxv;   &boxur;&boxh;&boxh; SidePanel      (stretch=0, ширина ~280px)
+    &boxv;       &boxur;&boxh;&boxh; CategoryTree
+    &boxv;       &boxur;&boxh;&boxh; FilterList
+    &boxv;       &boxur;&boxh;&boxh; HighlightList
+    &boxv;       &boxur;&boxh;&boxh; PinnedList
+    &boxur;&boxh;&boxh; BottomBar
+        &boxur;&boxh;&boxh; Open / Reload buttons
+        &boxur;&boxh;&boxh; LevelBar (кнопки уровней с каунтерами)
+        &boxur;&boxh;&boxh; CommandInput
+</pre>
+
+<h3>13.2 LogTableModel</h3>
+<p>
+  Наследует <code>QAbstractTableModel</code>. Не хранит данные — работает как маппинг
+  <code>filtered_indices</code> &rarr; колонки таблицы.
+</p>
+<ul>
+  <li><strong>4 колонки:</strong> Line (номер), Time, Category, Message</li>
+  <li><strong>DisplayRole:</strong> данные из LogStore через индекс</li>
+  <li><strong>ForegroundRole:</strong> цвет текста по уровню (красный для ERROR и т.д.)</li>
+  <li><strong>UserRole:</strong> возвращает RowRef для произвольного доступа</li>
+</ul>
+
+<h3>13.3 update_indices() — умное обновление</h3>
+<p>
+  При обновлении модели:
+</p>
+<ol>
+  <li>Сохраняет выделенные строки (по line_number) и позицию viewport</li>
+  <li>Вызывает <code>beginResetModel()</code> / <code>endResetModel()</code></li>
+  <li>Восстанавливает выделение на тех же строках</li>
+  <li>Восстанавливает позицию прокрутки</li>
+</ol>
+<p>Если индексы не изменились — short-circuit (нет перерисовки).</p>
+
+<h3>13.4 Контекстное меню</h3>
+<p>Правый клик на выделенных строках: Copy, Pin, Unpin (в зависимости от состояния).</p>
+
+<h3>13.5 Стили</h3>
+<p>
+  Все QSS-стили centralized в <code>gui/styles.py</code>.
+  Виджеты стилизуются через <code>styles.apply(widget, TEMPLATE)</code>.
+  Токены цветов берутся из <code>core/themes.py</code>. Тема — светлая (light).
+</p>
+
+<!-- ===== 14. ОПТИМИЗАЦИИ ===== -->
+<h2 id="perf"><span class="num">14</span> Оптимизации производительности</h2>
+
+<div class="grid-2">
+  <div class="card">
+    <h4>SoA + byte buffer</h4>
+    <p>Данные хранятся в одном <code>bytearray</code> + numpy-массивы индексов.
+    Нет Python-объектов на каждую строку. Декодирование UTF-8 — только по запросу.</p>
+  </div>
+  <div class="card">
+    <h4>Кэш lowered buffer</h4>
+    <p><code>_buf_lower</code> = <code>bytes(_buf).lower()</code>. Вычисляется один раз,
+    используется для всех PLAIN-поисков. Инвалидируется при загрузке нового файла.</p>
+  </div>
+  <div class="card">
+    <h4>numpy-векторизация</h4>
+    <p>Фильтрация через <code>np.isin()</code>, <code>np.where()</code>, <code>np.searchsorted()</code>,
+    <code>np.bincount()</code>. Boolean mask operations (&amp;, |, ~) на всём массиве за один вызов.</p>
+  </div>
+  <div class="card">
+    <h4>Буферный regex</h4>
+    <p>Regex применяется ко всему буферу за один <code>finditer()</code>,
+    затем позиции маппятся на строки через binary search. Вместо N regex-вызовов — один.</p>
+  </div>
+  <div class="card">
+    <h4>Cython-парсер</h4>
+    <p><code>_parser_cy</code> — Cython-версия батчевого парсера.
+    Компилируется автоматически при установке через setuptools. Fallback на чистый Python.</p>
+  </div>
+  <div class="card">
+    <h4>SIMD line scanning</h4>
+    <p><code>scan_line_starts_fast()</code> использует <code>np.where(arr == 10)</code>
+    для поиска переносов строк. NumPy задействует SIMD-инструкции процессора.</p>
+  </div>
+</div>
+
+<h3>Сводка потока данных</h3>
+<div class="flow-box">
+  <div class="flow-row">
+    <span class="step blue">Файл на диске</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">bytearray (QThread)</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">numpy line_starts</span>
+  </div>
+  <div class="flow-row">
+    <span class="step green">numpy line_starts</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step green">Cython/Python batch parse</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step orange">5 numpy-массивов + buf</span>
+  </div>
+  <div class="flow-row">
+    <span class="step orange">buf + regex.finditer</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step purple">searchsorted + boolean masks</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">filtered_indices</span>
+  </div>
+  <div class="flow-row">
+    <span class="step blue">filtered_indices</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">LogTableModel.data()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step blue">QTableView (ленивый рендер)</span>
+  </div>
+</div>
+
+</body>
+</html>
