@@ -43,7 +43,7 @@ def _populate_store(store: LogStore, lines: list[LogLine]) -> None:
 
     store._buf = buf
     store._buf_lower = bytes(buf).lower()
-    store._buf_str = None
+
     store.line_starts = np.array(line_starts_list, dtype=np.uint64)
     store.category_ids = np.array(cat_ids, dtype=np.uint16)
     store._category_names = cat_names

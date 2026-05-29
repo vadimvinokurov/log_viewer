@@ -50,7 +50,7 @@ class TestLoadBytes:
         store = LogStore()
         store.load_bytes(bytearray(SAMPLE_BYTES))
         assert store._buf_lower is None  # lazy, created on first filter
-        assert store._buf_str is None  # lazy, not yet decoded
+
 
     def test_load_bytes_builds_category_tree(self) -> None:
         store = LogStore()

@@ -210,7 +210,6 @@ class LogTableModel(QAbstractTableModel):
             if n == 0:
                 store._buf = bytearray()
                 store._buf_lower = None
-                store._buf_str = None
                 store.category_ids = np.empty(0, dtype=np.uint16)
                 store.levels = np.empty(0, dtype=np.uint8)
                 store.line_starts = np.empty(0, dtype=np.uint64)
@@ -243,7 +242,6 @@ class LogTableModel(QAbstractTableModel):
 
             store._buf = buf
             store._buf_lower = None  # lazy
-            store._buf_str = None
             store.line_starts = np.array(line_starts_list, dtype=np.uint64)
             store.category_ids = np.array(cat_ids, dtype=np.uint16)
             store.levels = np.array(level_ids, dtype=np.uint8)

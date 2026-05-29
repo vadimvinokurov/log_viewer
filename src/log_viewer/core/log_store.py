@@ -36,7 +36,6 @@ class LogStore:
         # --- Byte buffer ---
         self._buf: bytearray = bytearray()
         self._buf_lower: Optional[bytes] = None  # cached lowered buffer
-        self._buf_str: Optional[str] = None  # lazy decoded string (for regex)
 
         # --- SoA column arrays (all length n) ---
         self.n: int = 0
@@ -214,7 +213,6 @@ class LogStore:
 
         self._buf = buf
         self._buf_lower = None  # lazy, created on first filter/search
-        self._buf_str = None  # lazy, decoded on first regex request
 
         # Pass 1: scan line boundaries
         line_starts = scan_line_starts_fast(buf)

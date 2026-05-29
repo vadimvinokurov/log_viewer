@@ -146,37 +146,7 @@ class TestTermCache:
 
 
 # ---------------------------------------------------------------------------
-# 4. _buf_str lazy initialization
-# ---------------------------------------------------------------------------
-
-
-class TestBufStrLazy:
-    def test_buf_str_none_after_load(self) -> None:
-        buf = bytearray(b"12:00:00.000 app [LOG_INFO] hello\n")
-        store = LogStore()
-        store.load_bytes(buf)
-        assert store._buf_str is None
-
-    def test_buf_lower_created_by_regex_filter(self) -> None:
-        buf = bytearray(b"12:00:00.000 app [LOG_INFO] hello\n")
-        store = LogStore()
-        store.load_bytes(buf)
-        assert store._buf_lower is None
-        # Regex filter creates _buf_lower (uses lowered buffer, not _buf_str)
-        store.add_filter(Filter(pattern="hello", mode=SearchMode.REGEX))
-        assert store._buf_lower is not None
-        assert store._buf_str is None  # no longer needed for regex
-
-    def test_buf_str_stays_none_with_plain_filter(self) -> None:
-        buf = bytearray(b"12:00:00.000 app [LOG_INFO] hello\n")
-        store = LogStore()
-        store.load_bytes(buf)
-        store.add_filter(Filter(pattern="hello", mode=SearchMode.PLAIN))
-        assert store._buf_str is None
-
-
-# ---------------------------------------------------------------------------
-# 5. Two-pass loading
+# 4. Two-pass loading
 # ---------------------------------------------------------------------------
 
 
