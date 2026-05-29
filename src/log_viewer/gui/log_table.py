@@ -292,6 +292,9 @@ class LogTableView(QTableView):
 
         self.setItemDelegate(HighlightDelegate())
 
+    def keyboardSearch(self, query: str) -> None:  # noqa: ARG002
+        """Disable Qt's built-in keyboard search — too slow on large datasets."""
+
     def scrollTo(self, index, hint=QTableView.ScrollHint.EnsureVisible):  # noqa: N802
         """Scroll to show the row but preserve horizontal scroll position."""
         h_pos = self.horizontalScrollBar().value()

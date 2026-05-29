@@ -174,6 +174,7 @@ class MainWindow(QMainWindow):
         self._refresh_display()
         self._save_last_open_dir(path)
         self._update_title()
+        self.log_table.setFocus()
 
     def _on_file_error(self, msg: str) -> None:
         self.bottom_bar.set_status(f"Error: {msg}")
