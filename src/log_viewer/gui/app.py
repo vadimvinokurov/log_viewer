@@ -79,6 +79,8 @@ class MainWindow(QMainWindow):
         self.log_table.setModel(self._table_model)
         self.log_table.pin_lines_requested.connect(self._on_pin_lines_requested)
         self.log_table.unpin_lines_requested.connect(self._on_unpin_lines_requested)
+        self.log_table.highlight_lines_requested.connect(self._on_highlight_lines_requested)
+        self.log_table.unhighlight_lines_requested.connect(self._on_unhighlight_lines_requested)
 
         self.side_panel = SidePanel()
         self.bottom_bar = BottomBar(history=self._command_history)
@@ -377,6 +379,24 @@ class MainWindow(QMainWindow):
         ]
         for i in reversed(indices):
             self.log_store.remove_pin(i)
+        self._refresh_display()
+
+    def _on_highlight_lines_requested(self, line_numbers: list[int]) -> None:
+        """Highlight multiple lines from context menu — each as a LINE_NUMBER rule."""
+        for ln in line_numbers:
+            self.log_store.add_highlight(Highlight(pattern=str(ln), mode=SearchMode.LINE_NUMBER))
+        self._refresh_display()
+
+    def _on_unhighlight_lines_requested(self, line_numbers: list[int]) -> None:
+        """Remove LINE_NUMBER highlights for selected lines."""
+        to_remove = [str(ln) for ln in line_numbers]
+        indices = [
+            i for i, h in enumerate(self.log_store.highlights)
+            if h.mode == SearchMode.LINE_NUMBER and h.pattern in to_remove
+        ]
+        for i in reversed(indices):
+            del self.log_store.highlights[i]
+            del self.log_store.highlight_enabled[i]
         self._refresh_display()
 
     def _on_level_clicked(self, level: LogLevel) -> None:

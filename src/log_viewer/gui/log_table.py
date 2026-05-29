@@ -9,7 +9,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QWheelEvent
 from PySide6.QtWidgets import QApplication, QMenu, QTableView
 
-from log_viewer.core.models import Highlight, RowRef, _LEVEL_LIST
+from log_viewer.core.models import Highlight, RowRef, SearchMode, _LEVEL_LIST
 from log_viewer.core.themes import _t
 from log_viewer.gui.highlight_delegate import HighlightDelegate
 
@@ -266,6 +266,8 @@ class LogTableView(QTableView):
 
     pin_lines_requested = Signal(list)
     unpin_lines_requested = Signal(list)
+    highlight_lines_requested = Signal(list)
+    unhighlight_lines_requested = Signal(list)
 
     def __init__(self) -> None:
         super().__init__()
@@ -360,21 +362,42 @@ class LogTableView(QTableView):
         if lines:
             self.unpin_lines_requested.emit([line.line_number for line in lines])
 
+    def _highlight_selected_lines(self) -> None:
+        """Emit highlight request for all selected line numbers."""
+        lines = self._selected_lines()
+        if lines:
+            self.highlight_lines_requested.emit([line.line_number for line in lines])
+
+    def _unhighlight_selected_lines(self) -> None:
+        """Emit unhighlight request for all selected line numbers."""
+        lines = self._selected_lines()
+        if lines:
+            self.unhighlight_lines_requested.emit([line.line_number for line in lines])
+
     def contextMenuEvent(self, event):  # noqa: N802
         """Right-click context menu for selected rows."""
         lines = self._selected_lines()
         pinned = {line.line_number for line in lines if self._is_pinned(line._idx)}
+        highlighted = {line.line_number for line in lines if self._is_highlighted(line._idx)}
         unpinned_count = len(lines) - len(pinned)
+        unhighlighted_count = len(lines) - len(highlighted)
 
         menu = QMenu(self)
         copy_action = menu.addAction("Copy")
         pin_action = None
         unpin_action = None
+        highlight_action = None
+        unhighlight_action = None
 
         if unpinned_count > 0:
             pin_action = menu.addAction("Pin")
         if len(pinned) > 0:
             unpin_action = menu.addAction("Unpin")
+        menu.addSeparator()
+        if unhighlighted_count > 0:
+            highlight_action = menu.addAction("Highlight")
+        if len(highlighted) > 0:
+            unhighlight_action = menu.addAction("Remove highlight")
 
         action = menu.exec(event.globalPos())
         if action == copy_action:
@@ -383,6 +406,10 @@ class LogTableView(QTableView):
             self._pin_selected_lines()
         elif action == unpin_action:
             self._unpin_selected_lines()
+        elif action == highlight_action:
+            self._highlight_selected_lines()
+        elif action == unhighlight_action:
+            self._unhighlight_selected_lines()
 
     def _is_pinned(self, idx: int) -> bool:
         """Check if line index is matched by any active pin rule."""
@@ -392,5 +419,17 @@ class LogTableView(QTableView):
         store = model._store
         for mask, enabled in zip(store._pin_masks, store.pinned_enabled):
             if enabled and idx < len(mask) and mask[idx]:
+                return True
+        return False
+
+    def _is_highlighted(self, idx: int) -> bool:
+        """Check if line index is matched by any active LINE_NUMBER highlight rule."""
+        model = self.model()
+        if model is None or model._store is None:
+            return False
+        store = model._store
+        line_number = idx + 1
+        for h, enabled in zip(store.highlights, store.highlight_enabled):
+            if enabled and h.mode == SearchMode.LINE_NUMBER and h.pattern == str(line_number):
                 return True
         return False

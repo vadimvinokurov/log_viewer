@@ -7,6 +7,7 @@ from PySide6.QtGui import QColor, QFontMetrics, QPainter
 from PySide6.QtWidgets import QStyleOptionViewItem, QStyledItemDelegate, QStyle
 
 from log_viewer.core.filter_engine import find_spans
+from log_viewer.core.models import SearchMode
 from log_viewer.core.themes import _t
 
 _BASE_BG = QColor(_t("log_table"))
@@ -61,11 +62,15 @@ class HighlightDelegate(QStyledItemDelegate):
         do_highlight = highlights and index.column() == _MESSAGE_COL
 
         if do_highlight:
+            # Resolve line number for LINE_NUMBER mode matching
+            line_number = str(model.index(index.row(), 0).data())
             # Version tracks highlight changes for cache invalidation
             hl_sig = hash(frozenset((h.pattern, h.mode.value, h.color) for h in highlights))
             metrics = QFontMetrics(option.font)
             painter.setClipRect(option.rect)
             for hl in highlights:
+                if hl.mode == SearchMode.LINE_NUMBER and hl.pattern != line_number:
+                    continue
                 spans = self._get_spans(text, hl.pattern, hl.mode, hl_sig)
                 color = QColor(hl.color)
                 color.setAlpha(60)
