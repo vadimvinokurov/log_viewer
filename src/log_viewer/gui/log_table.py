@@ -363,7 +363,7 @@ class LogTableView(QTableView):
     def contextMenuEvent(self, event):  # noqa: N802
         """Right-click context menu for selected rows."""
         lines = self._selected_lines()
-        pinned = {line.line_number for line in lines if self._is_pinned(line.index)}
+        pinned = {line.line_number for line in lines if self._is_pinned(line._idx)}
         unpinned_count = len(lines) - len(pinned)
 
         menu = QMenu(self)
