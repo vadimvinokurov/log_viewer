@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FilterPipeline — Архитектура и алгоритмы</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #1c2333;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-dim: #1f6feb;
+            --green: #3fb950;
+            --orange: #d29922;
+            --red: #f85149;
+            --purple: #bc8cff;
+            --cyan: #39d2c0;
+            --yellow: #e3b341;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 2rem;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 2.5rem; }
+        h2 {
+            font-size: 1.5rem; margin-top: 2.5rem; margin-bottom: 0.8rem;
+            padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); color: var(--accent);
+        }
+        h3 { font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.5rem; color: var(--cyan); }
+        h4 { font-size: 1rem; margin-top: 1rem; margin-bottom: 0.3rem; color: var(--purple); }
+        p { margin-bottom: 0.8rem; }
+        code {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+            padding: 0.1em 0.35em; font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.87em; color: var(--orange);
+        }
+        pre {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+            padding: 1rem 1.2rem; overflow-x: auto; margin: 0.8rem 0;
+            font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.55;
+        }
+        pre code { background: none; border: none; padding: 0; color: var(--text); }
+        .cm { color: var(--text-muted); }
+        .kw { color: var(--purple); }
+        .st { color: var(--green); }
+        .fn { color: var(--accent); }
+        .nb { color: var(--orange); }
+        .op { color: var(--cyan); }
+        ul, ol { margin: 0.4rem 0 0.8rem 1.4rem; }
+        li { margin-bottom: 0.3rem; }
+        .card {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 1rem 1.3rem; margin: 0.8rem 0;
+        }
+        .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin: 0.8rem 0; }
+        .card-grid .card { margin: 0; }
+        .card h4 { margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.9rem; }
+        th, td { padding: 0.5rem 0.7rem; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: var(--surface); color: var(--accent); font-weight: 600; }
+        td code { font-size: 0.8rem; }
+        .note {
+            border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0;
+            padding: 0.6rem 1rem; margin: 0.8rem 0; font-size: 0.9rem;
+            background: linear-gradient(135deg, #1f6feb08, #8957e508);
+        }
+        .note strong { color: var(--accent); }
+        .warn {
+            border-left: 3px solid var(--orange);
+            padding: 0.6rem 1rem; margin: 0.8rem 0; font-size: 0.9rem;
+            background: linear-gradient(135deg, #9e6a0308, transparent);
+        }
+        .warn strong { color: var(--orange); }
+        hr.divider { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+        .badge {
+            display: inline-block; padding: 0.1em 0.45em; border-radius: 10px;
+            font-size: 0.75em; font-weight: 600;
+        }
+        .badge-b { background: #1f6feb33; color: var(--accent); border: 1px solid #1f6feb44; }
+        .badge-g { background: #238636aa; color: var(--green); border: 1px solid #23863644; }
+        .badge-o { background: #9e6a03aa; color: var(--orange); border: 1px solid #9e6a0344; }
+        .badge-r { background: #da363422; color: var(--red); border: 1px solid #da363444; }
+        .badge-p { background: #8957e533; color: var(--purple); border: 1px solid #8957e544; }
+        .toc {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 1rem 1.8rem; margin-bottom: 2rem;
+        }
+        .toc h3 { margin: 0 0 0.6rem; color: var(--text); font-size: 1rem; }
+        .toc ol { margin-left: 1rem; }
+        .toc a { color: var(--accent); text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+        .diagram {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 1.2rem 1.5rem; margin: 0.8rem 0; font-family: 'SF Mono', monospace;
+            font-size: 0.82rem; line-height: 1.55; overflow-x: auto; white-space: pre;
+        }
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            h1 { font-size: 1.6rem; }
+            .card-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<h1>FilterPipeline: Архитектура и алгоритмы</h1>
+<p class="subtitle">Глубокое погружение в конвейер фильтрации, вычисление масок и язык запросов</p>
+
+<nav class="toc">
+    <h3>Содержание</h3>
+    <ol>
+        <li><a href="#overview">Общая модель</a></li>
+        <li><a href="#structures">Структуры данных</a></li>
+        <li><a href="#compute-mask">_compute_mask: булевы маски одного фильтра</a></li>
+        <li><a href="#plain-regex">PLAIN и REGEX: поиск в байтовом буфере</a></li>
+        <li><a href="#simple-query">SIMPLE: AST + векторизованные маски</a></li>
+        <li><a href="#apply">apply(): сборка финальной маски</a></li>
+        <li><a href="#pins">Pinned lines: обход фильтров</a></li>
+        <li><a href="#categories">Категории: дерево и маски</a></li>
+        <li><a href="#levels">Уровни: toggle и подсчёт</a></li>
+        <li><a href="#highlights">Highlights</a></li>
+        <li><a href="#term-cache">Термовый кэш</a></li>
+        <li><a href="#full-example">Полный пример</a></li>
+    </ol>
+</nav>
+
+<!-- ==================== 1 ==================== -->
+<section id="overview">
+<h2>1. Общая модель</h2>
+
+<p><code>FilterPipeline</code> — stateful-объект, владеющий всем состоянием фильтрации. Не хранит сами данные логов — только правила и закэшированные маски. Принимает <code>LogStore</code> как аргумент в каждом методе, читает из него SoA-массивы и буфер, пишет обратно <code>filtered_indices</code> и <code>level_button_counts</code>.</p>
+
+<p>Три независимых вида правил:</p>
+<div class="card-grid">
+    <div class="card">
+        <h4>Filters</h4>
+        <p>Текстовые правила. Сужают видимость. Множественные фильтры комбинируются через <strong>OR</strong>.</p>
+        <span class="badge badge-b">AND с категориями/уровнями</span>
+    </div>
+    <div class="card">
+        <h4>Pins</h4>
+        <p>Правила закрепления. Обходят ВСЕ фильтры. Множественные пины через <strong>OR</strong>.</p>
+        <span class="badge badge-g">OR после combined</span>
+    </div>
+    <div class="card">
+        <h4>Highlights</h4>
+        <p>Не влияют на видимость. Только окрашивают ячейки. Хранятся здесь для единообразия.</p>
+        <span class="badge badge-p">Вне apply()</span>
+    </div>
+</div>
+
+<p>Плюс два «столбовых» фильтра — категории и уровни — которые не хранят маски, а вычисляются на лету через <code>np.isin()</code>.</p>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 2 ==================== -->
+<section id="structures">
+<h2>2. Структуры данных</h2>
+
+<div class="card">
+<pre><code><span class="kw">class</span> <span class="fn">FilterPipeline</span>:
+    <span class="cm"># --- Текстовые фильтры ---</span>
+    filters:          list[Filter]       <span class="cm"># [Filter("error", PLAIN), Filter("warn|crit", REGEX), ...]</span>
+    filter_enabled:   list[bool]         <span class="cm"># [True, True, ...]  — 1:1 с filters</span>
+    _filter_masks:    list[np.ndarray]   <span class="cm"># [array([F,F,T,T,F,...]), ...]  — bool mask, len=n</span>
+
+    <span class="cm"># --- Pins ---</span>
+    pinned_rules:     list[Filter]       <span class="cm"># те же Filter, но используются как OR в конце</span>
+    pinned_enabled:   list[bool]
+    _pin_masks:       list[np.ndarray]   <span class="cm"># закэшированные булевы маски</span>
+
+    <span class="cm"># --- Подсветка ---</span>
+    highlights:       list[Highlight]    <span class="cm"># [Highlight("timeout", PLAIN, "#ff6600"), ...]</span>
+    highlight_enabled:list[bool]
+    _highlight_color_index: int          <span class="cm"># round-robin по HIGHLIGHT_PALETTE</span>
+
+    <span class="cm"># --- Столбовые фильтры ---</span>
+    disabled_levels:    set[int]         <span class="cm"># {2, 4}  — ID отключённых уровней</span>
+    disabled_categories:set[int]         <span class="cm"># {1, 5}  — ID отключённых категорий</span>
+
+    <span class="cm"># --- Оптимизация ---</span>
+    _term_cache:      dict[str, np.ndarray]  <span class="cm"># "error" → bool mask (разделяется между queries)</span></code></pre>
+</div>
+
+<h3>Invariants</h3>
+<ul>
+    <li><code>len(filters) == len(filter_enabled) == len(_filter_masks)</code> — всегда</li>
+    <li>Каждая маска в <code>_filter_masks</code> — <code>np.ndarray(bool)</code> длины <code>store.n</code></li>
+    <li>Маска вычисляется один раз при <code>add_filter()</code>, кэшируется, пересчитывается только при <code>recompute_masks()</code> (после загрузки нового файла)</li>
+    <li><code>disabled_levels</code> и <code>disabled_categories</code> — множества ID, не маски. Маска вычисляется в <code>apply()</code> каждый раз.</li>
+</ul>
+
+<h3>Зависимости от LogStore</h3>
+<table>
+    <tr><th>Читает из store</th><th>Пишет в store</th></tr>
+    <tr>
+        <td>
+            <code>store.n</code> — количество строк<br>
+            <code>store._buf</code> — сырой буфер<br>
+            <code>store._buf_lower</code> — lowercase-кэш (ленивый)<br>
+            <code>store.line_starts</code> — оффсеты строк<br>
+            <code>store.category_ids</code> — SoA массив<br>
+            <code>store.levels</code> — SoA массив<br>
+            <code>store._category_names</code> — маппинг ID→имя<br>
+            <code>store._category_name_to_id</code> — имя→ID<br>
+            <code>store.category_tree</code> — дерево узлов<br>
+            <code>store.category_counts</code> — flat маппинг путь→count
+        </td>
+        <td>
+            <code>store._buf_lower</code> — инициализирует при первом поиске<br>
+            <code>store.filtered_indices</code> — результат apply()<br>
+            <code>store.level_button_counts</code> — для кнопок уровней<br>
+            вызывает <code>store._count_visible_levels()</code>
+        </td>
+    </tr>
+</table>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 3 ==================== -->
+<section id="compute-mask">
+<h2>3. _compute_mask: булевы маски одного фильтра</h2>
+
+<p>Центральный алгоритм. Принимает один <code>Filter</code>, возвращает <code>np.ndarray(bool)</code> длины <code>n</code>. Используется для фильтров, пинов <strong>и</strong> поиска.</p>
+
+<div class="card">
+<pre><code><span class="kw">def</span> <span class="fn">_compute_mask</span>(self, store: LogStore, filt: Filter) -> np.ndarray:
+    n = store.n
+    mask = np.zeros(n, dtype=bool)          <span class="cm"># всё False</span>
+
+    <span class="kw">if</span> filt.mode == SearchMode.LINE_NUMBER:
+        idx = int(filt.pattern) - <span class="nb">1</span>          <span class="cm"># 1-based → 0-based</span>
+        <span class="kw">if</span> <span class="nb">0</span> <= idx < n:
+            mask[idx] = <span class="nb">True</span>
+        <span class="kw">return</span> mask
+
+    <span class="kw">if</span> filt.mode <span class="kw">in</span> (PLAIN, REGEX):
+        <span class="cm"># ... поиск по буферу (см. раздел 4) ...</span>
+    <span class="kw">else</span>:  <span class="cm"># SIMPLE</span>
+        <span class="cm"># ... AST + term masks (см. раздел 5) ...</span>
+
+    <span class="kw">return</span> mask</code></pre>
+</div>
+
+<h3>Общая схема для PLAIN/REGEX</h3>
+<div class="diagram">┌─────────────┐     ┌──────────────────┐     ┌───────────────────────┐
+│  buf_lower  │────▶│  re.finditer()   │────▶│  positions: [42, 187] │
+│  (bytes)    │     │  по всему буферу │     │  byte offsets in buf  │
+└─────────────┘     └──────────────────┘     └───────────┬───────────┘
+                                                         │
+                                            ┌────────────▼────────────┐
+                                            │  np.searchsorted(       │
+                                            │    line_starts,         │
+                                            │    positions,           │
+                                            │    side="right") - 1    │
+                                            │                         │
+                                            │  byte offset → line idx │
+                                            │  O(log n) per position  │
+                                            └────────────┬────────────┘
+                                                         │
+                                            ┌────────────▼────────────┐
+                                            │  mask[line_indices]     │
+                                            │      = True             │
+                                            │                         │
+                                            │  [F,F,F,T,F,...,T,...]  │
+                                            └─────────────────────────┘</div>
+
+<p>Ключевой инсайт: поиск идёт по <strong>сырому байтовому буферу</strong>, а не по отдельным строкам. Позиции совпадений маппятся обратно на номера строк через бинарный поиск по массиву <code>line_starts</code>.</p>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 4 ==================== -->
+<section id="plain-regex">
+<h2>4. PLAIN и REGEX: поиск в байтовом буфере</h2>
+
+<p>Оба режима работают одинаково — отличаются только подготовкой паттерна. Оба работают на <code>_buf_lower</code> (lowercase-версия буфера).</p>
+
+<h3>PLAIN</h3>
+<div class="card">
+<pre><code><span class="cm"># Паттерн экранируется → literal поиск</span>
+pattern = re.escape(filt.pattern.lower()).encode(<span class="st">"utf-8"</span>)
+combined = re.compile(pattern)
+
+<span class="cm"># Поиск по всему буферу за один вызов</span>
+positions = np.array(
+    [m.start() <span class="kw">for</span> m <span class="kw">in</span> combined.finditer(store._buf_lower)],
+    dtype=np.int64,
+)</code></pre>
+</div>
+
+<h3>REGEX</h3>
+<div class="card">
+<pre><code><span class="cm"># Паттерн as-is, только lower()</span>
+combined = re.compile(filt.pattern.lower().encode(<span class="st">"utf-8"</span>))
+
+<span class="cm"># Тот же finditer по _buf_lower</span>
+positions = np.array(
+    [m.start() <span class="kw">for</span> m <span class="kw">in</span> combined.finditer(store._buf_lower)],
+    dtype=np.int64,
+)</code></pre>
+</div>
+
+<div class="note">
+    <strong>Почему lower(), а не IGNORECASE:</strong> В комментарии кода: «Python has no lookup tables for bytes IGNORECASE regex — ~50x slower». Поэтому буфер заранее конвертируется в lowercase, а regex работает case-sensitive на lowercase-данных.
+</div>
+
+<h3>Маппинг позиций → строки</h3>
+<p>Общий для PLAIN, REGEX и SIMPLE-термов:</p>
+<div class="card">
+<pre><code><span class="cm"># line_starts = [0, 42, 85, 130, ...]  — оффсет начала каждой строки в _buf</span>
+<span class="cm"># position = 100                         — найдено совпадение в буфере</span>
+
+line_indices = np.searchsorted(store.line_starts, positions, side=<span class="st">"right"</span>) - <span class="nb">1</span>
+
+<span class="cm"># searchsorted([0, 42, 85, 130], 100, side="right") = 3</span>
+<span class="cm"># 3 - 1 = 2  →  строка #2 содержит совпадение</span>
+
+valid = (line_indices >= <span class="nb">0</span>) & (line_indices < n)
+mask[line_indices[valid]] = <span class="nb">True</span></code></pre>
+</div>
+
+<p><code>side="right"</code> — означает «индекс первого элемента &gt; value». Вычитаем 1 — получаем индекс строки, внутри которой находится позиция.</p>
+
+<div class="note">
+    <strong>Сложность:</strong> <code>re.finditer()</code> — O(|buf|) на каждый паттерн. <code>np.searchsorted()</code> — O(k · log n), где k — количество совпадений. Для типичного фильтра k &lt;&lt; n.
+</div>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 5 ==================== -->
+<section id="simple-query">
+<h2>5. SIMPLE: AST + векторизованные маски</h2>
+
+<p>Запрос парсится в AST через <code>simple_query.parse_query()</code>. AST декомпозируется на уникальные термы, каждый терм сканируется по буферу отдельно, затем маски комбинируются через numpy-операции.</p>
+
+<h3>Пример</h3>
+<div class="card">
+<pre><code><span class="cm"># Запрос:</span>
+(<span class="st">"error"</span> <span class="kw">OR</span> <span class="st">"timeout"</span>) <span class="kw">AND</span> <span class="kw">NOT</span> <span class="st">"retry"</span>
+
+<span class="cm"># AST:</span>
+AndNode(
+    left=OrNode(
+        left=TermNode(<span class="st">"error"</span>),
+        right=TermNode(<span class="st">"timeout"</span>)
+    ),
+    right=NotNode(
+        child=TermNode(<span class="st">"retry"</span>)
+    )
+)</code></pre>
+</div>
+
+<h3>Алгоритм в _compute_mask</h3>
+<div class="card">
+<pre><code><span class="cm"># 1. Парсинг</span>
+ast = parse_query(filt.pattern)
+
+<span class="cm"># 2. Извлечение уникальных термов</span>
+unique_terms = list(set(ast.collect_terms()))   <span class="cm"># ["error", "timeout", "retry"]</span>
+
+<span class="cm"># 3. Для каждого терма — буферный поиск → bool mask</span>
+term_masks: dict[str, np.ndarray] = {}
+<span class="kw">for</span> term <span class="kw">in</span> unique_terms:
+    <span class="kw">if</span> term <span class="kw">in</span> self._term_cache:       <span class="cm"># кэш!</span>
+        term_masks[term] = self._term_cache[term]
+        <span class="kw">continue</span>
+    tmask = np.zeros(n, dtype=bool)
+    pattern = re.escape(term.lower()).encode(<span class="st">"utf-8"</span>)
+    positions = [m.start() <span class="kw">for</span> m <span class="kw">in</span> re.compile(pattern).finditer(buf_lower)]
+    <span class="kw">if</span> positions:
+        line_indices = np.searchsorted(line_starts, positions, side=<span class="st">"right"</span>) - <span class="nb">1</span>
+        tmask[line_indices] = <span class="nb">True</span>
+    self._term_cache[term] = tmask
+    term_masks[term] = tmask
+
+<span class="cm"># 4. AST вычисляет финальную маску через numpy</span>
+mask = ast.eval_masks(term_masks, n)</code></pre>
+</div>
+
+<h3>eval_masks() — векторизованная рекурсия</h3>
+<p>Каждая AST-нода реализует <code>eval_masks()</code>:</p>
+
+<table>
+    <tr><th>Нода</th><th>eval_masks</th><th>Numpy</th></tr>
+    <tr>
+        <td><code>TermNode("error")</code></td>
+        <td>Возвращает готовую маску из словаря</td>
+        <td><code>term_masks["error"]</code></td>
+    </tr>
+    <tr>
+        <td><code>AndNode(left, right)</code></td>
+        <td>Рекурсия на оба поддерева, побитовое AND</td>
+        <td><code>left.eval() & right.eval()</code></td>
+    </tr>
+    <tr>
+        <td><code>OrNode(left, right)</code></td>
+        <td>Рекурсия, побитовое OR</td>
+        <td><code>left.eval() | right.eval()</code></td>
+    </tr>
+    <tr>
+        <td><code>NotNode(child)</code></td>
+        <td>Рекурсия, побитовое NOT</td>
+        <td><code>~child.eval()</code></td>
+    </tr>
+</table>
+
+<p>Для примера <code>("error" OR "timeout") AND NOT "retry"</code>:</p>
+<div class="card">
+<pre><code><span class="cm"># step 1: term_masks["error"]    = [F, T, F, F, T, F, ...]   строки с "error"</span>
+<span class="cm"># step 2: term_masks["timeout"]  = [F, F, T, F, F, F, ...]   строки с "timeout"</span>
+<span class="cm"># step 3: term_masks["retry"]    = [F, F, T, F, F, T, ...]   строки с "retry"</span>
+
+or_mask   = term_masks[<span class="st">"error"</span>] | term_masks[<span class="st">"timeout"</span>]
+<span class="cm">#            [F, T, T, F, T, F, ...]</span>
+
+not_mask  = ~term_masks[<span class="st">"retry"</span>]
+<span class="cm">#            [T, T, F, T, T, F, ...]</span>
+
+result    = or_mask & not_mask
+<span class="cm">#            [F, T, F, F, T, F, ...]</span>
+<span class="cm">#  строка 1: error, но не retry  ✓</span>
+<span class="cm">#  строка 2: timeout, но retry тоже → вырезана  ✓</span>
+<span class="cm">#  строка 4: error, но не retry  ✓</span></code></pre>
+</div>
+
+<h3>Парсер</h3>
+<p><code>_Parser</code> — recursive descent. Грамматика:</p>
+<div class="card">
+<pre><code>or_expr    → and_expr (<span class="st">"OR"</span> and_expr)*
+and_expr   → not_expr (<span class="st">"AND"</span> not_expr)*
+not_expr   → <span class="st">"NOT"</span> not_expr | primary
+primary    → <span class="st">"("</span> or_expr <span class="st">")"</span> | STRING
+
+<span class="cm"># STRING: '"' ... '"'</span>
+<span class="cm"># Приоритет: NOT > AND > OR</span></code></pre>
+</div>
+<p>Результат кэшируется через <code>@lru_cache(256)</code> на <code>parse_query()</code> — повторный запрос с той же строкой не парсится заново.</p>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 6 ==================== -->
+<section id="apply">
+<h2>6. apply(): сборка финальной маски</h2>
+
+<p>Вызывается после любого изменения состояния: добавление/удаление фильтра, toggle уровня/категории, pin/unpin. Пересчитывает <code>store.filtered_indices</code>.</p>
+
+<h3>Формула</h3>
+<div class="diagram">filtered_indices = np.where(
+    (cat_mask & level_mask & text_mask)  <span class="cm"># combined — сужение</span>
+    | pin_mask                           <span class="cm"># расширение</span>
+)[0]</div>
+
+<h3>Алгоритм по шагам</h3>
+
+<div class="card">
+<pre><code><span class="kw">def</span> <span class="fn">apply</span>(self, store: LogStore) -> <span class="nb">None</span>:
+    n = store.n
+
+    <span class="cm"># --- Fast path: ничего не фильтруется ---</span>
+    <span class="kw">if not</span> (filters <span class="kw">or</span> disabled_levels <span class="kw">or</span> disabled_categories <span class="kw">or</span> pins):
+        store.filtered_indices = np.arange(n, dtype=uint32)
+        <span class="kw">return</span>
+
+    <span class="cm"># --- 1. Category mask: True = категория включена ---</span>
+    <span class="kw">if</span> disabled_categories:
+        enabled_cats = np.array(
+            [i <span class="kw">for</span> i <span class="kw">in</span> range(len(cat_names)) <span class="kw">if</span> i <span class="kw">not in</span> disabled_cats],
+            dtype=uint16,
+        )
+        cat_mask = np.isin(store.category_ids, enabled_cats)
+    <span class="kw">else</span>:
+        cat_mask = np.ones(n, dtype=bool)   <span class="cm"># все True</span>
+
+    <span class="cm"># --- 2. Level mask: True = уровень включён ---</span>
+    <span class="kw">if</span> disabled_levels:
+        enabled_lvls = np.array([...], dtype=uint8)
+        level_mask = np.isin(store.levels, enabled_lvls)
+    <span class="kw">else</span>:
+        level_mask = np.ones(n, dtype=bool)
+
+    <span class="cm"># --- 3. Text filter mask: OR всех активных фильтров ---</span>
+    <span class="kw">if</span> has_text_filters:
+        active_masks = [m <span class="kw">for</span> m, e <span class="kw">in</span> zip(_filter_masks, filter_enabled) <span class="kw">if</span> e]
+        text_mask = np.zeros(n, dtype=bool)
+        <span class="kw">for</span> m <span class="kw">in</span> active_masks:
+            text_mask |= m                   <span class="cm"># OR!</span>
+    <span class="kw">else</span>:
+        text_mask = np.ones(n, dtype=bool)
+
+    <span class="cm"># --- 4. Combined: AND трёх масок ---</span>
+    combined = cat_mask & level_mask & text_mask
+
+    <span class="cm"># --- 5. Pins: OR в конец ---</span>
+    <span class="kw">if</span> has_pins:
+        pin_mask = np.zeros(n, dtype=bool)
+        <span class="kw">for</span> m <span class="kw">in</span> active_pin_masks:
+            pin_mask |= m
+        combined = combined | pin_mask       <span class="cm"># обходит всё</span>
+
+    <span class="cm"># --- 6. Результат ---</span>
+    store.filtered_indices = np.where(combined)[0].astype(uint32)
+    store._count_visible_levels()</code></pre>
+</div>
+
+<h3>Визуализация для файла из 6 строк</h3>
+<div class="card">
+<pre><code><span class="cm"># Файл:</span>
+<span class="cm">#   0: [INFO]  app/main    Starting</span>
+<span class="cm">#   1: [ERROR] app/net      Connection timeout</span>
+<span class="cm">#   2: [WARN]  app/net      Retrying</span>
+<span class="cm">#   3: [ERROR] system/io    Disk full</span>
+<span class="cm">#   4: [DEBUG] app/main     Cache miss</span>
+<span class="cm">#   5: [INFO]  system/io    Cleanup done</span>
+
+<span class="cm"># Фильтр: "timeout" (PLAIN)</span>
+text_mask = [F, T, F, F, F, F]
+
+<span class="cm"># Категория "system/io" отключена</span>
+cat_mask  = [T, T, T, F, T, F]
+
+<span class="cm"># Level DEBUG отключен</span>
+level_mask= [T, T, T, T, F, T]
+
+<span class="cm"># Pin: "disk" (PLAIN)</span>
+pin_mask  = [F, F, F, T, F, F]
+
+combined  = cat_mask & level_mask & text_mask
+          = [F, T, F, F, F, F]
+
+result    = combined | pin_mask
+          = [F, T, F, T, F, F]
+<span class="cm">#            ↑ timeout, cat=app/net, level=ERROR ✓</span>
+<span class="cm">#                  ↑ PIN! обходит cat и text     ✓</span>
+
+filtered_indices = [1, 3]</code></pre>
+</div>
+
+<h3>Подсчёт level_button_counts</h3>
+<p>Отдельно от финальной маски. Кнопки уровней показывают количество строк <strong>по категории и тексту</strong>, но <strong>без учёта toggle самих уровней</strong>. Это нужно чтобы пользователь видел «если я включу WARN — там 15 строк».</p>
+
+<div class="card">
+<pre><code><span class="cm"># cat_text_mask — без level toggle</span>
+cat_text_mask = cat_mask & text_mask <span class="kw">if</span> has_text_filters <span class="kw">else</span> cat_mask
+
+cat_indices = np.where(cat_text_mask)[0]
+cat_levels  = store.levels[cat_indices]
+counts      = np.bincount(cat_levels, minlength=len(_LEVEL_LIST))
+
+store.level_button_counts = {
+    _LEVEL_LIST[i]: int(counts[i])
+    <span class="kw">for</span> i <span class="kw">in</span> range(len(_LEVEL_LIST))
+    <span class="kw">if</span> counts[i] > <span class="nb">0</span>
+}</code></pre>
+</div>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 7 ==================== -->
+<section id="pins">
+<h2>7. Pinned lines: обход фильтров</h2>
+
+<p>Pins хранятся как <code>Filter</code> объекты — тот же тип, те же режимы. Маска вычисляется через тот же <code>_compute_mask()</code>.</p>
+
+<div class="card">
+<pre><code><span class="kw">def</span> <span class="fn">add_pin</span>(self, store: LogStore, filt: Filter) -> <span class="nb">None</span>:
+    self.pinned_rules.append(filt)
+    self.pinned_enabled.append(<span class="nb">True</span>)
+    self._pin_masks.append(self._compute_mask(store, filt))   <span class="cm"># тот же метод</span>
+    self.apply(store)
+
+<span class="cm"># В apply():</span>
+<span class="cm">#   combined = cat & level & text     # фильтры сужают</span>
+<span class="cm">#   combined = combined | pin_mask     # пины расширяют</span></code></pre>
+</div>
+
+<h3>Семантика</h3>
+<ul>
+    <li>Строка закрепляется по <strong>правилу</strong> (pattern + mode), а не по номеру</li>
+    <li>Если файл перезагружен — пин-правило пересчитывает маску (<code>recompute_masks()</code>)</li>
+    <li>Пины комбинируются через OR — закреплено хотя бы по одному правилу → видно</li>
+    <li>Пин обходит ВСЕ фильтры: категории, уровни, текст</li>
+</ul>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 8 ==================== -->
+<section id="categories">
+<h2>8. Категории: дерево и маски</h2>
+
+<h3>Отключение</h3>
+<div class="card">
+<pre><code><span class="kw">def</span> <span class="fn">disable_category</span>(self, store, path: str) -> <span class="nb">None</span>:
+    <span class="kw">for</span> node <span class="kw">in</span> self._match_categories(store, path):
+        self._set_enabled_recursive(store, node, <span class="nb">False</span>)
+    self.apply(store)
+
+<span class="kw">def</span> <span class="fn">_set_enabled_recursive</span>(self, store, node, enabled):
+    node.enabled = enabled
+    <span class="kw">if</span> node.full_path:
+        cat_id = store._category_name_to_id.get(node.full_path)
+        <span class="kw">if</span> cat_id <span class="kw">is not None</span>:
+            <span class="kw">if</span> enabled:
+                self.disabled_categories.discard(cat_id)
+            <span class="kw">else</span>:
+                self.disabled_categories.add(cat_id)
+    <span class="kw">for</span> child <span class="kw">in</span> node.children.values():
+        self._set_enabled_recursive(store, child, enabled)</code></pre>
+</div>
+
+<p>Отключение родителя отключает <strong>всех потомков</strong> рекурсивно. <code>disabled_categories</code> — плоский set ID листовых узлов.</p>
+
+<h3>Маска в apply()</h3>
+<div class="card">
+<pre><code><span class="cm"># disabled_categories = {1, 5}</span>
+<span class="cm"># category_ids = [0, 1, 0, 5, 0, 2]</span>
+
+enabled_cats = np.array(
+    [i <span class="kw">for</span> i <span class="kw">in</span> range(len(cat_names)) <span class="kw">if</span> i <span class="kw">not in</span> disabled_cats],
+    dtype=uint16,
+)
+cat_mask = np.isin(store.category_ids, enabled_cats)
+<span class="cm"># [T, F, T, F, T, T]  — строки с cat_id 1 и 5 вырезаны</span></code></pre>
+</div>
+
+<h3>Wildcard-матч</h3>
+<p><code>_match_categories()</code> поддерживает <code>*</code> в пути:</p>
+<div class="card">
+<pre><code><span class="cm"># :catd app/*</span>
+regex = re.compile(<span class="st">".*"</span>.join(re.escape(p) <span class="kw">for</span> p <span class="kw">in</span> <span class="st">"app/*"</span>.split(<span class="st">"*"</span>)))
+<span class="cm"># → re.compile(r"app/.*")</span>
+<span class="cm"># Матчит: "app/main", "app/net/http", "app/net/ws"</span></code></pre>
+</div>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 9 ==================== -->
+<section id="levels">
+<h2>9. Уровни: toggle и подсчёт</h2>
+
+<p>Аналогично категориям, но плоско — без дерева.</p>
+
+<div class="card">
+<pre><code><span class="kw">def</span> <span class="fn">toggle_level</span>(self, store, level: LogLevel):
+    level_id = _LEVEL_LIST.index(level)   <span class="cm"># INFO=0, ERROR=3, ...</span>
+    <span class="kw">if</span> level_id <span class="kw">in</span> self.disabled_levels:
+        self.disabled_levels.discard(level_id)   <span class="cm"># включить</span>
+    <span class="kw">else</span>:
+        self.disabled_levels.add(level_id)       <span class="cm"># выключить</span>
+    self.apply(store)</code></pre>
+</div>
+
+<p>В <code>apply()</code>:</p>
+<div class="card">
+<pre><code><span class="cm"># disabled_levels = {4}  (DEBUG)</span>
+<span class="cm"># levels = [0, 3, 2, 3, 4, 0]</span>
+
+enabled_levels = np.array(
+    [i <span class="kw">for</span> i <span class="kw">in</span> range(len(_LEVEL_LIST)) <span class="kw">if</span> i <span class="kw">not in</span> disabled_levels],
+    dtype=uint8,
+)
+level_mask = np.isin(store.levels, enabled_levels)
+<span class="cm"># [T, T, T, T, F, T]  — DEBUG-строка вырезана</span></code></pre>
+</div>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 10 ==================== -->
+<section id="highlights">
+<h2>10. Highlights</h2>
+
+<p>Highlights не влияют на <code>filtered_indices</code> — они только хранят правила для подсветки. Таблица читает их при рендеринге ячеек.</p>
+
+<div class="card">
+<pre><code><span class="kw">def</span> <span class="fn">add_highlight</span>(self, h: Highlight):
+    <span class="cm"># Авто-назначение цвета из палитры (round-robin)</span>
+    h.color = HIGHLIGHT_PALETTE[self._highlight_color_index % len(HIGHLIGHT_PALETTE)]
+    self._highlight_color_index += <span class="nb">1</span>
+    self.highlights.append(h)
+    self.highlight_enabled.append(<span class="nb">True</span>)</code></pre>
+</div>
+
+<p>Highlights <strong>не вызывают apply()</strong> — они не меняют видимость. GUI перечитывает highlights при каждой перерисовке.</p>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 11 ==================== -->
+<section id="term-cache">
+<h2>11. Термовый кэш</h2>
+
+<p><code>_term_cache: dict[str, np.ndarray]</code> — кэш масок для уникальных термов из SIMPLE-запросов.</p>
+
+<div class="card">
+<pre><code><span class="cm"># Запрос 1: "error" AND "timeout"</span>
+<span class="cm">#   → сканирует "error" и "timeout", кэширует обе маски</span>
+
+<span class="cm"># Запрос 2: "error" OR "warning"</span>
+<span class="cm">#   → "error" берётся из кэша, сканируется только "warning"</span>
+
+<span class="cm"># В _compute_mask:</span>
+<span class="kw">for</span> term <span class="kw">in</span> unique_terms:
+    <span class="kw">if</span> term <span class="kw">in</span> self._term_cache:
+        <span class="kw">if</span> len(cached) == n:           <span class="cm"># защита от stale после перезагрузки</span>
+            term_masks[term] = cached
+            <span class="kw">continue</span>
+    <span class="cm"># ... сканирование буфера ...</span>
+    self._term_cache[term] = tmask</code></pre>
+</div>
+
+<p>Сбрасывается через <code>invalidate_cache()</code>, вызывается из <code>LogStore.load_bytes()</code>.</p>
+
+<div class="note">
+    <strong>Зачем:</strong> SIMPLE-запросы часто переиспользуют термы. Без кэша каждый запрос заново сканировал бы весь буфер. С кэшем — только новые термы.
+</div>
+</section>
+
+<hr class="divider">
+
+<!-- ==================== 12 ==================== -->
+<section id="full-example">
+<h2>12. Полный пример</h2>
+
+<p>Файл из 5 строк, пользователь выполняет серию действий:</p>
+
+<div class="card">
+<pre><code><span class="cm"># Лог-файл (5 строк, KSIVA-формат):</span>
+<span class="cm">#</span>
+<span class="cm">#   line 0: 2024-01-01T10:00:00 app/main [LOG_INFO]  Starting</span>
+<span class="cm">#   line 1: 2024-01-01T10:00:01 app/net  [LOG_ERROR] Connection timeout</span>
+<span class="cm">#   line 2: 2024-01-01T10:00:02 app/net  [LOG_WARN]  Retrying</span>
+<span class="cm">#   line 3: 2024-01-01T10:00:03 sys/io   [LOG_ERROR] Disk full</span>
+<span class="cm">#   line 4: 2024-01-01T10:00:04 app/main [LOG_DEBUG] Cache miss</span>
+
+<span class="cm"># === SoA после парсинга ===</span>
+category_ids = [0, 1, 1, 2, 0]    <span class="cm"># 0=app/main, 1=app/net, 2=sys/io</span>
+levels       = [0, 3, 2, 3, 4]    <span class="cm"># 0=INFO, 2=WARN, 3=ERROR, 4=DEBUG</span>
+
+<span class="cm"># ========================================</span>
+<span class="cm"># Действие 1: :f "timeout"  (PLAIN filter)</span>
+<span class="cm"># ========================================</span>
+<span class="cm"># _compute_mask("timeout", PLAIN)</span>
+<span class="cm">#   → finditer в buf_lower: position=63 (внутри строки 1)</span>
+<span class="cm">#   → searchsorted(line_starts, 63) - 1 = 1</span>
+<span class="cm">#   → mask = [F, T, F, F, F]</span>
+
+filter_mask_1 = [F, T, F, F, F]
+
+<span class="cm"># apply():</span>
+<span class="cm">#   cat_mask   = [T,T,T,T,T]  (ничего не отключено)</span>
+<span class="cm">#   level_mask = [T,T,T,T,T]  (ничего не отключено)</span>
+<span class="cm">#   text_mask  = [F,T,F,F,F]  (filter_mask_1, OR всех фильтров)</span>
+<span class="cm">#   combined   = [T,T,T,T,T] & [T,T,T,T,T] & [F,T,F,F,F]</span>
+<span class="cm">#             = [F,T,F,F,F]</span>
+<span class="cm">#   pins       = нет</span>
+<span class="cm">#   result     = [F,T,F,F,F]</span>
+
+filtered_indices = [1]
+<span class="cm"># ✓ Видна только строка 1: "Connection timeout"</span>
+
+
+<span class="cm"># ========================================</span>
+<span class="cm"># Действие 2: :f "disk"  (добавляем второй фильтр)</span>
+<span class="cm"># ========================================</span>
+filter_mask_2 = [F, F, F, T, F]
+
+<span class="cm"># apply():</span>
+<span class="cm">#   text_mask = filter_mask_1 | filter_mask_2</span>
+<span class="cm">#            = [F,T,F,F,F] | [F,F,F,T,F]</span>
+<span class="cm">#            = [F,T,F,T,F]</span>
+<span class="cm">#   combined  = [T,T,T,T,T] & [T,T,T,T,T] & [F,T,F,T,F]</span>
+<span class="cm">#            = [F,T,F,T,F]</span>
+
+filtered_indices = [1, 3]
+<span class="cm"># ✓ Фильтры комбинируются через OR: "timeout" OR "disk"</span>
+
+
+<span class="cm"># ========================================</span>
+<span class="cm"># Действие 3: :catd sys/io  (отключаем категорию)</span>
+<span class="cm"># ========================================</span>
+disabled_categories = {2}   <span class="cm"># sys/io</span>
+
+<span class="cm"># apply():</span>
+<span class="cm">#   cat_mask = np.isin([0,1,1,2,0], [0,1])</span>
+<span class="cm">#           = [T,T,T,F,T]</span>
+<span class="cm">#   combined = [T,T,T,F,T] & [T,T,T,T,T] & [F,T,F,T,F]</span>
+<span class="cm">#           = [F,T,F,F,F]</span>
+
+filtered_indices = [1]
+<span class="cm"># ✓ Строка 3 (Disk full) вырезана категорией</span>
+
+
+<span class="cm"># ========================================</span>
+<span class="cm"># Действие 4: :pin "disk"  (закрепляем)</span>
+<span class="cm"># ========================================</span>
+pin_mask = [F, F, F, T, F]
+
+<span class="cm"># apply():</span>
+<span class="cm">#   combined = [F,T,F,F,F] | [F,F,F,T,F]</span>
+<span class="cm">#           = [F,T,F,T,F]</span>
+
+filtered_indices = [1, 3]
+<span class="cm"># ✓ Строка 3 вернулась — pin обходит категорию и текстовый фильтр</span>
+
+
+<span class="cm"># ========================================</span>
+<span class="cm"># Действие 5: toggle DEBUG off</span>
+<span class="cm"># ========================================</span>
+disabled_levels = {4}   <span class="cm"># DEBUG</span>
+
+<span class="cm"># apply():</span>
+<span class="cm">#   level_mask = np.isin([0,3,2,3,4], [0,2,3])</span>
+<span class="cm">#             = [T,T,T,T,F]</span>
+<span class="cm">#   combined   = [T,T,T,T,F] & [T,T,T,F,T] & [F,T,F,T,F]</span>
+<span class="cm">#             = [F,T,F,F,F]</span>
+<span class="cm">#   combined   | pin_mask = [F,T,F,F,F] | [F,F,F,T,F]</span>
+<span class="cm">#             = [F,T,F,T,F]</span>
+
+filtered_indices = [1, 3]
+<span class="cm"># ✓ Без пина строка 4 (Cache miss, DEBUG) была бы скрыта</span>
+<span class="cm">#   Но DEBUG toggle не влияет на строку 3 — она видна через pin</span></code></pre>
+</div>
+</section>
+
+</body>
+</html>
