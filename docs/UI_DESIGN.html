@@ -1,0 +1,662 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta charset="utf-8">
+<title>Log Viewer UI Design</title>
+<!--
+  Design plan (tokens):
+  Color — cool slate neutrals with the app's steel-blue accent; the whole log line is tinted by level
+  (§3.1). Two complete themes: light (cool paper) and dark (deep blue-slate), auto-switched by
+  prefers-color-scheme, with a manual override toggle for preview only.
+  Type — system sans for chrome (buttons, tabs, labels), IBM Plex Mono for every piece of data
+  (rows, counts, tree, command line). Chrome stays quiet; the table owns ~90% of the pixels.
+  Layout — slim titlebar, full-bleed table, default 220px Categories sidebar docked right (hidden
+  only by demand), 36px bottom bar
+  (Open/Reload · command line · level buttons). Page presents framed window mocks,
+  component studies, and the token sheet.
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #eef1f5;
+    --surface: #ffffff;        /* table, menus */
+    --chrome: #f3f5f8;         /* titlebar, bottom bar, sidebar */
+    --chrome-2: #e9edf2;       /* table header row, button hover */
+    --ink: #1b2531;
+    --muted: #5a6a7a;
+    --dim: #8795a4;            /* timestamps, line numbers, chrome labels */
+    --accent: #0078d7;
+    --on-accent: #ffffff;
+    --accent-tint: rgba(0, 120, 215, .1);
+    --border: #dfe4ea;
+    --border-strong: #c4cdd7;
+    --pin: #e8c34a;
+
+    --lvl-crt: #a01423;
+    --lvl-err: #c02f2f;
+    --lvl-wrn: #8a6d00;
+    --lvl-msg: var(--ink);
+    --lvl-dbg: #7450a8;
+    --lvl-trc: #1d7a3f;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1016;
+      --surface: #141c24;
+      --chrome: #101722;
+      --chrome-2: #1a2430;
+      --ink: #d7e0ea;
+      --muted: #9babbc;
+      --dim: #6d7e8f;
+      --accent: #4da3e8;
+      --on-accent: #0b1620;
+      --accent-tint: rgba(77, 163, 232, .14);
+      --border: #243040;
+      --border-strong: #33445a;
+      --pin: #e8c34a;
+
+      --lvl-crt: #ff7b72;
+      --lvl-err: #f26d6d;
+      --lvl-wrn: #d9b13b;
+      --lvl-msg: var(--ink);
+      --lvl-dbg: #b18cf5;
+      --lvl-trc: #5fc98a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1016;
+    --surface: #141c24;
+    --chrome: #101722;
+    --chrome-2: #1a2430;
+    --ink: #d7e0ea;
+    --muted: #9babbc;
+    --dim: #6d7e8f;
+    --accent: #4da3e8;
+    --on-accent: #0b1620;
+    --accent-tint: rgba(77, 163, 232, .14);
+    --border: #243040;
+    --border-strong: #33445a;
+    --pin: #e8c34a;
+
+    --lvl-crt: #ff7b72;
+    --lvl-err: #f26d6d;
+    --lvl-wrn: #d9b13b;
+    --lvl-msg: var(--ink);
+    --lvl-dbg: #b18cf5;
+    --lvl-trc: #5fc98a;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 14px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding-block: 0 72px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header.page {
+    max-width: 1180px; margin: 0 auto;
+    padding-block: 30px 20px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  }
+  header.page h1 { font-size: 21px; font-weight: 650; letter-spacing: -0.01em; margin: 0; flex: 1 0 auto; }
+  header.page .cap { color: var(--dim); font-size: 12.5px; }
+
+  /* theme preview toggle */
+  .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); overflow: hidden; }
+  .seg button {
+    appearance: none; border: none; background: transparent; color: var(--muted);
+    font: 500 12.5px/1 system-ui, sans-serif; padding: 7px 14px; cursor: pointer;
+    border-left: 1px solid var(--border);
+  }
+  .seg button:first-child { border-left: none; }
+  .seg button.on { background: var(--accent); color: var(--on-accent); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  main { max-width: 1180px; margin: 0 auto; }
+
+  section > h2 {
+    font-size: 15px; font-weight: 600; margin: 34px 0 4px;
+  }
+  section > p.note { color: var(--muted); font-size: 13px; margin: 2px 0 12px; max-width: 78ch; }
+  section > p.note code { font-size: 12px; }
+
+  kbd {
+    font: 500 11.5px/1.4 "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--surface); border: 1px solid var(--border-strong); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 6px; white-space: nowrap;
+  }
+  code {
+    font: 500 12.5px/1.4 "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--chrome-2); border-radius: 5px; padding: 1.5px 6px; white-space: nowrap;
+  }
+
+  /* ============ window frame ============ */
+  .mock-scroll { border: 1px solid var(--border-strong); border-radius: 12px; overflow-x: auto; background: var(--surface); box-shadow: 0 8px 28px rgba(9, 18, 28, .13), 0 1px 3px rgba(9, 18, 28, .1); }
+  :root[data-theme="dark"] .mock-scroll, :root:not([data-theme="light"]) .mock-scroll { box-shadow: 0 8px 28px rgba(0, 0, 0, .5); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .mock-scroll { box-shadow: 0 8px 28px rgba(0, 0, 0, .5); }
+  }
+  .app { min-width: 760px; background: var(--surface); }
+
+  .titlebar {
+    height: 30px; background: var(--chrome); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 12px; gap: 8px; user-select: none;
+  }
+  .titlebar .lights { display: flex; gap: 6px; }
+  .titlebar .lights i { width: 10px; height: 10px; border-radius: 50%; }
+  .titlebar .lights i:nth-child(1) { background: #ff5f57; }
+  .titlebar .lights i:nth-child(2) { background: #febc2e; }
+  .titlebar .lights i:nth-child(3) { background: #28c840; }
+  .titlebar .fname { flex: 1; text-align: center; color: var(--dim); font: 500 11.5px/1 system-ui, sans-serif; }
+
+  .app-main { display: flex; min-height: 0; }
+
+  /* ============ sidebar ============ */
+  .side { width: 220px; flex: none; background: var(--chrome); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tabs span {
+    flex: 1; text-align: center; padding: 7px 0 6px;
+    font: 500 11px/1 system-ui, sans-serif; color: var(--dim); cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tabs span.on { color: var(--accent); border-bottom-color: var(--accent); }
+  .tree { padding: 10px 0 14px; font: 500 12px/1.9 "IBM Plex Mono", ui-monospace, monospace; overflow-y: auto; }
+  .tree .row { display: flex; align-items: center; gap: 7px; padding: 0 12px; white-space: nowrap; }
+  .tree .row .tw { width: 10px; color: var(--dim); font-size: 9px; flex: none; }
+  .tree .row .cb { width: 12px; height: 12px; flex: none; border: 1.5px solid var(--border-strong); border-radius: 3px; background: var(--surface); position: relative; }
+  .tree .row .cb.on { background: var(--accent); border-color: var(--accent); }
+  .tree .row .cb.on::after { content: ""; position: absolute; inset: 1.5px 2px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-50deg) translateY(-1px); }
+  .tree .row .cb.part::after { content: ""; position: absolute; inset: 2.5px; background: var(--accent); border-radius: 1.5px; }
+  .tree .row .nm { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+  .tree .row .ct { color: var(--dim); margin-left: auto; padding-left: 8px; font-variant-numeric: tabular-nums; }
+  .tree .row.off { opacity: .45; }
+  .tree .indent1 { padding-left: 26px; }
+  .tree .indent2 { padding-left: 40px; }
+  .tree-search { margin: 10px 12px 0; display: flex; gap: 6px; align-items: center; }
+  .tree-search input {
+    flex: 1 1 auto; min-width: 0; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface);
+    color: var(--ink); font: 400 11.5px/1 system-ui, sans-serif; padding: 5px 8px; outline: none;
+  }
+  .fold {
+    flex: none; width: 24px; height: 24px; border: 1px solid var(--border-strong); border-radius: 6px;
+    background: var(--surface); color: var(--dim); font: 600 10px/1 "IBM Plex Mono", monospace; cursor: pointer;
+  }
+  .fold:hover { color: var(--ink); }
+  .panelwrap { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; margin-top: 12px; }
+  .panel {
+    width: 262px; height: 500px; display: flex; flex-direction: column;
+    border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden;
+    background: var(--chrome); box-shadow: 0 8px 28px rgba(9, 18, 28, .13), 0 1px 3px rgba(9, 18, 28, .1);
+  }
+  .tree.grow { flex: 1 1 auto; }
+  .tree .row b { color: var(--accent); font-weight: 600; }
+  .treecap { color: var(--muted); font-size: 12.5px; max-width: 60ch; }
+
+  /* ============ table ============ */
+  .tablewrap { flex: 1 1 auto; min-width: 0; position: relative; }
+  .grid { font: 500 12.5px/23px "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  .hrow, .drow {
+    display: grid; grid-template-columns: 54px 96px 168px minmax(0, 1fr);
+    align-items: center; white-space: nowrap;
+  }
+  .hrow { height: 26px; background: var(--chrome); border-bottom: 1px solid var(--border); color: var(--dim); font: 500 11px/26px system-ui, sans-serif; }
+
+  .drow { height: 23px; cursor: default; }
+  .drow:nth-child(even):not(.sel):not(:hover) { background: color-mix(in srgb, var(--chrome) 35%, var(--surface)); }
+  .drow:hover { background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface)); }
+  .drow.sel { background: var(--accent-tint); }
+  .drow .ln { position: relative; text-align: right; padding-right: 12px; color: var(--dim); }
+  .drow.pin .ln::before { content: ""; position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 5px; height: 5px; border-radius: 50%; background: var(--pin); }
+  .drow .tm { color: var(--dim); overflow: hidden; }
+  .drow .ct { padding-right: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .drow .ms { overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
+  .drow .ms mark { background: transparent; color: inherit; border-radius: 2px; padding: 0 1px; }
+  .lvl-crt { color: var(--lvl-crt); font-weight: 600; }
+  .lvl-err { color: var(--lvl-err); }
+  .lvl-wrn { color: var(--lvl-wrn); }
+  .lvl-msg { color: var(--lvl-msg); }
+  .lvl-dbg { color: var(--lvl-dbg); }
+  .lvl-trc { color: var(--lvl-trc); }
+  mark.h-gold   { background: color-mix(in srgb, #e8c34a 38%, transparent); }
+  mark.h-sky    { background: color-mix(in srgb, #87ceeb 45%, transparent); }
+  mark.h-mint   { background: color-mix(in srgb, #98e6b8 45%, transparent); }
+
+  /* ============ bottom bar ============ */
+  .bbar {
+    height: 38px; background: var(--chrome); border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  }
+  .btn {
+    border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface);
+    color: var(--ink); font: 500 12px/1 system-ui, sans-serif; padding: 6px 12px; cursor: pointer;
+  }
+  .btn:hover { background: var(--chrome-2); }
+  .cmd {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 0;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
+    height: 27px; padding: 0 10px; color: var(--dim);
+    font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .cmd:focus-within { border-color: var(--accent); }
+  .cmd .dot { color: var(--accent); margin-right: 2px; }
+  .cmd input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; }
+
+  .levels { display: flex; gap: 4px; }
+  .lv {
+    display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 9px;
+    border-radius: 6px; border: none; background: transparent; cursor: pointer;
+    font: 500 11.5px/1 system-ui, sans-serif; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .lv:hover { background: var(--chrome-2); }
+  .lv i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .lv .n { color: var(--dim); font: 500 11px/1 "IBM Plex Mono", monospace; }
+  .lv.crt i { background: var(--lvl-crt); } .lv.crt { color: var(--lvl-crt); }
+  .lv.err i { background: var(--lvl-err); } .lv.err { color: var(--lvl-err); }
+  .lv.wrn i { background: var(--lvl-wrn); } .lv.wrn { color: var(--lvl-wrn); }
+  .lv.msg i { background: var(--muted); }
+  .lv.dbg i { background: var(--lvl-dbg); } .lv.dbg { color: var(--lvl-dbg); }
+  .lv.trc i { background: var(--lvl-trc); } .lv.trc { color: var(--lvl-trc); }
+  .lv.off { opacity: .38; }
+  .lv.off span, .lv.off .n { text-decoration: line-through; text-decoration-thickness: 1px; }
+
+  /* ============ find bar ============ */
+  .findbar {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 8px 5px 11px; border: 1px solid var(--border-strong); border-radius: 9px;
+    background: var(--surface); box-shadow: 0 5px 18px rgba(0, 0, 0, .16);
+    font: 500 12px/1 system-ui, sans-serif; color: var(--muted);
+  }
+  .findbar .field {
+    min-width: 150px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--ink);
+    font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .findbar .cnt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .findbar .tg, .findbar .ar {
+    padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px; background: transparent;
+    color: var(--muted); font: 500 11px/1 system-ui, sans-serif; cursor: pointer; white-space: nowrap;
+  }
+  .findbar .tg.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .findbar .ar { font-size: 12px; }
+  .findbar .x { padding: 3px 5px; color: var(--dim); cursor: pointer; }
+
+  /* ============ context menu ============ */
+  .cm {
+    display: inline-block; min-width: 190px; padding: 5px;
+    border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, .18);
+    font: 400 12.5px/1 system-ui, sans-serif;
+  }
+  .cm div { padding: 6px 10px 5px; border-radius: 5px; display: flex; justify-content: space-between; gap: 18px; cursor: default; }
+  .cm div:hover { background: var(--accent-tint); }
+  .cm div.dim { color: var(--dim); }
+  .cm .sep { height: 1px; padding: 0; margin: 4px 2px; background: var(--border); border-radius: 0; }
+  .cm .k { color: var(--dim); font: 500 11px/1.9 "IBM Plex Mono", monospace; }
+
+  /* ============ empty state ============ */
+  .empty {
+    border: 1.5px dashed var(--border-strong); border-radius: 12px;
+    padding: 54px 20px; text-align: center; background: var(--surface);
+  }
+  .empty .big { font: 500 13px/1 "IBM Plex Mono", monospace; color: var(--ink); }
+  .empty .small { color: var(--dim); font-size: 12px; margin-top: 9px; }
+
+  /* ============ panels around mocks ============ */
+  .floatbox { position: relative; display: flex; justify-content: flex-end; padding: 14px 16px; }
+  .study { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; margin-top: 10px; }
+  .study > div { flex: 1 1 300px; min-width: 280px; }
+  .study h3 { font-size: 12.5px; font-weight: 600; margin: 0 0 8px; color: var(--muted); }
+
+  /* token sheet */
+  .tok { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 13px; margin-top: 12px; }
+  .tok th, .tok td { padding: 8px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+  .tok thead th { font: 600 11px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); background: var(--chrome); }
+  .tok tr:last-child td { border-bottom: none; }
+  .tok code { background: none; padding: 0; }
+  .tok .mono { font: 500 12px/1 "IBM Plex Mono", monospace; }
+  .sw2 { display: inline-flex; gap: 8px; align-items: center; }
+  .sw2 i { width: 26px; height: 16px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .12); flex: none; }
+</style>
+
+<header class="page">
+  <h1>Log Viewer UI Design</h1>
+  <span class="cap">reference design · follows docs/FUNCTIONAL_SPEC.html</span>
+  <div class="seg" role="group" aria-label="Theme preview">
+    <button class="on" id="t-auto">Auto</button>
+    <button id="t-light">Light</button>
+    <button id="t-dark">Dark</button>
+  </div>
+</header>
+
+<main>
+
+<!-- ============ 1. main window ============ -->
+<section id="s1">
+  <h2>Main window</h2>
+  <p class="note">The canonical state: file loaded, default layout. The Categories sidebar stands open on the
+  right by default (§10) and hides only by demand — <code>Ctrl+B</code>. The table takes
+  the whole window under a 30-px titlebar and a 38-px bottom bar. Columns per §4 —
+  <code>Line</code> <code>Time</code> <code>Category</code> <code>Message</code>, with Message taking everything that is left.
+  Whole line is tinted by level (§3.1), line numbers and timestamps are dim: the eye should land on Message.</p>
+  <div class="mock-scroll">
+    <div class="app">
+      <div class="titlebar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="fname">service-2024-06-01.log · 842 MB</span>
+      </div>
+      <div class="app-main">
+        <div class="tablewrap">
+          <div class="grid">
+            <div class="hrow"><span class="ln" style="text-align:right;padding-right:12px">Line</span><span style="padding-left:10px">Time</span><span style="padding-left:0">Category</span><span style="padding-left:0">Message</span></div>
+            <div class="drow lvl-msg"><span class="ln">1</span><span class="tm">10:00:00.000</span><span class="ct">app/main</span><span class="ms">Service started (pid 4128, build 20240601.3)</span></div>
+            <div class="drow lvl-msg"><span class="ln">2</span><span class="tm">10:00:00.041</span><span class="ct">app/config</span><span class="ms">Config loaded from /etc/app/service.yaml</span></div>
+            <div class="drow lvl-trc"><span class="ln">3</span><span class="tm">10:00:00.052</span><span class="ct">app/config</span><span class="ms">watch: polling every 2.0s</span></div>
+            <div class="drow lvl-msg"><span class="ln">4</span><span class="tm">10:00:00.104</span><span class="ct">db/pool</span><span class="ms">Connection pool initialized: min 8, max 64</span></div>
+            <div class="drow lvl-msg"><span class="ln">5</span><span class="tm">10:00:01.872</span><span class="ct">net/http</span><span class="ms">Listening on 0.0.0.0:8443</span></div>
+            <div class="drow lvl-msg pin"><span class="ln">6</span><span class="tm">10:00:02.010</span><span class="ct">scheduler</span><span class="ms">Aggregation job scheduled at 10:05:00</span></div>
+            <div class="drow lvl-msg"><span class="ln">7</span><span class="tm">10:00:02.553</span><span class="ct">auth</span><span class="ms">Session store attached (redis, pool size 4)</span></div>
+            <div class="drow lvl-dbg"><span class="ln">8</span><span class="tm">10:00:03.091</span><span class="ct">net/http</span><span class="ms">TLS handshake cache enabled (256 entries)</span></div>
+            <div class="drow lvl-msg"><span class="ln">9</span><span class="tm">10:00:04.443</span><span class="ct">net/http</span><span class="ms">GET /healthz 200 3ms</span></div>
+            <div class="drow lvl-msg"><span class="ln">10</span><span class="tm">10:00:04.612</span><span class="ct">net/http</span><span class="ms">GET /v1/orders 200 41ms</span></div>
+            <div class="drow lvl-wrn"><span class="ln">11</span><span class="tm">10:00:05.190</span><span class="ct">db/pool</span><span class="ms">Slow query detected: 1.9s on query_log.select</span></div>
+            <div class="drow lvl-msg sel"><span class="ln">12</span><span class="tm">10:00:06.005</span><span class="ct">net/http</span><span class="ms">GET /v1/orders?since=2024-06-01 200 87ms</span></div>
+            <div class="drow lvl-err"><span class="ln">13</span><span class="tm">10:00:06.331</span><span class="ct">net/http</span><span class="ms">POST /v1/payments 502 upstream <mark class="h-gold">timeout</mark> after 5000ms</span></div>
+            <div class="drow lvl-err"><span class="ln">14</span><span class="tm">10:00:06.334</span><span class="ct">net/http</span><span class="ms">POST /v1/payments retry <mark class="h-sky">1/5</mark> scheduled in 800ms</span></div>
+            <div class="drow lvl-msg"><span class="ln">15</span><span class="tm">10:00:07.140</span><span class="ct">net/http</span><span class="ms">POST /v1/payments 201 342ms</span></div>
+            <div class="drow lvl-trc"><span class="ln">16</span><span class="tm">10:00:07.402</span><span class="ct">net/http</span><span class="ms">conn 8821 keepalive</span></div>
+            <div class="drow lvl-dbg"><span class="ln">17</span><span class="tm">10:00:08.077</span><span class="ct">db/pool</span><span class="ms">pool: acquired 12 idle, 3 in use</span></div>
+            <div class="drow lvl-msg"><span class="ln">18</span><span class="tm">10:00:09.288</span><span class="ct">cache</span><span class="ms">Evicted 512 stale entries (memory pressure 62%)</span></div>
+            <div class="drow lvl-msg pin"><span class="ln">19</span><span class="tm">10:00:10.511</span><span class="ct">scheduler</span><span class="ms">Aggregation job started, partition p2024_06</span></div>
+            <div class="drow lvl-wrn"><span class="ln">20</span><span class="tm">10:00:11.934</span><span class="ct">auth</span><span class="ms">Rate limit near threshold for tenant acme (91%)</span></div>
+            <div class="drow lvl-msg"><span class="ln">21</span><span class="tm">10:00:12.100</span><span class="ct">net/http</span><span class="ms">GET /v1/balance 200 12ms</span></div>
+            <div class="drow lvl-crt"><span class="ln">22</span><span class="tm">10:00:12.845</span><span class="ct">db</span><span class="ms">Replica lag > 30s: falling back to primary</span></div>
+            <div class="drow lvl-msg"><span class="ln">23</span><span class="tm">10:00:13.010</span><span class="ct">db</span><span class="ms">Primary promoted for reads; watcher notified</span></div>
+            <div class="drow lvl-trc"><span class="ln">24</span><span class="tm">10:00:13.552</span><span class="ct">net/http</span><span class="ms">conn 8821 closed by peer</span></div>
+            <div class="drow lvl-dbg"><span class="ln">25</span><span class="tm">10:00:14.023</span><span class="ct">app/main</span><span class="ms">gc: 18.2 MB freed in 4.1ms</span></div>
+            <div class="drow lvl-msg"><span class="ln">26</span><span class="tm">10:00:15.764</span><span class="ct">net/http</span><span class="ms">GET /v1/orders 200 39ms</span></div>
+            <div class="drow lvl-wrn"><span class="ln">27</span><span class="tm">10:00:16.418</span><span class="ct">db/pool</span><span class="ms">Pool exhausted momentarily; queued 2 requests</span></div>
+            <div class="drow lvl-msg"><span class="ln">28</span><span class="tm">10:00:17.905</span><span class="ct">net/http</span><span class="ms">POST /v1/orders 201 55ms</span></div>
+          </div>
+        </div>
+        <div class="side">
+          <div class="tabs"><span class="on">Categories</span><span>Filters</span><span>Highlights</span><span>Pinned</span></div>
+          <div class="tree-search">
+            <input type="text" placeholder="Filter tree" aria-label="Filter tree">
+            <span class="fold" role="button" tabindex="0" aria-label="Expand all">▾</span>
+          </div>
+          <div class="tree grow">
+            <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>
+            <div class="row"><span class="tw">▾</span><span class="cb on"></span><span class="nm">app</span><span class="ct">812k</span></div>
+            <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">main</span><span class="ct">34k</span></div>
+            <div class="row indent1"><span class="tw">▾</span><span class="cb on"></span><span class="nm">config</span><span class="ct">778k</span></div>
+            <div class="row indent2"><span class="tw">·</span><span class="cb on"></span><span class="nm">runtime</span><span class="ct">61k</span></div>
+            <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">db</span><span class="ct">2.1M</span></div>
+            <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">pool</span><span class="ct">611k</span></div>
+            <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">statement</span><span class="ct">890k</span></div>
+            <div class="row"><span class="tw">▸</span><span class="cb on"></span><span class="nm">auth</span><span class="ct">96k</span></div>
+            <div class="row"><span class="tw">·</span><span class="cb on"></span><span class="nm">net/http</span><span class="ct">2.9M</span></div>
+            <div class="row off"><span class="tw">·</span><span class="cb"></span><span class="nm">scheduler</span><span class="ct">405k</span></div>
+            <div class="row off"><span class="tw">·</span><span class="cb"></span><span class="nm">cache</span><span class="ct">14k</span></div>
+            <div class="row"><span class="tw">·</span><span class="cb on"></span><span class="nm">uncategorized</span><span class="ct">2.6k</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="bbar">
+        <span class="btn" role="button" tabindex="0">Open</span>
+        <span class="btn" role="button" tabindex="0">Reload</span>
+        <span class="cmd"><span class="dot">:</span><span style="flex:1"></span></span>
+        <div class="levels">
+          <span class="lv crt"><i></i><span>CRITICAL</span><span class="n">3</span></span>
+          <span class="lv err"><i></i><span>ERROR</span><span class="n">172</span></span>
+          <span class="lv wrn off"><i></i><span>WARNING</span><span class="n">2 041</span></span>
+          <span class="lv msg"><i></i><span>MSG</span><span class="n">4.2M</span></span>
+          <span class="lv dbg"><i></i><span>DEBUG</span><span class="n">681k</span></span>
+          <span class="lv trc"><i></i><span>TRACE</span><span class="n">96k</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">On the mock: row 12 is selected (accent tint); rows 6 and 19 are pinned — a gold dot before the
+  line number; rows 13–14 carry two highlights — translucent color behind the matched spans only (§9).
+  Level buttons show live counts; WARNING is toggled off — dimmed with a strikethrough count.
+  <code>Ctrl+B</code> hides the Categories sidebar — its width goes to Message; <code>Ctrl+F</code> floats a find bar at the top-right of the table.</p>
+</section>
+
+<!-- ============ 2. sidebar ============ -->
+<section id="s2">
+  <h2>Sidebar hidden — Ctrl+B</h2>
+  <p class="note">The Categories panel stands open by default (§10); this frame shows the same table with the panel
+  hidden by <code>Ctrl+B</code> — nothing else changes, the freed width goes to Message. Hiding is a view toggle,
+  not a first-run setting. The list tabs (<code>Filters | Highlights | Pinned</code>, §10.1) live in the same
+  panel — see their mock in the Categories section below.</p>
+  <div class="mock-scroll">
+    <div class="app" style="min-width:760px">
+      <div class="app-main" style="min-height:420px">
+        <div class="tablewrap">
+          <div class="grid">
+            <div class="hrow"><span class="ln" style="text-align:right;padding-right:12px">Line</span><span style="padding-left:10px">Time</span><span>Category</span><span>Message</span></div>
+            <div class="drow lvl-msg"><span class="ln">29</span><span class="tm">10:00:18.220</span><span class="ct">net/http</span><span class="ms">GET /v1/accounts 200 21ms</span></div>
+            <div class="drow lvl-msg"><span class="ln">30</span><span class="tm">10:00:19.006</span><span class="ct">db/pool</span><span class="ms">statement cache hit 94.1%</span></div>
+            <div class="drow lvl-trc"><span class="ln">31</span><span class="tm">10:00:19.441</span><span class="ct">net/http</span><span class="ms">conn 8844 keepalive</span></div>
+            <div class="drow lvl-err"><span class="ln">32</span><span class="tm">10:00:20.118</span><span class="ct">net/http</span><span class="ms">POST /v1/payments 502 upstream <mark class="h-gold">timeout</mark> after 5000ms</span></div>
+            <div class="drow lvl-msg"><span class="ln">33</span><span class="tm">10:00:20.992</span><span class="ct">app/config</span><span class="ms">Config file unchanged, skipping reload</span></div>
+            <div class="drow lvl-dbg"><span class="ln">34</span><span class="tm">10:00:21.310</span><span class="ct">auth</span><span class="ms">token cache: 2044 entries, hit 97.8%</span></div>
+            <div class="drow lvl-msg"><span class="ln">35</span><span class="tm">10:00:22.700</span><span class="ct">net/http</span><span class="ms">GET /v1/orders 200 44ms</span></div>
+            <div class="drow lvl-wrn"><span class="ln">36</span><span class="tm">10:00:23.144</span><span class="ct">db/pool</span><span class="ms">Retry <mark class="h-sky">3/5</mark> for statement query_log.select</span></div>
+            <div class="drow lvl-msg"><span class="ln">37</span><span class="tm">10:00:24.008</span><span class="ct">net/http</span><span class="ms">GET /healthz 200 2ms</span></div>
+            <div class="drow lvl-msg"><span class="ln">38</span><span class="tm">10:00:25.590</span><span class="ct">cache</span><span class="ms">Warm-up complete: 32 140 keys</span></div>
+            <div class="drow lvl-trc"><span class="ln">39</span><span class="tm">10:00:25.902</span><span class="ct">net/http</span><span class="ms">conn 8844 closed by peer</span></div>
+            <div class="drow lvl-msg"><span class="ln">40</span><span class="tm">10:00:26.884</span><span class="ct">net/http</span><span class="ms">POST /v1/orders 201 51ms</span></div>
+            <div class="drow lvl-dbg"><span class="ln">41</span><span class="tm">10:00:27.501</span><span class="ct">app/main</span><span class="ms">metrics flush: 402 series in 8.9ms</span></div>
+            <div class="drow lvl-msg"><span class="ln">42</span><span class="tm">10:00:28.336</span><span class="ct">net/http</span><span class="ms">GET /v1/balance 200 10ms</span></div>
+            <div class="drow lvl-err"><span class="ln">43</span><span class="tm">10:00:29.776</span><span class="ct">db</span><span class="ms">statement failed: deadlock on orders_p2024_06</span></div>
+            <div class="drow lvl-msg"><span class="ln">44</span><span class="tm">10:00:30.110</span><span class="ct">db</span><span class="ms">deadlock victim rolled back, retry <mark class="h-sky">1/3</mark></span></div>
+            <div class="drow lvl-trc"><span class="ln">45</span><span class="tm">10:00:30.744</span><span class="ct">net/http</span><span class="ms">conn 8851 keepalive</span></div>
+            <div class="drow lvl-msg"><span class="ln">46</span><span class="tm">10:00:31.528</span><span class="ct">net/http</span><span class="ms">GET /v1/orders 200 37ms</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="bbar">
+        <span class="btn" role="button" tabindex="0">Open</span>
+        <span class="btn" role="button" tabindex="0">Reload</span>
+        <span class="cmd"><span class="dot">:</span><span style="flex:1"></span></span>
+        <div class="levels">
+          <span class="lv crt"><i></i><span>CRITICAL</span><span class="n">3</span></span>
+          <span class="lv err"><i></i><span>ERROR</span><span class="n">172</span></span>
+          <span class="lv wrn"><i></i><span>WARNING</span><span class="n">2 041</span></span>
+          <span class="lv msg"><i></i><span>MSG</span><span class="n">4.2M</span></span>
+          <span class="lv dbg"><i></i><span>DEBUG</span><span class="n">681k</span></span>
+          <span class="lv trc"><i></i><span>TRACE</span><span class="n">96k</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Same file, same scroll anchor: only the panel comes and goes. The 220-px panel is a fixed-width
+  column; Message flexes around it.</p>
+</section>
+
+<!-- ============ 2a. categories panel ============ -->
+<section id="s2a">
+  <h2>Categories panel</h2>
+  <p class="note" id="catnote">The Categories tab of the sidebar on its own (§10). Every checkbox state is shown:
+  checked, unchecked, and the parent "partially enabled" tick; disabled categories are dimmed and take
+  their whole subtree with them. The toggle beside the search field is expand-all / collapse-all
+  (except root nodes); expansion state survives tree rebuilds. Right — the tree under an active
+  search: a node stays visible if it matches or has a matching descendant, and the tree expands fully
+  while the search is on. The third frame shows a list tab (§10.1) — checkbox, command text, delete
+  <code>✕</code>; the same anatomy holds for Filters, Highlights and Pinned.</p>
+  <div class="panelwrap">
+    <div class="panel">
+      <div class="tabs"><span class="on">Categories</span><span>Filters</span><span>Highlights</span><span>Pinned</span></div>
+      <div class="tree-search">
+        <input type="text" placeholder="Filter tree" aria-label="Filter tree">
+        <span class="fold" role="button" tabindex="0" aria-label="Expand all">▾</span>
+      </div>
+      <div class="tree grow">
+        <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>
+        <div class="row"><span class="tw">▾</span><span class="cb on"></span><span class="nm">app</span><span class="ct">812k</span></div>
+        <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">main</span><span class="ct">34k</span></div>
+        <div class="row indent1"><span class="tw">▾</span><span class="cb on"></span><span class="nm">config</span><span class="ct">778k</span></div>
+        <div class="row indent2"><span class="tw">·</span><span class="cb on"></span><span class="nm">runtime</span><span class="ct">61k</span></div>
+        <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">db</span><span class="ct">2.1M</span></div>
+        <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">pool</span><span class="ct">611k</span></div>
+        <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">statement</span><span class="ct">890k</span></div>
+        <div class="row"><span class="tw">▸</span><span class="cb on"></span><span class="nm">auth</span><span class="ct">96k</span></div>
+        <div class="row"><span class="tw">·</span><span class="cb on"></span><span class="nm">net/http</span><span class="ct">2.9M</span></div>
+        <div class="row off"><span class="tw">·</span><span class="cb"></span><span class="nm">scheduler</span><span class="ct">405k</span></div>
+        <div class="row off"><span class="tw">·</span><span class="cb"></span><span class="nm">cache</span><span class="ct">14k</span></div>
+        <div class="row"><span class="tw">·</span><span class="cb on"></span><span class="nm">uncategorized</span><span class="ct">2.6k</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="tabs"><span class="on">Categories</span><span>Filters</span><span>Highlights</span><span>Pinned</span></div>
+      <div class="tree-search">
+        <input type="text" value="db" aria-label="Filter tree with query db">
+        <span class="fold" role="button" tabindex="0" aria-label="Expand all">▾</span>
+      </div>
+      <div class="tree grow">
+        <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>
+        <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm"><b>db</b></span><span class="ct">2.1M</span></div>
+        <div class="row indent1"><span class="tw">▾</span><span class="cb on"></span><span class="nm"><b>db</b>/pool</span><span class="ct">611k</span></div>
+        <div class="row indent2"><span class="tw">·</span><span class="cb on"></span><span class="nm">readonly</span><span class="ct">214k</span></div>
+        <div class="row indent1"><span class="tw">·</span><span class="cb"></span><span class="nm"><b>db</b>/statement</span><span class="ct">890k</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="tabs"><span>Categories</span><span class="on">Filters</span><span>Highlights</span><span>Pinned</span></div>
+      <div class="tree grow" style="padding-top:12px">
+        <div class="row"><span class="cb on"></span><span class="nm">:f "timeout"</span><span class="ct">✕</span></div>
+        <div class="row off"><span class="cb"></span><span class="nm">:fs ("auth" OR "login")</span><span class="ct">✕</span></div>
+        <div class="row"><span class="cb on"></span><span class="nm">:fn 12034</span><span class="ct">✕</span></div>
+        <div class="row"><span class="cb on"></span><span class="nm">:fr ^retry</span><span class="ct">✕</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. studies ============ -->
+<section id="s3">
+  <h2>Component studies</h2>
+  <p class="note">Isolated states, same tokens.</p>
+  <div class="study">
+    <div>
+      <h3>Find bar — <kbd>Ctrl+F</kbd>, floats top-right (§8)</h3>
+      <div class="floatbox" style="border:1px dashed var(--border-strong);border-radius:12px;min-height:96px;background:var(--surface)">
+        <div class="findbar" style="margin-bottom:14px">
+          <span class="field">"error" AND "timeout"</span>
+          <span class="cnt">3 / 17</span>
+          <span class="tg on" role="button" tabindex="0">Regex</span>
+          <span class="tg" role="button" tabindex="0">Simple</span>
+          <span class="ar" role="button" tabindex="0">↓</span>
+          <span class="ar" role="button" tabindex="0">↑</span>
+          <span class="x" role="button" tabindex="0">✕</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>Command line — <kbd>:</kbd> focuses from the table (§13)</h3>
+      <div class="floatbox" style="justify-content:center;border:1px dashed var(--border-strong);border-radius:12px;min-height:96px;background:var(--chrome)">
+        <div class="cmd" style="width:min(480px,100%)"><span class="dot">:</span><span style="color:var(--ink)">hs timeout</span><span style="width:1.5px;height:15px;background:var(--accent);margin-left:1px"></span></div>
+      </div>
+    </div>
+    <div>
+      <h3>Context menu — right-click on selection (§4)</h3>
+      <div class="floatbox" style="justify-content:center;border:1px dashed var(--border-strong);border-radius:12px;min-height:120px;background:var(--bg)">
+        <div class="cm">
+          <div>Copy<span class="k">⌃C</span></div>
+          <div>Copy Message</div>
+          <div class="sep"></div>
+          <div class="dim">Unpin<span class="k"></span></div>
+          <div>Pin</div>
+          <div class="sep"></div>
+          <div>Highlight</div>
+          <div class="dim">Remove highlight</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>Empty state — before any file (§2)</h3>
+      <div class="floatbox" style="border:1px dashed transparent;background:transparent">
+        <div class="empty" style="width:100%">
+          <div class="big">Drop a log file here or click Open</div>
+          <div class="small">The table appears once the file is parsed. Reload keeps filters, highlights and levels.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. tokens ============ -->
+<section id="s4">
+  <h2>Tokens</h2>
+  <p class="note">Both themes switch automatically with the OS appearance (<code>prefers-color-scheme</code>); the toggle in the
+  page header is a preview convenience, not an app feature. Whole-line level colors are tuned to pass contrast
+  on their own surface in either theme.</p>
+  <div class="tok"><table>
+    <thead><tr><th>Token</th><th>Light</th><th>Dark</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td>bg / surface</td><td class="mono">#eef1f5 / #ffffff</td><td class="mono">#0b1016 / #141c24</td><td>page around the window · table, menus</td></tr>
+      <tr><td>chrome / chrome-2</td><td class="mono">#f3f5f8 / #e9edf2</td><td class="mono">#101722 / #1a2430</td><td>bars, sidebar, header row, hovers</td></tr>
+      <tr><td>ink / muted / dim</td><td class="mono">#1b2531 / #5a6a7a / #8795a4</td><td class="mono">#d7e0ea / #9babbc / #6d7e8f</td><td>message · category · line number, time, counts</td></tr>
+      <tr><td>accent</td><td class="mono sw2"><i style="background:#0078d7"></i>#0078d7</td><td class="mono sw2"><i style="background:#4da3e8"></i>#4da3e8</td><td>selection tint, focus, command prefix, tabs</td></tr>
+      <tr><td>pin</td><td class="mono sw2"><i style="background:#e8c34a"></i>#e8c34a</td><td class="mono sw2"><i style="background:#e8c34a"></i>#e8c34a</td><td>pinned-row dot</td></tr>
+      <tr><td>CRITICAL</td><td class="mono sw2"><i style="background:#a01423"></i>#a01423</td><td class="mono sw2"><i style="background:#ff7b72"></i>#ff7b72</td><td>whole line, bold</td></tr>
+      <tr><td>ERROR</td><td class="mono sw2"><i style="background:#c02f2f"></i>#c02f2f</td><td class="mono sw2"><i style="background:#f26d6d"></i>#f26d6d</td><td>whole line</td></tr>
+      <tr><td>WARNING</td><td class="mono sw2"><i style="background:#8a6d00"></i>#8a6d00</td><td class="mono sw2"><i style="background:#d9b13b"></i>#d9b13b</td><td>whole line</td></tr>
+      <tr><td>MSG</td><td class="mono sw2"><i style="background:#1b2531"></i>ink</td><td class="mono sw2"><i style="background:#d7e0ea"></i>ink</td><td>whole line, default</td></tr>
+      <tr><td>DEBUG</td><td class="mono sw2"><i style="background:#7450a8"></i>#7450a8</td><td class="mono sw2"><i style="background:#b18cf5"></i>#b18cf5</td><td>whole line</td></tr>
+      <tr><td>TRACE</td><td class="mono sw2"><i style="background:#1d7a3f"></i>#1d7a3f</td><td class="mono sw2"><i style="background:#5fc98a"></i>#5fc98a</td><td>whole line</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 5. rationale ============ -->
+<section id="s5">
+  <h2>Rationale</h2>
+  <p class="note">What the design commits to, and why.</p>
+  <ul style="max-width:80ch;color:var(--muted);font-size:13px">
+    <li><strong>The table is the app.</strong> Chrome is two hairline bars (30 px + 38 px); Message gets every
+    remaining pixel. No tabs, no ribbon, no panel above the logs — ever.</li>
+    <li><strong>The panel is furniture, not a mode.</strong> The Categories sidebar stands open, docked to the
+    right edge (§10), and hides only by demand — <kbd>Ctrl+B</kbd>; its 220 px are fixed, Message flexes around it.</li>
+    <li><strong>Color speaks only where data speaks.</strong> Neutrals are cool-slate and quiet; the only
+    saturated color on a default screen is level tint and the accent selection.</li>
+    <li><strong>Whole-line level coloring</strong> (§3.1) instead of a level cell: one glance down the edge of the
+    screen shows the error distribution, and no column width is wasted on it.</li>
+    <li><strong>Pin = gold dot, highlight = translucent behind spans</strong> (§9): both survive at 6.4 M rows
+    because they cost no layout.</li>
+    <li><strong>Chrome text in the system sans, data in IBM Plex Mono</strong> — the split is visible at a glance:
+    anything you read from the log file is mono, anything the app itself says is sans.</li>
+    <li><strong>Density over comfort.</strong> Row is 23 px (glyph height + 6 px, §4); zebra striping is faint and
+    disappears on hover/selection, so scanning stays primary.</li>
+  </ul>
+</section>
+
+<footer style="max-width:1180px;margin:26px auto 0;border-top:1px solid var(--border);padding-top:16px;color:var(--dim);font-size:12px">
+  Log Viewer UI design · reference mockups · synthetic log content, not from test files.
+</footer>
+
+</main>
+
+<script>
+  try {
+    var group = document.querySelector('.seg');
+    var btns = { 't-auto': null, 't-light': 'light', 't-dark': 'dark' };
+    group.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      Object.keys(btns).forEach(function (id) { document.getElementById(id).classList.toggle('on', id === b.id); });
+      var v = btns[b.id];
+      if (v) document.documentElement.setAttribute('data-theme', v);
+      else document.documentElement.removeAttribute('data-theme');
+    });
+  } catch (e) { /* theme toggle is a preview convenience; the page renders without it */ }
+</script>

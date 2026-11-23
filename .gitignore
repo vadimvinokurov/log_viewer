@@ -9,3 +9,11 @@ test_logs/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Build artifacts / dependencies
+node_modules/
+ui/dist/
+target/
+
+# Playwright MCP artifacts
+.playwright-mcp/

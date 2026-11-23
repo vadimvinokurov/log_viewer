@@ -73,3 +73,5 @@
 
 export:
     auto: true
+validation:
+    on-create: warn

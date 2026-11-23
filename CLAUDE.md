@@ -1,14 +1,57 @@
 # CLAUDE.md
 
-## Правила
+## Rules
 
-1. **Папка `test_logs/` — реальные логи для тестов.**
-   - Не публиковать в git.
-   - Не писать информацию из этих логов в README, доки, команды и любые другие файлы.
-   - Назначение — только для открытия при тестировании приложения.
+1. **The `test_logs/` folder contains real logs used for testing.**
+   - Never publish it to git.
+   - Never copy any information from these logs into README, docs, commit messages, or any other files.
+   - Its only purpose is being opened by the app during manual testing.
+   - Exception (user-confirmed): `docs/FUNCTIONAL_SPEC.html` stays in Russian, and the fact that `test_logs/` holds sample files of both log formats is documented there.
 
-2. Документация проекта — `docs/FUNCTIONAL_SPEC.html` (функциональная спецификация).
+2. **All information about the project lives in `docs/`** — look there first before asking or exploring elsewhere. Current contents: `docs/FUNCTIONAL_SPEC.html` (the functional specification, in Russian by decision of the owner), `docs/UI_DESIGN.html`, `docs/STACK.md`, `docs/PIPELINE.md`.
 
+3. **Use the installed skills, always.** Before any coding session, check the skill list and invoke what applies: `/vvv-claude-kit:building-testable-apps` for any new code, `/superpowers:test-driven-development` for any code, `/vvv-claude-kit:ui-development` for any UI work. Do not skip them because a task looks small — do not rely on memory of their contents; invoke them.
+
+4. **Language.** Always talk to me in Russian. Keep all project files — docs, README, code
+   comments, commits, issues, etc. — in English. Exception: `docs/FUNCTIONAL_SPEC.html`
+   stays Russian (see rule 2).
+
+## Workflow
+
+Three storage roles:
+
+| Storage | Holds |
+|---|---|
+| `docs/FUNCTIONAL_SPEC.html` | Stable truth about app behavior (owner reads it; never paraphrase it into tasks — reference sections, e.g. "§3") |
+| `docs/notes/*.md` | Temporary reasoning: option comparisons, diagrams, discarded ideas |
+| beads (`bd`) | The work plan: epics → tasks, with concrete actions and pseudocode inside the task |
+
+Beads structure:
+
+- **Epic = one subsystem** (parsing, matching, table, filtering, search, highlights,
+  categories, levels, pins, cmdline, appshell, settings, perf).
+- **Task = one work session.** Self-contained: a session picking it up needs no prior
+  conversation. Required blocks in the description: `[Spec ref]` (sections, no duplication),
+  `[Actions]` (numbered concrete steps), `[Pseudocode]` (solution skeleton), `[Acceptance]`
+  (verifiable criteria — commands/runs, not vibes). Bigger than one session → decompose
+  with `--parent=<task>`, don't grow the description.
+- Set dependencies with `bd dep add` so `bd ready` shows real next work.
+
+Session loop:
+
+```
+bd ready                 → what is unblocked
+bd update <id> --claim   → claim it
+<code + tests>           → read the spec, don't rewrite it for the task
+bd close <id>            → only after [Acceptance] actually passes
+bd remember "<insight>"  → for anything future sessions must not lose
+```
+
+Acceptance criteria reference `test_logs/` real files wherever possible (numbers and
+shapes, never contents — rule 1). Enable `bd config set validation.on-create warn` so
+empty tasks can't slip in. Notes lifecycle: `notes/*.md` is a draft → conclusion goes to
+the task → final decision recorded in `--design`; put a "resolution: <id>" line at the top
+of a superseded note.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
