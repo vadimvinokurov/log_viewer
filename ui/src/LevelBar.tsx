@@ -90,8 +90,11 @@ export function LevelBar(props: LevelBarProps): ReactElement {
             style={{
               ...BTN,
               color: colors.text,
-              // Inactive levels dim with a strikethrough count (§11).
-              opacity: enabled ? undefined : 0.45,
+              // Inactive levels dim (design .lv.off: opacity .38) and
+              // strike through both the caption and the count.
+              textDecoration: enabled ? undefined : "line-through",
+              textDecorationThickness: "1px",
+              opacity: enabled ? undefined : 0.38,
               fontWeight: level === "critical" ? 600 : BTN.fontWeight,
             }}
           >

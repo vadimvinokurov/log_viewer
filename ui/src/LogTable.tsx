@@ -148,7 +148,7 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
           return (
             <div
               key={vi.key}
-              className={`row${row ? ` lvl-${row.level}` : ""}`}
+              className={`row${vi.index % 2 === 1 ? " zebra" : ""}${row ? ` lvl-${row.level}` : ""}`}
               style={{
                 position: "absolute",
                 transform: `translateY(${vi.start + ROW_HEIGHT_PX}px)`,

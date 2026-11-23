@@ -7,6 +7,7 @@ import { console_ } from "./uiConsole";
 import { ipc } from "./ipcClient";
 import { installHeadlessConsole } from "./headless";
 import { LogTable } from "./LogTable";
+import { EmptyState } from "./EmptyState";
 import DevShowcase from "./devShowcase";
 
 function lastPathSegment(path: string): string {
@@ -80,7 +81,7 @@ export default function App() {
           />
         ) : (
           <div className="empty-state">
-            <p>Drop a log file here or click Open</p>
+            <EmptyState />
           </div>
         )}
       </main>

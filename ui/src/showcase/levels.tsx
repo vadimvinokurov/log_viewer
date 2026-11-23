@@ -39,6 +39,9 @@ const withOff = (off: Level[]): EnabledLevels => {
 const noToggle = (_level: Level): void => {};
 
 export const levelsShowcase: Record<string, React.ReactNode> = {
+  // The canonical mock state (UI_DESIGN "Main window"): WARNING toggled off -
+  // dimmed with a strikethrough count; the design oracle compares this one.
+  "warning-off": <LevelBar counts={MIXED_COUNTS} enabled={withOff(["warning"])} onToggle={noToggle} />,
   default: <LevelBar counts={MIXED_COUNTS} enabled={ALL_ENABLED} onToggle={noToggle} />,
   off: (
     <LevelBar counts={MIXED_COUNTS} enabled={withOff(["warning", "debug"])} onToggle={noToggle} />

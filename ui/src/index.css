@@ -78,13 +78,38 @@ body {
   min-height: 0;
 }
 
-/* Empty state, §2 (design: "Empty state — before any file"). */
+/* Empty state, §2 (design: "Empty state — before any file"): dashed
+   drop-target box with the primary line and the hint under it. */
 .empty-state {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
+  padding: 24px;
+}
+
+.empty-drop {
+  /* Viewport-based width: flex galleries shrink-wrap block children. */
+  width: min(1146px, calc(100vw - 48px));
+  border: 1.5px dashed var(--border-strong, #33445a);
+  border-radius: 12px;
+  padding: 54px 20px;
+  text-align: center;
+  background: var(--surface);
+}
+
+.empty-big {
+  font-family: var(--font-data);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.empty-small {
+  color: var(--dim);
+  font-size: 12px;
+  margin-top: 9px;
 }
 
 /* Dev-only component gallery (?show=<name>). */
@@ -203,6 +228,20 @@ body {
   position: absolute;
   left: 0;
   top: 0;
+}
+
+/* Zebra striping on even rows only; faint, gone on hover/selection (design:
+   "density over comfort... disappears on hover/selection"). */
+.row.zebra {
+  background: color-mix(in srgb, var(--chrome) 35%, var(--surface));
+}
+
+.row.zebra:hover {
+  background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface));
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface));
 }
 
 /* Absolutely positioned rows do not grow the scroll area themselves; the
