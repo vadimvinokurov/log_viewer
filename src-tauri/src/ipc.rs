@@ -108,7 +108,7 @@ pub fn to_load_result(model: &FileModel, load_ms: u32) -> LoadResult {
         count: model.level_count(level) as u32,
       })
       .collect(),
-    load_ms: load_ms,
+    load_ms,
   }
 }
 

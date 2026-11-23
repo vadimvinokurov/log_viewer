@@ -45,14 +45,25 @@ Claim tasks in the main session before spawning agents.
 
 ## 5. UI work
 
-- Visual acceptance uses the app's own page rendered by a headless browser
-  (Playwright against the dev server with Tauri IPC stubbed). OS screen capture is
-  not acceptance evidence (it carries foreign windows and is non-deterministic); a
-  live-window check stays for what a page cannot show (titlebar, min-clamps,
-  real window size).
-- After any visible UI change: whole-window before/after shots plus a verbal diff.
-- Decision states (empty / loading / loaded / error) are designed before polish;
-  look for existing parts before writing new ones; design notes in `design.md`.
+- **Text RPC first (rule 6)**: every interactive capability is reachable
+  without a window through the app's own text interface - `window.__headless`
+  (state snapshots + actions, see `ui/src/headless.ts`). The visual harness
+  and component verification use it, never DOM poking in ad-hoc scripts.
+- **Visual acceptance is a committed, repeatable harness (rules 6/7)**:
+  `npm run e2e` (ui/e2e/render.mjs) builds the app, serves `dist` itself,
+  renders each declared state (empty / loaded / loaded-scrolled / error)
+  through system Chrome with the IPC stubbed, screenshots to PNG and compares
+  against committed goldens (ui/e2e/goldens, pixelmatch threshold 0.5%).
+  New UI states must be added to the harness and get a golden before their
+  task closes; visual changes re-baseline goldens explicitly (`--update-goldens`)
+  with a verbal before/after diff.
+- OS screen capture is not acceptance evidence; a live-window check stays
+  for what the harness cannot show (titlebar, min-clamps, real window size).
+- Decision states (empty / loading / loaded / error) are designed before
+  polish; look for existing parts before writing new ones; design notes in
+  `design.md`.
+- The UI is a thin layer: all logic lives in pure modules (state.ts, table.ts,
+  uiConsole.ts) tested with vitest; components only wire IPC + store to markup.
 
 ## 6. IPC layer (schema-driven commands)
 

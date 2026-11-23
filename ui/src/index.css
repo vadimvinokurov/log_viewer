@@ -19,7 +19,7 @@
   --trace: #1d7a3f;
 
   --font-chrome: system-ui, sans-serif;
-  --font-data: "IBM Plex Mono", ui-monospace, monospace;
+  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,9 +44,13 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-chrome);
@@ -56,20 +60,22 @@ body {
 #root {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100%;
 }
 
 .app {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  /* A fixed app height is what traps the table scroll inside the window. */
+  height: 100%;
 }
 
 .content {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0;
 }
 
 /* Empty state, §2 (design: "Empty state — before any file"). */
@@ -81,17 +87,7 @@ body {
   color: var(--muted);
 }
 
-.loaded-stub {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--muted);
-  font-family: var(--font-data);
-}
-
-/* Bottom bar, 38 px, §UI design "Main window". */
+/* Bottom bar, 38 px (UI design "Main window"). */
 .bottom-bar {
   height: 38px;
   flex: none;
@@ -121,6 +117,15 @@ body {
   opacity: 0.45;
 }
 
+.file-name {
+  font-size: 12px;
+  color: var(--ink);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status {
   margin-left: 10px;
   font-size: 12px;
@@ -132,4 +137,123 @@ body {
   margin-left: auto;
   font-size: 12px;
   color: var(--error);
+}
+
+/* ------------------------------------------------------------- table (§4) */
+
+.table-scroll {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  background: var(--surface);
+}
+
+.table-scroll::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb {
+  background: var(--dim);
+  border-radius: 5px;
+}
+
+.table-header,
+.row {
+  display: grid;
+  grid-template-columns: 50px 110px 150px minmax(320px, 1fr);
+  align-items: center;
+  line-height: 23px;
+  height: 23px;
+  white-space: pre;
+}
+
+.table-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--chrome-2);
+  color: var(--muted);
+  font-family: var(--font-chrome);
+  font-size: 12px;
+  user-select: none;
+  min-width: 830px;
+}
+
+.row {
+  min-width: 830px;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* Absolutely positioned rows do not grow the scroll area themselves; the
+   inner layer carries the width and anchors them (`position: relative`). */
+.table-inner {
+  position: relative;
+  min-width: 830px;
+}
+
+.cell {
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: pre;
+}
+
+.cell-line {
+  text-align: right;
+  padding-right: 9px;
+  color: var(--dim);
+}
+
+.cell-time {
+  color: var(--dim);
+}
+
+.cell-category {
+  color: var(--muted);
+}
+
+.cell-message {
+  color: var(--ink);
+  padding-left: 6px;
+}
+
+/* Whole-row level coloring (§3.1): every cell takes the level color. */
+.row.lvl-critical > .cell,
+.row.lvl-error > .cell,
+.row.lvl-warning > .cell,
+.row.lvl-debug > .cell,
+.row.lvl-trace > .cell {
+  color: var(--level);
+}
+
+.row.lvl-critical {
+  --level: var(--critical);
+  font-weight: 600;
+}
+
+.row.lvl-error {
+  --level: var(--error);
+}
+
+.row.lvl-warning {
+  --level: var(--warning);
+}
+
+.row.lvl-debug {
+  --level: var(--debug);
+}
+
+.row.lvl-trace {
+  --level: var(--trace);
+}
+
+/* MSG rows keep the neutral design colors (§3.1: debug = ink, msg = default);
+   debug rows carry the debug color, so no rule is needed for .lvl-msg. */
+.row.lvl-msg > .cell {
+  color: inherit;
 }

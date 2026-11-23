@@ -12,7 +12,16 @@
 
 3. **Use the installed skills, always.** Before any coding session, check the skill list and invoke what applies: `/vvv-claude-kit:building-testable-apps` for any new code, `/superpowers:test-driven-development` for any code, `/vvv-claude-kit:ui-development` for any UI work. Do not skip them because a task looks small — do not rely on memory of their contents; invoke them.
 
-4. **Language.** Always talk to me in Russian. Keep all project files — docs, README, code
+4. **`building-testable-apps` rules apply in full, not selectively.** (Owner's feedback, 2026-11-24 — invoke the skill and re-check this list before closing any code or UI task.)
+   - The UI is a thin layer: every decision is logic in a pure module with vitest tests; components only wire IPC + store to markup.
+   - Text RPC: the app exposes `window.__headless` (state snapshots + actions); harnesses drive it — no ad-hoc DOM poking, no one-off `evaluate` scripts.
+   - Visual acceptance = render-to-PNG via the committed harness (`ui/e2e/render.mjs`, `npm run e2e`) with committed golden PNGs per UI state; pixel-diff against goldens, thresholds and re-baselining documented in `docs/PIPELINE.md` §5. Ad-hoc OS screenshots are never acceptance evidence.
+   - Stub contracts mirror the raw IPC shapes exactly; normalization lives in exactly one place (the IPC adapter).
+   - Headless testing covers state snapshots *and* rendered output of every UI state before its task closes.
+
+5. **Headless-first UI development; live check at milestones.** (Owner's feedback, 2026-11-24.) All UI development and tests run headless: unit logic in vitest, states and interactions through `window.__headless`, visuals through the committed render-to-PNG harness (`npm run e2e`). At the end of an epic or milestone, verify the real Tauri window under live conditions — real `test_logs/` file through the Open flow, real webview — with an automated driver where possible (WebDriver/tauri-driver or equivalent) so the agent confirms reality itself without asking the owner; a fully manual owner confirmation is the last resort. A milestone is not complete without its live check.
+
+6. **Language.** Always talk to me in Russian. Keep all project files — docs, README, code
    comments, commits, issues, etc. — in English. Exception: `docs/FUNCTIONAL_SPEC.html`
    stays Russian (see rule 2).
 

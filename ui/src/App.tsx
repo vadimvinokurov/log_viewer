@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { appReducer, initialAppState } from "./state";
+import {
+  useCallback,
+  useEffect,
+  useSyncExternalStore,
+} from "react";
+import { console_ } from "./uiConsole";
 import { ipc } from "./ipcClient";
-
-function parentDir(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i > 0 ? path.slice(0, i) : path;
-}
+import { installHeadlessConsole } from "./headless";
+import { LogTable } from "./LogTable";
 
 function lastPathSegment(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), 0);
@@ -14,117 +14,88 @@ function lastPathSegment(path: string): string {
 }
 
 /**
- * Shell for the open/load pipeline (FUNCTIONAL_SPEC §2, §2.1; UI design:
- * 38-px bottom bar). The table lands with qt7.1; until then a loaded file
- * shows a line-count stub so the pipeline is verifiable end to end.
+ * Shell (FUNCTIONAL_SPEC §2, §2.1; UI design: 38-px bottom bar). State and
+ * actions flow through the uiConsole store, which is also the headless text
+ * interface (installHeadlessConsole) - one reducer, two front doors.
  */
 export default function App() {
-  const [state, dispatch] = useReducer(appReducer, undefined, initialAppState);
-  const [version, setVersion] = useState(0); // reload re-runs on demand
+  const state = useSyncExternalStore(console_.subscribe, console_.getState);
   const busy = state.loadingFile !== null;
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const loadPath = useCallback(
-    async (path: string) => {
-      dispatch({ kind: "load-request", path });
-      try {
-        const load = await ipc().loadFile(path);
-        dispatch({ kind: "load-success", load, fileName: lastPathSegment(path) });
-        dispatch({ kind: "remember-dialog-dir", dir: parentDir(path) });
-      } catch (e) {
-        dispatch({ kind: "load-error", message: String(e) });
-      }
-    },
-    [],
-  );
+  useEffect(() => installHeadlessConsole(), []);
 
   const openDialogAndLoad = useCallback(async () => {
-    const file = await openDialog({
-      directory: false,
-      multiple: false,
-      defaultPath: state.lastDir || undefined,
-    });
-    if (typeof file === "string") {
-      await loadPath(file);
+    const file = await ipc().pickFile(state.lastDir);
+    if (file) {
+      void console_.load(file);
     }
-  }, [state.lastDir, loadPath]);
+  }, [state.lastDir]);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(() => {
     if (state.file && !busy) {
       // §2.1: file is re-read from disk; kept state (filters, levels,
-      // categories by name, highlights) lives with later epics and is not
-      // cleared here; pins and search are cleared by their own owners.
-      setVersion((v) => v + 1);
-      await loadPath(state.file.path);
+      // categories by name, highlights) lives with later epics.
+      void console_.load(state.file.path);
     }
-  }, [state.file, state.loadingFile, loadPath]);
+  }, [state.file, busy]);
 
-  // Drag-and-drop: first dropped file wins (§2).
+  // Drag-and-drop: first dropped file wins (§2). Tauri exposes real paths
+  // through the drag-drop event, not the DOM drop event.
   useEffect(() => {
-    const onDrop = (e: DragEvent) => {
-      e.preventDefault();
-      const first = e.dataTransfer?.files?.[0];
-      if (first) {
-        // Web browsers hide the real path; Tauri does expose it via FS APIs.
-        // The dialog flow is the primary path; DnD resolves the path via the
-        // webUtils API if available.
-        const w = window as unknown as { __TAURI_INTERNALS__?: unknown };
-        if (w.__TAURI_INTERNALS__) {
-          import("@tauri-apps/api/webview")
-            .then(({ getCurrentWebview }) => {
-              const webview = getCurrentWebview();
-              return webview.onDragDropEvent((event) => {
-                if (event.payload.type === "drop") {
-                  void loadPath(event.payload.paths[0] ?? "");
-                }
-              });
-            })
-            .catch(() => undefined);
-        }
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        const webview = getCurrentWebview();
+        unlisten = await webview.onDragDropEvent((event) => {
+          if (event.payload.type === "drop") {
+            const path = event.payload.paths[0];
+            if (path) {
+              void console_.load(path);
+            }
+          }
+        });
+      } catch {
+        // Outside a real webview (headless visual runs): drag-drop is absent.
       }
-    };
-    window.addEventListener("drop", onDrop);
-    return () => window.removeEventListener("drop", onDrop);
-  }, [loadPath]);
+    })();
+    return () => unlisten?.();
+  }, []);
 
-  const status = useMemo(() => {
-    if (busy) {
-      return `loading ${lastPathSegment(state.loadingFile ?? "")}…`;
-    }
-    if (state.file) {
-      const { lineCount, format, loadMs } = state.file.load;
-      return `${state.file.name} · ${format} · ${lineCount.toLocaleString()} lines · ${loadMs} ms`;
-    }
-    return null;
-  }, [busy, state.file, state.loadingFile ]);
+  const status = (() => {
+    return busy ? `loading ${lastPathSegment(state.loadingFile ?? "")}…` : null;
+  })();
 
   return (
     <div className="app">
       <main className="content">
-        {state.screen === "empty" ? (
-          <div className="empty-state" onDragOver={(e) => e.preventDefault()}>
-            <p>Drop a log file here or click Open</p>
-          </div>
+        {state.file ? (
+          <LogTable
+            ref={(h) => console_.setTableHandle(h)}
+            rowCount={state.file.load.lineCount}
+          />
         ) : (
-          <div className="loaded-stub">
-            {/* Placeholder until the table epic lands (qt7.1). Reload is
-                re-issued with the version counter so §2.1 semantics stay
-                observable. */}
-            {`v${version} · ${status}`}
+          <div className="empty-state">
+            <p>Drop a log file here or click Open</p>
           </div>
         )}
       </main>
       <footer className="bottom-bar">
+        <span className="file-name">{state.file?.name}</span>
         <button className="bar-btn" onClick={openDialogAndLoad} disabled={busy}>
           Open
         </button>
         <button className="bar-btn" onClick={reload} disabled={busy || !state.file}>
           Reload
         </button>
-        {status && <span className="status">{status}</span>}
+        {busy && <span className="status">{status}</span>}
+        {state.file && !busy && (
+          <span className="status">
+            {state.file.name} · {state.file.load.format} ·{" "}
+            {state.file.load.lineCount.toLocaleString("en-US")} lines · {state.file.load.loadMs} ms
+          </span>
+        )}
         {state.error && <span className="error">{state.error}</span>}
-        {/* Hidden native input is unused; the dialog plugin owns Open. */}
-        <input ref={fileInputRef} type="file" hidden readOnly />
       </footer>
     </div>
   );
