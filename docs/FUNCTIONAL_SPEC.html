@@ -1,0 +1,738 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Спецификация Log Viewer</title>
+<!--
+  Design plan (tokens):
+  Color — cool paper neutrals biased toward the app's own accent #0078D7; card/ink/muted/border, card-2 background for table heads.
+  Type — IBM Plex Sans (body, supports Cyrillic), IBM Plex Mono (commands, log lines, tables, line numbers).
+  Layout — sticky TOC rail + 65ch document column; tables and code in overflow-x scrollers; grids stack at phone width.
+-->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --card-2: #eef2f7;
+    --ink: #17222e;
+    --muted: #5b6b7c;
+    --faint: #8b99a8;
+    --accent: #0078d7;
+    --on-accent: #ffffff;
+    --border: #dbe2ea;
+    --border-strong: #c3cdd8;    --ok: #1a7f37;
+    --code-bg: #e9eef4;
+    --shadow: 0 1px 2px rgba(23,34,46,.05);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10171d;
+      --card: #18212a;
+      --card-2: #131c25;
+      --ink: #dbe4ee;
+      --muted: #93a3b3;
+      --faint: #6c7d8e;
+      --accent: #49a3e8;
+      --on-accent: #0b1620;
+      --border: #26323e;
+      --border-strong: #34424f;      --ok: #4cc470;
+      --code-bg: #0c1319;
+      --shadow: 0 1px 2px rgba(0,0,0,.3);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10171d;
+    --card: #18212a;
+    --card-2: #131c25;
+    --ink: #dbe4ee;
+    --muted: #93a3b3;
+    --faint: #6c7d8e;
+    --accent: #49a3e8;
+    --on-accent: #0b1620;
+    --border: #26323e;
+    --border-strong: #34424f;    --ok: #4cc470;
+    --code-bg: #0c1319;
+    --shadow: 0 1px 2px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 15px/1.62 "IBM Plex Sans", system-ui, sans-serif;
+    padding-block: 0 72px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .layout {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: 48px;
+    align-items: start;
+  }
+
+  /* ---------- TOC rail ---------- */
+  nav.toc { position: sticky; top: env(safe-area-inset-top, 0px); padding-block: 36px; max-height: 100vh; overflow-y: auto; }
+  nav.toc .toc-head {
+    font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 12px;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--border); }
+  nav.toc a {
+    display: block; padding: 3px 0 3px 14px; margin-left: -1px;
+    border-left: 2px solid transparent;
+    color: var(--muted); text-decoration: none; font-size: 13px; line-height: 1.45;
+  }
+  nav.toc a:hover { color: var(--ink); }
+  nav.toc a.on { border-left-color: var(--accent); color: var(--accent); font-weight: 500; }
+  nav.toc a.sub { padding-left: 26px; font-size: 12px; }
+  details.toc-m { display: none; }
+
+  /* ---------- document header ---------- */
+  header.doc { padding-block: 44px 26px; min-width: 0; }
+  .eyebrow {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--faint);
+  }
+  .eyebrow .ver { color: var(--accent); letter-spacing: .06em; }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.015em; margin: 10px 0 6px; text-wrap: balance; }
+  .lead { max-width: 66ch; color: var(--muted); font-size: 15.5px; }
+  .lead strong { color: var(--ink); }
+
+  /* sample log line, colored the way the app paints it */
+  .logline {
+    margin-top: 22px; padding: 12px 16px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--card); box-shadow: var(--shadow);
+    font: 500 13px/1.5 "IBM Plex Mono", ui-monospace, monospace;
+    overflow-x: auto; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .logline .t { color: var(--faint); }
+  .logline .c { color: var(--accent); }
+  .logline .lvl { color: #6a7c04; font-weight: 600; }
+  .logline .m { color: var(--ink); }
+  .logline-cap { margin-top: 8px; font-size: 12px; color: var(--faint); }
+
+  /* ---------- sections ---------- */
+  section { border-top: 1px solid var(--border); padding-block: 30px 6px; min-width: 0; }
+  h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 4px; text-wrap: balance; }
+  h2 .num { color: var(--accent); font-weight: 600; margin-right: 10px; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 15.5px; font-weight: 600; margin: 24px 0 8px; }
+  .doc-body { max-width: 74ch; }
+  section p, section li, td, th { max-width: none; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 10px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--faint); }
+  strong { font-weight: 600; }
+  em { font-style: italic; }
+
+  code, kbd {
+    font: 500 12.5px/1.4 "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--code-bg); border-radius: 5px; padding: 1.5px 6px;
+    white-space: nowrap; max-width: 100%;
+  }
+  code.wide { white-space: normal; overflow-wrap: anywhere; }
+  kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; background: var(--card); padding: 1px 7px; }
+
+  /* finder mock (§8) */
+  .findbar { display: flex; align-items: center; gap: 6px; margin: 14px 0;
+    padding: 5px 8px 5px 10px; border: 1px solid var(--border-strong); border-radius: 10px;
+    background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.12); max-width: 520px;
+    font-size: 12.5px; }
+  .findbar .fb-field { flex: 1 1 auto; min-width: 0; padding: 3px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--ink); font: 500 12.5px/1.4 "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; overflow-x: auto; }
+  .findbar .fb-count { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .findbar .fb-btn, .findbar .fb-toggle { flex: none; padding: 2px 7px; font-size: 11.5px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--muted); white-space: nowrap; }
+  .findbar .fb-toggle.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .findbar .fb-x { flex: none; color: var(--faint); padding: 4px 6px; }
+
+  /* ---------- tables ---------- */
+  .tbl { overflow-x: auto; margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 480px; }
+  thead th {
+    text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--faint); background: var(--card-2); padding: 9px 14px; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody td { padding: 8px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) { background: color-mix(in srgb, var(--card-2) 45%, var(--card)); }
+  td.num, .num-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td code { white-space: nowrap; }
+
+  /* ---------- notes & callouts ---------- */
+  .note {
+    margin: 14px 0; padding: 12px 16px; border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+    background: var(--card); font-size: 14px; box-shadow: var(--shadow);
+  }
+  .note p { margin: 4px 0; }
+
+  .formula {
+    margin: 14px 0; padding: 12px 16px;
+    background: var(--code-bg); border-radius: 8px; border: 1px dashed var(--border-strong);
+    font: 500 13px/1.6 "IBM Plex Mono", ui-monospace, monospace; overflow-x: auto; white-space: nowrap;
+  }
+  .formula b { color: var(--accent); font-weight: 600; }
+  .formula small { color: var(--faint); font-size: 11.5px; }
+
+  pre.blocks { margin: 14px 0; }
+  .fmt { margin: 12px 0; }
+  .fmt .fmt-name { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .fmt-name .abbr { color: var(--accent); }
+  pre {
+    margin: 0; padding: 10px 14px; background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 8px; overflow-x: auto;
+    font: 500 13px/1.55 "IBM Plex Mono", ui-monospace, monospace;
+  }
+  pre .cm { color: var(--faint); }
+
+  /* mode suffix chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--card);
+    font-size: 13px; box-shadow: var(--shadow);
+  }
+  .chip code { background: none; padding: 0; font-weight: 600; }
+
+  /* level buttons (§3.1) */
+  .levels { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .lvl-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--card);
+    font: 500 13px/1.4 "IBM Plex Sans", sans-serif; box-shadow: var(--shadow);
+  }
+  .lvl-btn .cnt { color: var(--faint); font: 500 12px/1 "IBM Plex Mono", monospace; }
+
+  /* highlight palette swatches (§9) */
+  .palette { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .sw {
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px 4px 7px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--card); font-size: 12.5px;
+  }
+  .sw i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); display: inline-block; }
+
+  /* columns spec (§4) */
+  .cols-spec { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 12px 0; }
+  .colcard { border: 1px solid var(--border); border-radius: 8px; background: var(--card); padding: 10px 12px; box-shadow: var(--shadow); }
+  .colcard b { display: block; font: 600 13px/1.3 "IBM Plex Sans", sans-serif; }
+  .colcard span { font: 500 12px/1.4 "IBM Plex Mono", monospace; color: var(--accent); }
+
+  footer { border-top: 1px solid var(--border); margin-top: 8px; padding-block: 22px 0; color: var(--faint); font-size: 12.5px; }
+
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    nav.toc { display: none; }
+    details.toc-m {
+      display: block; margin-block: 4px 8px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--card); box-shadow: var(--shadow);
+    }
+    details.toc-m summary {
+      cursor: pointer; padding: 12px 16px; font-size: 12px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase; color: var(--muted); list-style: none;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    details.toc-m summary::after { content: "▾"; color: var(--faint); }
+    details.toc-m[open] summary::after { content: "▴"; }
+    details.toc-m ol { list-style: none; margin: 0; padding: 0 16px 12px; column-gap: 20px; }
+    details.toc-m ol { columns: 2; }
+    details.toc-m a { display: block; padding: 4px 0; color: var(--muted); text-decoration: none; font-size: 13px; }
+    details.toc-m a.sub { padding-left: 14px; font-size: 12px; }
+    details.toc-m a:active { color: var(--accent); }
+    h1 { font-size: 27px; }
+    header.doc { padding-block: 30px 20px; }
+  }
+  a { color: var(--accent); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+</style>
+
+<div class="layout">
+
+<!-- ============ TOC ============ -->
+<nav class="toc" aria-label="Содержание">
+  <div class="toc-head">Содержание</div>
+  <ol>
+    <li><a href="#s1">1. Общее описание</a></li>
+    <li><a href="#s2">2. Открытие файла</a></li>
+    <li><a class="sub" href="#s2-1">2.1. Перезагрузка</a></li>
+    <li><a href="#s3">3. Форматы и разбор</a></li>
+    <li><a class="sub" href="#s3-1">3.1. Уровни логирования</a></li>
+    <li><a href="#s4">4. Главная таблица</a></li>
+    <li><a href="#s5">5. Режимы сопоставления</a></li>
+    <li><a href="#s6">6. Simple query</a></li>
+    <li><a href="#s7">7. Фильтрация</a></li>
+    <li><a href="#s8">8. Поиск</a></li>
+    <li><a href="#s9">9. Подсветка</a></li>
+    <li><a href="#s10">10. Категории</a></li>
+    <li><a class="sub" href="#s10-1">10.1. Списки панели</a></li>
+    <li><a href="#s11">11. Уровни</a></li>
+    <li><a class="sub" href="#s11-1">11.1. Нижняя панель</a></li>
+    <li><a href="#s12">12. Пины</a></li>
+    <li><a href="#s13">13. Командная строка</a></li>
+    <li><a class="sub" href="#s13-1">13.1. Реестр команд</a></li>
+    <li><a class="sub" href="#s13-2">13.2. История</a></li>
+    <li><a href="#s14">14. Горячие клавиши</a></li>
+    <li><a href="#s15">15. Настройки</a></li>
+    <li><a href="#s16">16. Производительность</a></li>
+  </ol>
+</nav>
+
+<!-- ============ document ============ -->
+<div class="doc-body">
+
+<header class="doc">
+  <div class="eyebrow">
+    <span>Функциональная спецификация</span>
+    <span class="ver">v1.0 · 2026-11-22</span>
+  </div>
+  <h1>Log Viewer</h1>
+  <p class="lead">Документ описывает функциональность существующего приложения v2.0 — <strong>только
+  то, что оно умеет и как ведёт себя с точки зрения пользователя</strong>. Архитектура, код, стек и
+  внутренние структуры намеренно не описываются. Целевая аудитория — команда, которая будет
+  переписывать приложение с нуля на новом стеке.</p>
+  <div class="logline" role="img" aria-label="Пример разобранной строки лога">
+    <span class="t">2024-01-01T10:00:00.000</span> <span class="c">app/main</span> <span class="lvl">LOG_MSG</span> <span class="m">Starting application</span>
+  </div>
+  <p class="logline-cap">Эталонный файл: 842 МБ · 6.4 млн строк · 405 категорий</p>
+</header>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="num">1.</span>Общее описание</h2>
+  <p><strong>Log Viewer</strong> — настольное десктоп-приложение для просмотра больших текстовых
+  файлов логов. Ключевые возможности: разбор строк на колонки, скрытие строк фильтрами и по
+  категориям/уровням, цветная подсветка совпадений, поиск с навигацией, закрепление (pinning)
+  важных строк, командная строка в стиле vim, горячие клавиши.</p>
+  <p>Платформы: macOS и Windows. Одиночное окно, без мультидокументности, без сетевых функций,
+  без редактирования логов — только чтение.</p>
+  <div class="note">
+    <p><strong>Требование по объёму данных.</strong> Приложение должно «справляться» с файлом в
+    сотни мегабайт. Эталон: 842 МБ / 6.4 млн строк / 405 категорий.</p>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="num">2.</span>Открытие файла</h2>
+  <p>Открытие файла — двумя способами:</p>
+  <ol>
+    <li>кнопка «Open» в нижней панели → диалог выбора файла;</li>
+    <li>drag-and-drop файла на окно (берётся первый перетащенный файл).</li>
+  </ol>
+  <ul>
+    <li>Загрузка файла <strong>не блокирует UI</strong>: окно остаётся отзывчивым, результат применяется по завершении.</li>
+    <li>Каталог последнего открытого файла запоминается и используется как стартовый для диалога.</li>
+    <li>Несуществующий файл / ошибка чтения → сообщение об ошибке пользователю (сейчас выводится в статус-область; статус-область спроектирована в нижней панели, вывод в неё в v2.0 отключён), данные не теряются.</li>
+    <li>До загрузки файла таблица скрыта и показан пустой экран-заглушка с текстом «Drop a log file here or click Open».</li>
+  </ul>
+
+  <h3 id="s2-1">2.1. Перезагрузка файла (Ctrl+R / кнопка «Reload»)</h3>
+  <p>Файл перечитывается с диска. Поведение при перезагрузке:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Состояние</th><th>Поведение</th></tr></thead>
+    <tbody>
+      <tr><td>Активные фильтры (текстовые)</td><td>Сохраняются, пересчитываются заново</td></tr>
+      <tr><td>Включённость фильтров (on/off)</td><td>Сохраняется</td></tr>
+      <tr><td>Подсветки (highlights)</td><td>Полностью сохраняются</td></tr>
+      <tr><td>Отключённые уровни</td><td>Сохраняются</td></tr>
+      <tr><td>Отключённые категории</td><td>Восстанавливаются по имени (если категория ещё есть в файле)</td></tr>
+      <tr><td>Новые категории (появились после перезагрузки)</td><td>Включаются, если все категории включены («All» включён); иначе выключаются</td></tr>
+      <tr><td>Пины</td><td>Сбрасываются (все пины снимаются)</td></tr>
+      <tr><td>Активный поиск</td><td>Сбрасывается, панель поиска закрывается</td></tr>
+    </tbody>
+  </table></div>
+  <p>Загрузка нового файла ведёт себя так же, как перезагрузка.</p>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="num">3.</span>Форматы логов и разбор строки</h2>
+  <p>Автоматически определяются два формата (по первой непустой строке). Примеры обоих
+  форматов для проверки разбора лежат в <code>test_logs/</code>:</p>
+
+  <div class="fmt">
+    <div class="fmt-name">Формат A — <span class="abbr">«ksiva»</span></div>
+    <pre>timestamp category [LOG_LEVEL] message</pre>
+    <p>Уровень — длинное имя <code>LOG_LEVEL</code>; пишется без скобок (<code>LOG_MSG</code>) или
+    в скобках (<code>[LOG_MSG]</code>), в реальных файлах «ksiva» — без скобок. Уровень
+    необязателен: если его нет, уровень строки — MSG. Категория может отсутствовать
+    (тогда <code>uncategorized</code>).</p>
+    <p>Пример: <code>2024-01-01T10:00:00.000 app/main LOG_MSG Starting application</code></p>
+  </div>
+  <div class="fmt">
+    <div class="fmt-name">Формат B — <span class="abbr">«plain»</span></div>
+    <pre>time elapsed level_short category message</pre>
+    <p>Пять полей: первое — время суток <code>HH:MM:SS.mmm</code> (без даты), второе — elapsed
+    (при разборе отбрасывается), далее уровень, категория и сообщение.</p>
+    <p>Пример: <code>10:00:00.000 0.123 msg cfg Application started</code></p>
+  </div>
+
+  <p>Правила разбора, одинаковые по смыслу для обоих форматов:</p>
+  <ul>
+    <li>Разделитель — произвольные пробельные символы (в реальных файлах встречаются серии пробелов). Первое поле — timestamp.</li>
+    <li>Формат A: второй элемент — категория, третий — проверяется на уровень логирования.</li>
+    <li>Формат B: второе поле (elapsed) отбрасывается, третье поле — проверяется на уровень, четвёртое — категория.</li>
+    <li>Если проверяемый элемент распознан как уровень → остаток строки = сообщение.</li>
+    <li>Если элемент не распознан как уровень → уровень строки = MSG, а сам элемент и всё, что после него, считается сообщением. В реальных файлах Формата B уровень есть в каждой строке; в Формате A тег уровня пишется только для уровней кроме MSG.</li>
+    <li>Если у строки только одно поле (нет категории) → категория <code>uncategorized</code>.</li>
+    <li>Если у строки два поля (timestamp + текст) → категория <code>uncategorized</code>, уровень MSG, второе поле — сообщение.</li>
+    <li>Пустая строка → пустое сообщение, категория <code>uncategorized</code>, уровень MSG.</li>
+    <li>Timestamp отображается как время суток <code>HH:MM:SS.mmm</code> (если в timestamp есть дата через <code>T</code>, показывается только часть после <code>T</code>).</li>
+    <li>Категории иерархические: разделитель внутри имени — <code>/</code> (пример: <code>app/main/db</code>). Дерево категорий строится по этому разделителю.</li>
+  </ul>
+
+  <h3 id="s3-1">3.1. Уровни логирования</h3>
+  <p>Шесть уровней. В файле могут встречаться длинные имена (<code>LOG_MSG</code>, …) и короткие
+  коды: <code>crt</code> (CRITICAL), <code>err</code> (ERROR), <code>wrn</code> (WARNING),
+  <code>msg</code>, <code>dbg</code> (DEBUG), <code>trc</code> (TRACE).</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Уровень</th><th>Цвет текста строки (светлая тема)</th><th>Иконка кнопки</th></tr></thead>
+    <tbody>
+      <tr><td><strong>CRITICAL</strong></td><td>тёмно-красный, bold</td><td>⛔</td></tr>
+      <tr><td>ERROR</td><td>тёмно-красный</td><td>🛑</td></tr>
+      <tr><td>WARNING</td><td>тёмно-жёлтый (оливковый)</td><td>⚠️</td></tr>
+      <tr><td>MSG</td><td>основной цвет текста</td><td>ℹ️</td></tr>
+      <tr><td>DEBUG</td><td>основной цвет текста</td><td>🟪</td></tr>
+      <tr><td>TRACE</td><td>зелёный</td><td>🟩</td></tr>
+    </tbody>
+  </table></div>
+  <p>Весь текст строки окрашивается цветом уровня (не отдельная ячейка).</p>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="num">4.</span>Главная таблица</h2>
+  <div class="cols-spec">
+    <div class="colcard"><b>Line</b><span>50px</span></div>
+    <div class="colcard"><b>Time</b><span>110px</span></div>
+    <div class="colcard"><b>Category</b><span>150px</span></div>
+    <div class="colcard"><b>Message</b><span>600px</span></div>
+  </div>
+  <p>Ширины по умолчанию; заголовки колонок видны.</p>
+  <ul>
+    <li>«Line» — порядковый номер строки <strong>в исходном файле</strong> (1-based), сохраняется при скрытии строк. По нему работают <code>fn</code>, <code>hn</code>, <code>pn</code>.</li>
+    <li>Для длинных сообщений и широких колонок горизонтальная полоса прокрутки появляется только тогда, когда таблица по ширине не влезает в окно.</li>
+    <li>Горизонтальной прокрутки с тачпада нет вообще: жесты двумя пальцами и инерционные смахивания игнорируются (вертикальная прокрутка тачпадом работает как обычно).</li>
+    <li>По горизонтали прокручивать можно только мышью: наклоном колёсика — прокручивает только по горизонтали (не «уезжая» по вертикали) — и перетаскиванием самой полосы прокрутки.</li>
+    <li>Скролл к строке не должен сбивать горизонтальную позицию.</li>
+    <li>Прокрутка по пикселям (плавная), компактная высота строки (~высота глифа + 6px).</li>
+    <li>Встроенный в таблицу поиск по вводу с клавиатуры (type-ahead) отключён.</li>
+    <li>Мультивыбор строк (Ctrl/Shift-click), выбор всей строки.</li>
+    <li><strong>Копирование</strong>: <code>Copy</code> (Ctrl+C или контекстное меню) кладёт в буфер <strong>сырые строки файла как есть</strong> (не отформатированные колонки), разделённые <code>\n</code>; <code>Copy Message</code> — только содержимое колонки Message.</li>
+    <li>Отображается только поднабор строк, прошедший все фильтры (см. <a href="#s7">§7</a>); фильтрация не меняет нумерацию.</li>
+    <li>При изменении фильтров выделение сохраняется по номеру строки; вьюпорт сохраняет позицию относительно строки-якоря (таблица не «прыгает» при переключении фильтра).</li>
+  </ul>
+  <p>Контекстное меню правой кнопкой по выделенным строкам:</p>
+  <ul>
+    <li><code>Copy</code> — всегда;</li>
+    <li><code>Copy Message</code> — всегда;</li>
+    <li><code>Pin</code> / <code>Unpin</code> — по наличию незакреплённых / закреплённых среди выделенных;</li>
+    <li><code>Highlight</code> / <code>Remove highlight</code> — аналогично (для подсветки по номеру строки).</li>
+  </ul>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2><span class="num">5.</span>Режимы сопоставления (match modes)</h2>
+  <p>Каждый текстовый критерий (фильтр, подсветка, пин) задаётся паттерном и одним
+  из четырёх режимов:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Режим</th><th>Суффикс команды</th><th>Семантика</th></tr></thead>
+    <tbody>
+      <tr><td>Plain</td><td><em>(без суффикса)</em></td><td>Поиск подстроки, case-insensitive</td></tr>
+      <tr><td>Regex</td><td><code>r</code></td><td>Регулярное выражение (Python-синтаксис), case-insensitive</td></tr>
+      <tr><td>Simple query</td><td><code>s</code></td><td>Булев язык запросов, case-insensitive (см. <a href="#s6">§6</a>)</td></tr>
+      <tr><td>Line number</td><td><code>n</code></td><td>Точный номер строки (1-based)</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>Некорректный regex → критерий не матчит ничего (без падения).</li>
+    <li>Все режимы case-insensitive.</li>
+    <li>Поиск (<kbd>Ctrl+F</kbd>, <a href="#s8">§8</a>) поддерживает три режима — Plain, Regex и Simple query (тумблеры <code>Regex</code> и <code>Simple</code> в панели).</li>
+  </ul>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2><span class="num">6.</span>Язык простых запросов (Simple query)</h2>
+  <p>Булевы выражения над подстроками:</p>
+  <ul>
+    <li>Грамматика: <code>OR</code> &lt; <code>AND</code> &lt; <code>NOT</code> (приоритет NOT выше), скобки для группировки.</li>
+    <li>Термы — строки в двойных кавычках: <code>"error"</code>.</li>
+    <li>Ключевые слова <code>AND</code>, <code>OR</code>, <code>NOT</code> регистронезависимы.</li>
+  </ul>
+  <p>Примеры:</p>
+  <ul>
+    <li><code>"error" AND "timeout"</code></li>
+    <li><code>NOT "info"</code></li>
+    <li><code>("auth" OR "login") AND "failed"</code></li>
+  </ul>
+  <ul>
+    <li>Синтаксическая ошибка запроса (незакрытая кавычка/скобка, пустой терм, лишний символ) → критерий не матчит ничего; приложение не падает.</li>
+    <li>Семантика: для фильтров/поиска строка матчится, если выражение истинно на <strong>полном тексте строки</strong>; для подсветки подсвечиваются спаны всех вхождений каждого положительного терма (<code>NOT</code>-термы не подсвечиваются).</li>
+  </ul>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <h2><span class="num">7.</span>Фильтрация: совокупная семантика</h2>
+  <p>Итоговая видимость строки определяется одновременным действием четырёх независимых механизмов:</p>
+  <ol>
+    <li><strong>Текстовые фильтры</strong> (<a href="#s5">§5</a>): строка видима, если она матчит <strong>хотя бы один активный фильтр</strong> (OR). Если фильтров нет → не сужают. Фильтр «по номеру строки» (<code>fn</code>) делает видимой конкретную строку.</li>
+    <li><strong>Уровни</strong> (см. <a href="#s11">§11</a>): строка скрыта, если её уровень отключён.</li>
+    <li><strong>Категории</strong> (см. <a href="#s10">§10</a>): строка скрыта, если её категория отключена.</li>
+    <li><strong>Пины</strong> (см. <a href="#s12">§12</a>): строка, попавшая в активный пин, видима <strong>всегда</strong> — пин обходит и текстовые фильтры, и уровни, и категории.</li>
+  </ol>
+  <div class="formula">видима = (<b>текстовый_фильтр</b> <b>ИЛИ</b> нет_фильтров) <b>И</b> уровень_включён <b>И</b> категория_включена <b>ИЛИ</b> пин</div>
+  <p>Счётчики по уровням в нижней панели (<a href="#s11">§11</a>) считаются <strong>игнорируя</strong>
+  переключатели уровней (показывают, сколько строк станет видно, если включить уровень).</p>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <h2><span class="num">8.</span>Поиск</h2>
+  <ul>
+    <li>Поиск открывается горячей клавишей <kbd>Ctrl+F</kbd> — не командой из командной строки.</li>
+    <li>Панель поиска в стиле Google Chrome: компактная панель у верхнего края окна — поле ввода, компактные тумблеры режима, счётчик матчей, кнопки навигации и закрытия.</li>
+    <li>Кнопки панели:
+      <ul>
+        <li><code>Regex</code> — тумблер: включён — паттерн ищется как регулярное выражение.</li>
+        <li><code>Simple</code> — тумблер: включён — паттерн ищется как simple query (<a href="#s6">§6</a>).</li>
+        <li>Оба выключены — поиск подстроки. Тумблеры взаимоисключающие: включение одного выключает другой. Все режимы case-insensitive.</li>
+      </ul>
+    </li>
+    <li>Поиск работает <strong>только по видимым (отфильтрованным) строкам</strong>.</li>
+    <li>При старте точка отсчёта — текущая выделенная строка; находится первый матч от неё вниз. Таблица скроллится к матчу и выделяет его строку (по центру вьюпорта).</li>
+    <li>Счётчик матчей: «матч k из N»; при отсутствии матчей — «0 из 0».</li>
+    <li><code>↑</code>/<code>↓</code> (и кнопки ↑/↓ в панели) — предыдущий/следующий матч, навигация зациклена по кругу. Строки, попавшие под поиск, переключаются стрелками, пока панель открыта.</li>
+    <li>Если панель закрыта, стрелки работают как обычная навигация по таблице.</li>
+    <li><code>Esc</code> — закрыть панель поиска.</li>
+  </ul>
+  <div class="findbar" role="img" aria-label="Мокап панели поиска">
+    <span class="fb-field">"error" AND "timeout"</span>
+    <span class="fb-count">3 / 17</span>
+    <span class="fb-toggle on">Regex</span>
+    <span class="fb-toggle">Simple</span>
+    <span class="fb-btn">↓</span><span class="fb-btn">↑</span>
+    <span class="fb-x">✕</span>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <h2><span class="num">9.</span>Подсветка (Highlights)</h2>
+  <div class="chips">
+    <span class="chip"><code>h</code> plain</span>
+    <span class="chip"><code>hr</code> regex</span>
+    <span class="chip"><code>hs</code> simple</span>
+    <span class="chip"><code>hn N</code> строка целиком</span>
+  </div>
+  <ul>
+    <li>Подсветка <strong>не скрывает и не уводит строки</strong> — только раскрашивает.</li>
+    <li>При добавлении подсветке автоматически назначается цвет из палитры 10 цветов (по кругу):</li>
+  </ul>
+  <div class="palette">
+    <span class="sw"><i style="background:#e8c34a"></i>gold</span>
+    <span class="sw"><i style="background:#ff9f43"></i>orange</span>
+    <span class="sw"><i style="background:#ff7f6e"></i>coral</span>
+    <span class="sw"><i style="background:#c8b7f5"></i>lavender</span>
+    <span class="sw"><i style="background:#87ceeb"></i>sky blue</span>
+    <span class="sw"><i style="background:#98e6b8"></i>mint</span>
+    <span class="sw"><i style="background:#3fbfbf"></i>teal</span>
+    <span class="sw"><i style="background:#7fce7f"></i>green</span>
+    <span class="sw"><i style="background:#ff9ec4"></i>sunny pink</span>
+  </div>
+  <ul>
+    <li>Отрисовка: полупрозрачный прямоугольник цвета подсветки <strong>за</strong> текстом совпадения (символьные спаны), только в колонке Message. Для подсветки по номеру строки подсвечивается всё сообщение строки.</li>
+    <li>Активных подсветок может быть несколько одновременно; совпадения разных правил накладываются.</li>
+    <li>Каждая подсветка имеет чекбокс вкл/выкл (отключённая не отрисовывается) и удаляется по кнопке; смена цвета — по клику на цветную точку (системный диалог выбора цвета).</li>
+    <li><code>rmh</code> — удаляет все подсветки.</li>
+    <li>Подсветки сохраняются при перезагрузке файла (<a href="#s2-1">§2.1</a>).</li>
+  </ul>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <h2><span class="num">10.</span>Категории</h2>
+  <ul>
+    <li>Категории извлекаются автоматически при разборе; иерархия строится по <code>/</code>.</li>
+    <li>Боковая панель, вкладка «Categories»: дерево чекбоксов + счётчик строк каждой ноды <code>name (count)</code>.</li>
+    <li>Верх «All»: чекбокс, управляющий всеми категориями сразу.</li>
+    <li>Чекбоксы трёх состояний: parent показывается «частично», если часть детей включена.</li>
+    <li>Снятие/установка флага распространяется вниз на всех детей и вверх на родителей.</li>
+    <li>Отключение категории скрывает все её строки (и строки детей).</li>
+    <li>Поиск по дереву: текстовое поле фильтрует видимость нод (нода видима, если совпадает сама или любой потомок); при активном поиске дерево раскрывается целиком.</li>
+    <li>Кнопка toggle схлопывания: развернуть всё / свернуть всё (кроме корневых нод).</li>
+    <li>Состояние раскрытости нод сохраняется при перестройке дерева.</li>
+    <li>Отключённые категории переживают перезагрузку файла (по имени; <a href="#s2-1">§2.1</a>).</li>
+  </ul>
+
+  <h3 id="s10-1">10.1. Прочие списки боковой панели</h3>
+  <p>Вкладки: <strong>Categories | Filters | Highlights | Pinned</strong> (панель с вкладками,
+  сворачивается по Ctrl+B, ширину можно тянуть прижатым к ней сплиттером).</p>
+  <ul>
+    <li><strong>Filters</strong>: для каждого фильтра — чекбокс, текст команды (<code>:f pattern</code> / <code>:fr</code> / <code>:fs</code> / <code>:fn</code>), кнопка удаления ✕; выключенный элемент визуально приглушён.</li>
+    <li><strong>Highlights</strong>: то же + цветная точка (клик → выбор цвета) вместо префикса.</li>
+    <li><strong>Pinned</strong>: аналогично фильтрам.</li>
+    <li>Текст элемента отображается с обрезкой по ширине, полный текст — в тултипе.</li>
+  </ul>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <h2><span class="num">11.</span>Уровни (нижняя панель)</h2>
+  <div class="levels">
+    <span class="lvl-btn" style="border-color:#b42318;color:#b42318;font-weight:600">⛔ CRITICAL <span class="cnt">1240</span></span>
+    <span class="lvl-btn" style="border-color:#b42318;color:#b42318">🛑 ERROR <span class="cnt">863</span></span>
+    <span class="lvl-btn" style="border-color:#8a6d00;color:#8a6d00">⚠️ WARNING <span class="cnt">12&nbsp;044</span></span>
+    <span class="lvl-btn" style="color:var(--ink)">ℹ️ MSG <span class="cnt">5.8M</span></span>
+    <span class="lvl-btn" style="color:var(--ink)">🟪 DEBUG <span class="cnt">421k</span></span>
+    <span class="lvl-btn" style="border-color:#1a7f37;color:#1a7f37">🟩 TRACE <span class="cnt">96k</span></span>
+  </div>
+  <p class="logline-cap">Числа на кнопках — иллюстрация счётчиков, не реальные данные.</p>
+  <ul>
+    <li>Ряд из шести кнопок-уровней (<a href="#s3-1">§3.1</a>) в правой части нижней панели.</li>
+    <li>Кнопка показывает иконку уровня и <strong>счёт</strong>: сколько строк этого уровня будет видимо при текущих фильтрах и категориях (если сам уровень включён — совпадает с фактической видимостью). Счёт 0 → кнопка пустая по счёту.</li>
+    <li>Клик по кнопке — выключить/включить уровень (hidden/show). Активный уровень отображается цветом, неактивный — приглушённо.</li>
+    <li>Отключённые уровни <strong>сохраняются при перезагрузке файла</strong> (<a href="#s2-1">§2.1</a>).</li>
+  </ul>
+
+  <h3 id="s11-1">11.1. Нижняя панель, слева</h3>
+  <ul>
+    <li>Кнопки <code>Open</code> и <code>Reload</code>.</li>
+    <li>Командная строка (<a href="#s13">§13</a>): плейсхолдер <code>:type command...</code>; активация по нажатию <code>:</code> вне поля ввода (поле получает фокус с текстом <code>:</code> и курсором после него).</li>
+  </ul>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <h2><span class="num">12.</span>Пины (Pinned lines)</h2>
+  <ul>
+    <li>Пин — правило сопоставления (те же 4 режима: <code>p</code>/<code>pr</code>/<code>ps</code>/<code>pn N</code>), а не список строк: <code>:pn 5</code> — пин на строку 5; <code>:p cfg</code> — пин на все строки, содержащие <code>cfg</code>.</li>
+    <li>Закреплённые строки <strong>всегда видимы</strong>, обгоняя фильтры/уровни/категории (<a href="#s7">§7</a>).</li>
+    <li>Пины отображаются во вкладке «Pinned»: чекбокс (вкл/выкл действия пина), текст, кнопка удаления.</li>
+    <li><code>rmp</code> — снять все пины. Удаление по одному — из панели или через контекстное меню таблицы (Unpin).</li>
+    <li>При перезагрузке файла пины сбрасываются полностью (<a href="#s2-1">§2.1</a>).</li>
+  </ul>
+</section>
+
+<!-- ============ 13 ============ -->
+<section id="s13">
+  <h2><span class="num">13.</span>Командная строка</h2>
+  <p>Плоская строка ввода в нижней панели. Синтаксис: <code>:имя [текст]</code>; начальное
+  <code>:</code> можно опускать в поле ввода (всё, что отправлено из поля, трактуется как
+  команда; если текст не начинается с <code>:</code> — игнорируется). Enter — выполнить,
+  Esc — очистить и вернуть фокус таблице.</p>
+
+  <h3 id="s13-1">13.1. Реестр команд</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Команда</th><th>Аргумент</th><th>Действие</th></tr></thead>
+    <tbody>
+      <tr><td><code>f</code>, <code>fr</code>, <code>fs</code></td><td>паттерн</td><td>Добавить фильтр</td></tr>
+      <tr><td><code>fn</code></td><td>номер</td><td>Добавить фильтр по номеру строки</td></tr>
+      <tr><td><code>rmf</code></td><td>—</td><td>Удалить <strong>все</strong> фильтры</td></tr>
+      <tr><td><code>h</code>, <code>hr</code>, <code>hs</code></td><td>паттерн</td><td>Добавить подсветку</td></tr>
+      <tr><td><code>hn</code></td><td>номер</td><td>Подсветить строку целиком</td></tr>
+      <tr><td><code>rmh</code></td><td>—</td><td>Удалить все подсветки</td></tr>
+      <tr><td><code>p</code>, <code>pr</code>, <code>ps</code></td><td>паттерн</td><td>Добавить пин</td></tr>
+      <tr><td><code>pn</code></td><td>номер</td><td>Добавить пин на строку</td></tr>
+      <tr><td><code>rmp</code></td><td>—</td><td>Снять все пины</td></tr>
+    </tbody>
+  </table></div>
+  <p>Правила валидации:</p>
+  <ul>
+    <li>Неизвестное имя команды → ошибка «Unknown command».</li>
+    <li>Командам, требующим аргумент, пустой аргумент → ошибка.</li>
+    <li><code>fn</code>/<code>hn</code>/<code>pn</code> требуют целое число от 1 до кол-ва строк; иначе — «Error: … out of range (1..N)».</li>
+    <li><code>rmf</code> / <code>rmh</code> / <code>rmp</code> — аргументов не принимают и имеют ровно одну функцию: очистить все фильтры / все подсветки / все пины сразу. Других функций (удаление одного элемента, удаление по тексту) у них нет — удаление по одному только через панели или контекстное меню.</li>
+    <li>Сообщение об ошибке показывается пользователю (сейчас выводится в статус-область нижней панели; вывод в неё в v2.0 отключён); команда не выполняется частично.</li>
+  </ul>
+
+  <h3 id="s13-2">13.2. История команд</h3>
+  <ul>
+    <li>Все введённые команды пишутся в персистентную историю (<code>~/.logviewer/history.json</code>).</li>
+    <li><code>↑</code>/<code>↓</code> в поле ввода — навигация по истории: вверх — к более старым, вниз — к более новым; после последней возвращается пустая строка.</li>
+    <li>Подряд идущие дубликаты не добавляются; пустые команды не добавляются.</li>
+    <li>Максимальный размер истории — настройка <code>history_size</code> (по умолчанию 100).</li>
+  </ul>
+</section>
+
+<!-- ============ 14 ============ -->
+<section id="s14">
+  <h2><span class="num">14.</span>Горячие клавиши</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Клавиша</th><th>Действие</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>Ctrl+C</kbd></td><td>Copy выделенных строк (сырые строки файла)</td></tr>
+      <tr><td><kbd>Ctrl+R</kbd></td><td>Перезагрузить файл</td></tr>
+      <tr><td><kbd>Ctrl+F</kbd></td><td>Открыть панель поиска <a href="#s8">(§8)</a></td></tr>
+      <tr><td><kbd>Ctrl+B</kbd></td><td>Показать/скрыть боковую панель</td></tr>
+      <tr><td><kbd>Ctrl+Q</kbd></td><td>Выйти из приложения</td></tr>
+      <tr><td><kbd>:</kbd> (в таблице)</td><td>Перейти в командную строку</td></tr>
+      <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Пред./след. матч (панель поиска открыта), иначе навигация по таблице</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Закрыть панель поиска / очистить командную строку</td></tr>
+      <tr><td><kbd>Enter</kbd></td><td>Выполнить команду</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section id="s15">
+  <h2><span class="num">15.</span>Настройки и хранение</h2>
+  <p>Все пользовательские данные лежат в <code>~/.logviewer/</code>:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Файл</th><th>Содержимое</th></tr></thead>
+    <tbody>
+      <tr><td><code>settings.json</code></td><td>Настройки: <code>history_size</code> (int, 100), <code>last_open_dir</code> (str), <code>default_categories_enabled</code> (bool, зарезервировано)</td></tr>
+      <tr><td><code>history.json</code></td><td>История команд (список строк)</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>Файлы создаются автоматически при первом запуске, если их нет.</li>
+    <li>Настройки читаются/пишутся в JSON; неизвестные ключи сохраняются; отсутствующие заменяются дефолтами.</li>
+    <li>Каталоги создаются лениво, ошибки диска не роняют приложение.</li>
+  </ul>
+</section>
+
+<!-- ============ 16 ============ -->
+<section id="s16">
+  <h2><span class="num">16.</span>Требование к производительности</h2>
+  <p>Единственное требование к производительности: <strong>архитектура с максимальной
+  производительностью при работе с логом</strong>. Конкретные числовые бюджеты операций в
+  спецификации не фиксируются — каждое действие (загрузка, фильтрация, категории, пины,
+  подсветки, поиск, скролл) должно ощущаться мгновенным на файлах в сотни мегабайт.</p>
+</section>
+
+<footer>
+  Функциональная спецификация Log Viewer · v1.0 · 2026-11-22 · описана функциональность
+  существующего приложения v2.0.
+</footer>
+
+</div><!-- /doc-body -->
+</div><!-- /layout -->
+
+<script>
+  try {
+    var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a[href^="#"]'));
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (l) { l.classList.remove('on'); });
+          var a = byId[e.target.id];
+          if (a) a.classList.add('on');
+        }
+      });
+    }, { rootMargin: '-8% 0px -78% 0px' });
+    document.querySelectorAll('section[id], h3[id]').forEach(function (el) { obs.observe(el); });
+  } catch (e) { /* scrollspy is decoration; the TOC links work without it */ }
+</script>
