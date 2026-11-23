@@ -1,0 +1,2 @@
+10:00:00.000 0.123 msg cfg Application started
+10:00:01.123 0.456 err cfg Connection lost

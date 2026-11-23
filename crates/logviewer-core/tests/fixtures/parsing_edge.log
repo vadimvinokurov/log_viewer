@@ -1,0 +1,4 @@
+
+2024-01-01T10:00:00.000 app [LOG_ERR] bracketed tag
+2024-01-01T10:00:01.000 app LOG_TRACE long form
+2024-01-01T10:00:02.000 app

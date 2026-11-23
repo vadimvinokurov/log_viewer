@@ -1,0 +1,5 @@
+2024-01-01T10:00:00.000 app/main LOG_MSG Starting application
+2024-01-01T10:00:01.000 standalone
+2024-01-01T10:00:02.500 a/b/c wrn Something odd
+2024-01-01T10:00:03.000 app Just   words
+2024-01-01T10:00:04.000

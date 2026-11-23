@@ -1,0 +1,3 @@
+2024-01-01T10:00:00.000 app/main LOG_MSG Starting application
+2024-01-01T10:00:01.000 app/main LOG_ERR Failed to connect
+2024-01-01T10:00:02.500 a/b/c wrn Something odd

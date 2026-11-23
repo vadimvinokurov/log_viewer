@@ -1,0 +1,11 @@
+[package]
+name = "logviewer-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+memmap2 = "0.9"
+memchr = "2"
+regex = "1"
+fancy-regex = "0.14"
