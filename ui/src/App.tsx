@@ -7,6 +7,7 @@ import { console_ } from "./uiConsole";
 import { ipc } from "./ipcClient";
 import { installHeadlessConsole } from "./headless";
 import { LogTable } from "./LogTable";
+import DevShowcase from "./devShowcase";
 
 function lastPathSegment(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), 0);
@@ -19,6 +20,7 @@ function lastPathSegment(path: string): string {
  * interface (installHeadlessConsole) - one reducer, two front doors.
  */
 export default function App() {
+  const show = new URLSearchParams(window.location.search).get("show");
   const state = useSyncExternalStore(console_.subscribe, console_.getState);
   const busy = state.loadingFile !== null;
 
@@ -69,7 +71,9 @@ export default function App() {
   return (
     <div className="app">
       <main className="content">
-        {state.file ? (
+        {show ? (
+          <DevShowcase name={show} />
+        ) : state.file ? (
           <LogTable
             ref={(h) => console_.setTableHandle(h)}
             rowCount={state.file.load.lineCount}

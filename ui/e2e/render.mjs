@@ -69,49 +69,7 @@ const STUB = `(function () {
   return "stub ready";
 })()`;
 
-/** Deterministic states: name -> async setup on the page. */
-const STATES = [
-  {
-    name: "empty",
-    async setup(page) {
-      await page.evaluate(STUB);
-    },
-  },
-  {
-    name: "loaded",
-    async setup(page) {
-      await page.evaluate(STUB);
-      await page.evaluate(() => window.__headless.load("/tmp/synthetic.log"));
-      await page.waitForFunction(() => window.__headless.state().file !== null);
-      await page.waitForTimeout(150); // let chunk fetches settle
-    },
-  },
-  {
-    name: "loaded-scrolled",
-    async setup(page) {
-      await page.evaluate(STUB);
-      await page.evaluate(() => window.__headless.load("/tmp/synthetic.log"));
-      await page.waitForFunction(() => window.__headless.state().file !== null);
-      await page.waitForTimeout(150);
-      await page.evaluate(() => window.__headless.scrollToRow(31000));
-      await page.waitForTimeout(250); // chunk fetches for the deep window
-    },
-  },
-  {
-    name: "error",
-    async setup(page) {
-      await page.evaluate(
-        `(function () {
-          window.__ipcStub = { pickFile: async () => null, loadFile: async () => { throw new Error("boom: file unreadable"); }, getRows: async () => [] };
-          return "error stub";
-        })()`,
-      );
-      await page.evaluate(() => window.__headless.load("/missing.log"));
-      await page.waitForFunction(() => window.__headless.state().error !== null);
-    },
-  },
-];
-
+// States live in e2e/states/*.mjs (each UI task adds its own file).
 function diffPercent(golden, actual) {
   const a = PNG.sync.read(golden);
   const b = PNG.sync.read(actual);
@@ -143,11 +101,21 @@ await page.goto(server.url);
 let failures = 0;
 fs.mkdirSync(GOLDENS, { recursive: true });
 
+const stateFiles = fs
+  .readdirSync(path.join(HERE, "states"))
+  .filter((f) => f.endsWith(".mjs") && f !== "base.mjs")
+  .sort();
+const STATES = (
+  await Promise.all(
+    stateFiles.map((f) => import(path.join(HERE, "states", f)).then((m) => m.default)),
+  )
+).flat();
+
 for (const state of STATES) {
   try {
     // Every state reloads the page so it cannot depend on earlier states;
     // goto resolves before React effects, so wait for the console first.
-    await page.goto(server.url);
+    await page.goto(state.url ?? server.url);
     await page.waitForFunction(() => typeof window.__headless === "object" && window.__headless !== null);
     await state.setup(page);
     const shot = await page.screenshot({ type: "png" });

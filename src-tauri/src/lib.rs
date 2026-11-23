@@ -1,3 +1,4 @@
+mod driver;
 mod ipc;
 
 /// Smoke command used by the scaffold; real commands live in ipc.rs.
@@ -7,10 +8,19 @@ fn ping_core() -> String {
   logviewer_core::version()
 }
 
+fn dirs_home() -> std::path::PathBuf {
+  std::env::temp_dir()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let bindings = tauri_specta::Builder::<tauri::Wry>::new().commands(
-    tauri_specta::collect_commands![ping_core, ipc::load_file, ipc::get_rows],
+    tauri_specta::collect_commands![
+      ping_core,
+      ipc::load_file,
+      ipc::get_rows,
+      driver::driver_report
+    ],
   );
   #[cfg(debug_assertions)]
   bindings
@@ -29,6 +39,10 @@ pub fn run() {
             .level(log::LevelFilter::Info)
             .build(),
         )?;
+        // Live-verification driver (n4y.3): localhost HTTP -> headless console
+        // in the real webview. Debug builds only.
+        let port_file = dirs_home().join("logviewer.driver.port");
+        driver::start(app.handle().clone(), port_file).ok();
       }
       Ok(())
     })

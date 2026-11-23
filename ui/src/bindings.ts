@@ -14,6 +14,8 @@ export const commands = {
 	loadFile: (path: string, options?: InvokeOptions) => __TAURI_INVOKE<LoadResult>("load_file", { path }, options),
 	/**  A window of rows, 0-based offset over line numbers (§4 virtual scrolling). */
 	getRows: (offset: number, limit: number, options?: InvokeOptions) => __TAURI_INVOKE<RowDto[]>("get_rows", { offset, limit }, options),
+	/**  Tauri command the page invokes with the evaluation result. */
+	driverReport: (id: string, value: string, options?: InvokeOptions) => __TAURI_INVOKE<void>("driver_report", { id, value }, options),
 };
 
 /* Types */
