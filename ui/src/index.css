@@ -1,0 +1,135 @@
+/* Design tokens from docs/UI_DESIGN.html "Tokens" - auto theme switch with
+   the OS (prefers-color-scheme). */
+:root {
+  color-scheme: light dark;
+
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --chrome: #f3f5f8;
+  --chrome-2: #e9edf2;
+  --ink: #1b2531;
+  --muted: #5a6a7a;
+  --dim: #8795a4;
+  --accent: #0078d7;
+  --pin: #e8c34a;
+  --critical: #a01423;
+  --error: #c02f2f;
+  --warning: #8a6d00;
+  --debug: #7450a8;
+  --trace: #1d7a3f;
+
+  --font-chrome: system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1016;
+    --surface: #141c24;
+    --chrome: #101722;
+    --chrome-2: #1a2430;
+    --ink: #d7e0ea;
+    --muted: #9babbc;
+    --dim: #6d7e8f;
+    --accent: #4da3e8;
+    --critical: #ff7b72;
+    --error: #f26d6d;
+    --warning: #d9b13b;
+    --debug: #b18cf5;
+    --trace: #5fc98a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-chrome);
+  user-select: none;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Empty state, §2 (design: "Empty state — before any file"). */
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.loaded-stub {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted);
+  font-family: var(--font-data);
+}
+
+/* Bottom bar, 38 px, §UI design "Main window". */
+.bottom-bar {
+  height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--chrome);
+  border-top: 1px solid var(--chrome-2);
+}
+
+.bar-btn {
+  font-family: var(--font-chrome);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--chrome-2);
+  border-radius: 6px;
+  padding: 4px 12px;
+}
+
+.bar-btn:hover:not(:disabled) {
+  background: var(--chrome-2);
+}
+
+.bar-btn:disabled {
+  opacity: 0.45;
+}
+
+.status {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-data);
+}
+
+.error {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--error);
+}
