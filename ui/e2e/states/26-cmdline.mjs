@@ -115,4 +115,51 @@ export default [
       await WAIT_FONTS(page);
     },
   },
+  {
+    // The §15 last_open_dir (bead vk9.2): the boot-time settings_get seed
+    // lands on the snapshot (the dialog's start dir), and a successful open
+    // overwrites it with the loaded file's dirname (asserted as numbers
+    // through the text RPC; the rendering matches the plain loaded state).
+    name: "31-last-open-dir",
+    async setup(page) {
+      const url = page.url();
+      await page.addInitScript(`
+        window.__settingsStub = {
+          async settingsGet() {
+            return { history_size: 20, last_open_dir: "/tmp/logs", default_categories_enabled: true };
+          },
+          async setLastOpenDir(dir) {
+            window.__settingsStub.lastSetCall = dir;
+            return null;
+          },
+        };
+        window.__ipcStub = { ...window.__settingsStub };
+      `);
+      await page.goto(url);
+      await page.waitForFunction(
+        () => typeof window.__headless === "object" && window.__headless !== null,
+      );
+      // The construction-time seed (the settings stub was present at boot).
+      await page.waitForFunction(
+        () => window.__headless.state().settings.lastOpenDir === "/tmp/logs",
+      );
+      await page.evaluate(STUB); // the visibility model
+      await page.evaluate(() => {
+        // The visibility stub lacks the settings methods; re-attach them so
+        // the load path still talks to the same recording pair.
+        Object.assign(window.__ipcStub, window.__settingsStub);
+      });
+      await page.evaluate(() => window.__headless.load("/tmp/synthetic.log"));
+      await page.waitForFunction(() => window.__headless.state().visibility !== null);
+      // The successful open moved the start dir to the file's dirname and
+      // the wire write recorded it.
+      await page.waitForFunction(
+        () =>
+          window.__headless.state().settings.lastOpenDir === "/tmp" &&
+          window.__settingsStub.lastSetCall === "/tmp",
+      );
+      await page.waitForTimeout(200);
+      await WAIT_FONTS(page);
+    },
+  },
 ];

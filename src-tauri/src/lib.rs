@@ -29,6 +29,8 @@ fn build_bindings() -> tauri_specta::Builder<tauri::Wry> {
     ipc::clear_filters,
     ipc::history_get,
     ipc::history_push,
+    ipc::settings_get,
+    ipc::set_last_open_dir,
     ipc::set_level_enabled,
     ipc::set_category_enabled,
     ipc::visibility_snapshot,

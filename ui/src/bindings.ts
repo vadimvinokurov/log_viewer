@@ -65,6 +65,17 @@ export const commands = {
 	 */
 	historyPush: (cmd: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("history_push", { cmd }, options),
 	/**
+	 *  The settings the UI consults (§15): the Open-dialog start directory and
+	 *  the history cap. `default_categories_enabled` travels too (unknown keys
+	 *  are preserved by the store; the field is reserved).
+	 */
+	settingsGet: (options?: InvokeOptions) => __TAURI_INVOKE<SettingsDto>("settings_get", undefined, options),
+	/**
+	 *  Persist the Open-dialog start directory (§2, §15). The string is stored
+	 *  as-is; an empty string clears it back to the default.
+	 */
+	setLastOpenDir: (dir: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_last_open_dir", { dir }, options),
+	/**
 	 *  Toggle a level by its lowercase long name ("critical".."trace", same
 	 *  spellings as the snapshot's level lists).
 	 */
@@ -225,6 +236,13 @@ export type RowDto_Serialize = {
 export type SearchMatchDto = {
 	total: number,
 	positions: number[],
+};
+
+/**  The persisted settings the UI consults (§15; raw snake_case). */
+export type SettingsDto = {
+	history_size: number,
+	last_open_dir: string,
+	default_categories_enabled: boolean,
 };
 
 /**

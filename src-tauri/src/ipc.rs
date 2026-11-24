@@ -170,6 +170,14 @@ pub struct LevelStateDto {
   pub count: u32,
 }
 
+/// The persisted settings the UI consults (§15; raw snake_case).
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct SettingsDto {
+  pub history_size: u32,
+  pub last_open_dir: String,
+  pub default_categories_enabled: bool,
+}
+
 /// The single read command's shape (contract, raw snake_case).
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct VisibilitySnapshotDto {
@@ -642,6 +650,37 @@ pub async fn history_push(
 ) -> Result<(), String> {
   let mut guard = state.lock().map_err(|_| lock_err())?;
   guard.push_history(cmd).map_err(|_| "history write failed".to_owned())
+}
+
+/// The settings the UI consults (§15): the Open-dialog start directory and
+/// the history cap. `default_categories_enabled` travels too (unknown keys
+/// are preserved by the store; the field is reserved).
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_get(
+  state: tauri::State<'_, SettingsState>,
+) -> Result<SettingsDto, String> {
+  let guard = state.lock().map_err(|_| lock_err())?;
+  let s = guard.settings();
+  Ok(SettingsDto {
+    history_size: s.history_size,
+    last_open_dir: s.last_open_dir.clone(),
+    default_categories_enabled: s.default_categories_enabled,
+  })
+}
+
+/// Persist the Open-dialog start directory (§2, §15). The string is stored
+/// as-is; an empty string clears it back to the default.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_last_open_dir(
+  dir: String,
+  state: tauri::State<'_, SettingsState>,
+) -> Result<(), String> {
+  let mut guard = state.lock().map_err(|_| lock_err())?;
+  let mut next = guard.settings().clone();
+  next.last_open_dir = dir;
+  guard.set_settings(next).map_err(|_| "settings write failed".to_owned())
 }
 
 /// Shell metadata for one core `Highlight`, parallel to the engine's rule
@@ -1186,6 +1225,20 @@ fn history_roundtrip_and_persistence() {
   let store = new_settings_state_at(&dir);
   let guard = store.lock().unwrap();
   assert_eq!(guard.history(), &[":f started".to_string()]);
+  drop(guard);
+
+  // SS15: the Open-dialog directory persists across a reopen too.
+  {
+    let store = new_settings_state_at(&dir);
+    let mut guard = store.lock().unwrap();
+    let mut next = guard.settings().clone();
+    next.last_open_dir = "/tmp/whence".into();
+    guard.set_settings(next).unwrap();
+  }
+  let store = new_settings_state_at(&dir);
+  let guard = store.lock().unwrap();
+  assert_eq!(guard.settings().last_open_dir, "/tmp/whence");
+  assert_eq!(guard.settings().history_size, 100);
 }
 // ---------------------------------------------------------- visibility
   // bridge tests (docs/notes/visibility-bridge.md). They drive the inner

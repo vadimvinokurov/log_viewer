@@ -122,6 +122,9 @@ export default function App() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
+  // §2 Open flow: the dialog starts in the console's lastDir — the §15
+  // last_open_dir setting, seeded at console construction and updated here
+  // by every successful open (console.load persists dirname too).
   const openDialogAndLoad = useCallback(async () => {
     const file = await ipc().pickFile(state.lastDir);
     if (file) {

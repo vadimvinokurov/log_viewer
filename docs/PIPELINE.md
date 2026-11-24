@@ -99,6 +99,11 @@ Claim tasks in the main session before spawning agents.
     history file is seeded through an `addInitScript` stub before the app boots) with a
     fresh golden — the recalled field text renders as in state 29 (the table band
     differs: nothing was executed in this state).
+  - Addition 2026-11-24 (bead vk9.2, §15 settings): new state `31-last-open-dir`
+    (the boot-time settings_get seed lands on the Open-dialog start dir; a successful
+    open persists the file's dirname — asserted as numbers through
+    `window.__headless.state().settings.lastOpenDir`) with a fresh golden; no
+    existing golden shifted (all diffs 0.000%).
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

@@ -2245,3 +2245,137 @@ describe("console command line live-round (bead 7rf.1, §13.1 branches + error l
     expect(stub.addFilterCalls()).toEqual([{ mode: "lineno", pattern: "1" }]);
   });
 });
+
+describe("last open dir persistence (bead vk9.2, §2/§15)", () => {
+  /** RAW stub with the settings commands over a minimal visibility model:
+   *  settings_get returns the persisted last_open_dir, set_last_open_dir
+   *  records its calls (and updates the stored value). Failures are
+   *  opt-in (the best-effort catch paths). */
+  interface SettingsStub extends RawIpc {
+    settingsGet(): Promise<{
+      history_size: number;
+      last_open_dir: string;
+      default_categories_enabled: boolean;
+    }>;
+    setLastOpenDir(dir: string): Promise<null>;
+    setLastOpenDirCalls(): string[];
+    /** The stored setting as the (stubbed) backend holds it. */
+    settingsStore(): string;
+  }
+
+  function settingsStub(
+    options: { failSettingsGet?: boolean; failSet?: boolean; failLoad?: boolean } = {},
+  ): SettingsStub {
+    const stored = { lastOpenDir: "/tmp/logs" };
+    const setCalls: string[] = [];
+    return {
+      pickFile: async () => null,
+      loadFile: async () => {
+        if (options.failLoad) throw new Error("load failed");
+        return {
+          format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+        };
+      },
+      getRows: async () => [],
+      addFilter: async () => null,
+      setFilterEnabled: async () => null,
+      removeFilter: async () => null,
+      addPin: async () => null,
+      setPinEnabled: async () => null,
+      removePin: async () => null,
+      clearPins: async () => null,
+      clearFilters: async () => null,
+      addHighlight: async () => null,
+      setHighlightEnabled: async () => null,
+      setHighlightColor: async () => null,
+      removeHighlight: async () => null,
+      clearHighlights: async () => null,
+      setLevelEnabled: async () => null,
+      setCategoryEnabled: async () => null,
+      searchVisible: async () => ({ total: 0, positions: [] }),
+      visibilitySnapshot: async () => ({
+        visible_count: 12,
+        levels: ["critical", "error", "warning", "msg", "debug", "trace"].map((level) => ({
+          level, enabled: true, count: 2,
+        })),
+        filters: [],
+        pins: [],
+        highlights: [],
+        categories_enabled: ["app/db"],
+      }),
+      settingsGet: async () => {
+        if (options.failSettingsGet) throw new Error("settings read failed");
+        return {
+          history_size: 20,
+          last_open_dir: stored.lastOpenDir,
+          default_categories_enabled: true,
+        };
+      },
+      setLastOpenDir: async (dir: string) => {
+        setCalls.push(dir);
+        if (options.failSet) throw new Error("settings write failed");
+        stored.lastOpenDir = dir;
+        return null;
+      },
+      setLastOpenDirCalls: () => setCalls,
+      settingsStore: () => stored.lastOpenDir,
+    };
+  }
+
+  it("a fresh console seeds the Open-dialog start dir from the settings at construction", async () => {
+    const { console_ } = await freshConsole(settingsStub());
+    // The seeded dir must land on BOTH the snapshot (the text RPC) and the
+    // reducer slice (which the App's Open flow passes to pickFile).
+    await vi.waitFor(() => {
+      expect(console_.getSnapshot().settings.lastOpenDir).toBe("/tmp/logs");
+    });
+    await vi.waitFor(() => {
+      expect(console_.getState().lastDir).toBe("/tmp/logs");
+    });
+  });
+
+  it("a failed settings read leaves the default empty dir (best-effort)", async () => {
+    const { console_ } = await freshConsole(settingsStub({ failSettingsGet: true }));
+    await console_.load("log.txt"); // flush the construction's read attempt; a bare name writes nothing
+    expect(console_.getSnapshot().settings.lastOpenDir).toBe("");
+    expect(console_.getState().lastDir).toBe("");
+  });
+
+  it("a successful open persists the file's directory and updates the slice", async () => {
+    const stub = settingsStub();
+    const { console_ } = await freshConsole(stub);
+    // Load a file in a DIFFERENT dir than the seeded one.
+    const snap = await console_.load("/other/dir/run.log");
+    expect(stub.setLastOpenDirCalls()).toEqual(["/other/dir"]); // the file's dirname
+    expect(stub.settingsStore()).toBe("/other/dir"); // the (stubbed) store took it
+    expect(snap.settings.lastOpenDir).toBe("/other/dir");
+    expect(console_.getState().lastDir).toBe("/other/dir");
+    expect(snap.error).toBeNull(); // the persistence never surfaces as an error
+  });
+
+  it("a failed set_last_open_dir write is best-effort: the slice still updates, no error", async () => {
+    const stub = settingsStub({ failSet: true });
+    const { console_ } = await freshConsole(stub);
+    const snap = await console_.load("/other/dir/run.log");
+    expect(stub.setLastOpenDirCalls()).toEqual(["/other/dir"]);
+    expect(snap.settings.lastOpenDir).toBe("/other/dir");
+    expect(snap.error).toBeNull();
+  });
+
+  it("a failed open never touches the setting", async () => {
+    const stub = settingsStub({ failLoad: true });
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/other/dir/run.log");
+    expect(stub.setLastOpenDirCalls()).toEqual([]);
+    // The seeded value survives the failed open.
+    expect(console_.getState().lastDir).toBe("/tmp/logs");
+  });
+
+  it("a path without a directory writes nothing and keeps the previous dir", async () => {
+    const stub = settingsStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("run.log");
+    expect(stub.setLastOpenDirCalls()).toEqual([]);
+    expect(console_.getState().lastDir).toBe("/tmp/logs");
+  });
+});

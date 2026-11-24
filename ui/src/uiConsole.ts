@@ -7,7 +7,7 @@ import { appReducer, expandedForToggleAll, initialAppState, type AppState, type 
 import type { VisibilityState } from "./state";
 import { buildTree, propagateToggle, toggleAll } from "./categories";
 import { ipc } from "./ipcClient";
-import { commands } from "./bindings";
+import { commands, type SettingsDto } from "./bindings";
 import { exactPinIdsCovering } from "./pins";
 import { appendHistory, initialCmdlineState, mergeHistory, recallHistory, resolveCommand, type CmdlineState } from "./cmdline";
 import {
@@ -45,6 +45,9 @@ export interface ConsoleSnapshot {
     /** The current match's visible row index; null when there are none. */
     currentVisibleIndex: number | null;
   };
+  /** §15 Open-dialog start dir (bead vk9.2): the seeded setting, updated by
+   *  every successful open; the App passes this value to pickFile. */
+  settings: { lastOpenDir: string };
   /** §13 command line (bead 7rf.1): the field text, the in-session history
    *  (chronological) and the recall cursor (historyIndex = history.length is
    *  the empty draft past the newest entry). */
@@ -89,6 +92,40 @@ const historyCommands = (): HistoryCommands => {
     : realHistoryCommands;
 };
 
+// ---- §15 settings (bead vk9.2): the Open-dialog start dir ----
+
+/** RAW shape of the settings commands (§15); the same binding-direct seam
+ *  as HistoryCommands — ipcClient stays untouched, unit stubs mirror the
+ *  RAW commands on window.__ipcStub. */
+interface SettingsCommands {
+  settingsGet(): Promise<SettingsDto>;
+  setLastOpenDir(dir: string): Promise<null>;
+}
+
+const realSettingsCommands: SettingsCommands = {
+  settingsGet: () => commands.settingsGet(),
+  setLastOpenDir: (dir) => commands.setLastOpenDir(dir),
+};
+
+/** The same resolution rule as historyCommands(): a stub carrying BOTH
+ *  settings methods wins, everything else gets the generated bindings. */
+const settingsCommands = (): SettingsCommands => {
+  const stub = (window as unknown as { __ipcStub?: Partial<SettingsCommands> })
+    .__ipcStub;
+  const settingsGet = typeof stub?.settingsGet === "function" ? stub.settingsGet : null;
+  const setLastOpenDir = typeof stub?.setLastOpenDir === "function" ? stub.setLastOpenDir : null;
+  return stub !== null && settingsGet !== null && setLastOpenDir !== null
+    ? { settingsGet, setLastOpenDir }
+    : realSettingsCommands;
+};
+
+/** The parent directory of a path ("/tmp/dir/run.log" -> "/tmp/dir"); a
+ *  bare file name has no directory ("run.log" -> "", lastDir untouched). */
+const parentDir = (path: string): string => {
+  const i = path.lastIndexOf("/");
+  return i > 0 ? path.slice(0, i) : "";
+};
+
 interface TableHandle {
   scrollToRow(lineNo: number): void;
   /** Builds the copy text for the selection (loading uncached rows),
@@ -110,7 +147,9 @@ class UiConsole {
 
   /** §13.2 (bead 7rf.2): the persistent history seeds the in-session
    *  cycle ONCE, at construction — fire-and-forget with catch, a failed
-   *  read leaves the in-session list alone. */
+   *  read leaves the in-session list alone. The §15 Open-dialog start dir
+   *  (bead vk9.2) seeds the same way: the settings' last_open_dir lands on
+   *  the reducer's lastDir, which the App's Open flow passes to pickFile. */
   constructor() {
     try {
       void historyCommands()
@@ -119,10 +158,25 @@ class UiConsole {
           (loaded) => this.seedHistory(loaded),
           () => undefined,
         );
+      void settingsCommands()
+        .settingsGet()
+        .then(
+          (settings) => this.seedLastOpenDir(settings.last_open_dir),
+          () => undefined,
+        );
     } catch {
       // Persistence is best-effort; the session list is the cycle's truth.
     }
   }
+
+  /** §15 (bead vk9.2): a non-empty last_open_dir becomes the Open dialog's
+   *  start dir (the remember-dialog-dir reducer event); an empty value
+   *  leaves the default untouched. */
+  private seedLastOpenDir = (dir: string): void => {
+    if (dir !== "") {
+      this.dispatch({ kind: "remember-dialog-dir", dir });
+    }
+  };
 
   /** The command-line slice as a STABLE reference for useSyncExternalStore. */
   getCmdline = (): CmdlineState => this.cmdline;
@@ -175,6 +229,7 @@ class UiConsole {
         expanded: [...this.state.panel.expanded],
       },
       search: this.searchSnapshot(),
+      settings: { lastOpenDir: this.state.lastDir },
       command: {
         value: this.cmdline.value,
         history: [...this.cmdline.history],
@@ -281,6 +336,19 @@ class UiConsole {
           load,
           fileName: path.split("/").pop() ?? path,
         });
+        // §2/§15 (bead vk9.2): a SUCCESSFUL open is one persisted write —
+        // the file's parent dir becomes both the (stub-able) setting and
+        // the in-session dialog start dir; fire-and-forget, a failed write
+        // keeps the session slice and never surfaces as an error.
+        const dir = parentDir(path);
+        if (dir !== "") {
+          this.dispatch({ kind: "remember-dialog-dir", dir });
+          try {
+            void settingsCommands().setLastOpenDir(dir).catch(() => undefined);
+          } catch {
+            // Best-effort persistence; the session state is already right.
+          }
+        }
         // The fresh file's visibility follows the load result (§7); a failed
         // fetch is caught inside and surfaces through the error state.
         await this.refreshVisibility();
