@@ -1,7 +1,10 @@
+import { useSyncExternalStore } from "react";
 import { levelsShowcase } from "./showcase/levels";
 import { filtersShowcase } from "./showcase/filters";
 import { emptyShowcase } from "./showcase/empty";
 import { menuShowcase } from "./showcase/menu";
+import { console_ } from "./uiConsole";
+import { FiltersTab } from "./FiltersTab.tsx";
 
 /**
  * Dev-only component gallery (rendered for ?show=<name>): the visual harness
@@ -14,7 +17,21 @@ const REGISTRY: Record<string, Record<string, React.ReactNode>> = {
   filters: filtersShowcase,
   empty: emptyShowcase,
   menu: menuShowcase,
+  "filters-live": { snapshot: <WiredFiltersTab /> },
 };
+
+/** FiltersTab consuming the console state (dsq.3): the same store + actions
+ *  the app shell would use — no demo data, no local state (§10.1 wiring). */
+function WiredFiltersTab(): React.ReactNode {
+  const state = useSyncExternalStore(console_.subscribe, console_.getState);
+  return (
+    <FiltersTab
+      items={state.visibility?.filters ?? []}
+      onToggle={(id, on) => void console_.toggleFilter(id, on)}
+      onRemove={(id) => void console_.removeFilter(id)}
+    />
+  );
+}
 
 export default function DevShowcase({ name }: { name: string }) {
   const entries = REGISTRY[name];

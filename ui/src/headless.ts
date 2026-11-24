@@ -23,6 +23,16 @@ export function installHeadlessConsole(): () => void {
       console_.selectRow(index, kind),
     /** §4 copy: the selection's raw lines ("raw") or Message column. */
     copy: (mode: "raw" | "message") => console_.copy(mode),
+    /** §11 level toggle: level = lowercase long name ("critical".."trace"). */
+    setLevel: (level: string, on: boolean) => console_.setLevel(level, on),
+    /** §10.1 filters: mode ∈ plain|regex|simple|lineno. */
+    addFilter: (mode: string, pattern: string) => console_.addFilter(mode, pattern),
+    toggleFilter: (id: number, on: boolean) => console_.toggleFilter(id, on),
+    removeFilter: (id: number) => console_.removeFilter(id),
+    /** §12 pins (panel comes with q1f.1; the RPC is symmetric with filters). */
+    addPin: (mode: string, pattern: string) => console_.addPin(mode, pattern),
+    setPinEnabled: (id: number, on: boolean) => console_.setPinEnabled(id, on),
+    removePin: (id: number) => console_.removePin(id),
     /** Installs an IPC stub for headless visual runs. */
     stubIpc: (stub: unknown) => {
       (window as unknown as Record<string, unknown>).__ipcStub = stub;

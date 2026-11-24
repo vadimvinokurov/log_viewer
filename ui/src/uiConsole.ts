@@ -4,6 +4,7 @@
 //! adapter as the button flow (stubbed in headless runs).
 
 import { appReducer, initialAppState, type AppState, type AppEvent } from "./state";
+import type { VisibilityState } from "./state";
 import { ipc } from "./ipcClient";
 
 export interface ConsoleSnapshot {
@@ -12,6 +13,8 @@ export interface ConsoleSnapshot {
   loadingFile: string | null;
   file: { name: string; format: string; lineCount: number } | null;
   selection: { selected: number[]; anchor: number | null };
+  /** Latest applied visibility snapshot (§7); null before the first one. */
+  visibility: VisibilityState | null;
 }
 
 /** Copy column selection: raw file lines or the Message column (§4). */
@@ -39,6 +42,7 @@ class UiConsole {
   /** Full serialized snapshot for the text RPC. */
   getSnapshot = (): ConsoleSnapshot => {
     const f = this.state.file;
+    const v = this.state.visibility;
     return {
       screen: this.state.screen,
       error: this.state.error,
@@ -48,6 +52,15 @@ class UiConsole {
         selected: [...this.state.selection.selected],
         anchor: this.state.selection.anchor,
       },
+      visibility: v
+        ? {
+            visibleCount: v.visibleCount,
+            levels: v.levels.map((l) => ({ ...l })),
+            filters: v.filters.map((i) => ({ ...i })),
+            pins: v.pins.map((i) => ({ ...i })),
+            categoriesEnabled: [...v.categoriesEnabled],
+          }
+        : null,
     };
   };
 
@@ -103,12 +116,62 @@ class UiConsole {
           load,
           fileName: path.split("/").pop() ?? path,
         });
+        // The fresh file's visibility follows the load result (§7); a failed
+        // fetch is caught inside and surfaces through the error state.
+        await this.refreshVisibility();
       } catch (e) {
         this.dispatch({ kind: "load-error", message: String(e) });
       }
       return this.getSnapshot();
     })();
   };
+
+  /** Refetches visibility_snapshot and applies it to the reducer. */
+  private refreshVisibility = async (): Promise<void> => {
+    try {
+      const snapshot = await ipc().visibilitySnapshot();
+      this.dispatch({ kind: "visibility", snapshot });
+    } catch (e) {
+      // §2: an error shows a message, the loaded data is not lost.
+      this.dispatch({ kind: "load-error", message: String(e) });
+    }
+  };
+
+  /** Runs one visibility mutation, then refetches and applies the snapshot;
+   *  a failed mutation surfaces through the existing error state. */
+  private mutateVisibility = async (
+    mutator: () => Promise<unknown>,
+  ): Promise<ConsoleSnapshot> => {
+    try {
+      await mutator();
+    } catch (e) {
+      this.dispatch({ kind: "load-error", message: String(e) });
+      return this.getSnapshot();
+    }
+    await this.refreshVisibility();
+    return this.getSnapshot();
+  };
+
+  /** §11 level toggle; level = lowercase long name, the backend rejects
+   *  unknown names (the text RPC is a string boundary, like the backend). */
+  setLevel = (level: string, on: boolean): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().setLevelEnabled(level, on));
+
+  /** §10.1 filter RPC (mode ∈ plain|regex|simple|lineno, as the backend). */
+  addFilter = (mode: string, pattern: string): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().addFilter(mode, pattern));
+  toggleFilter = (id: number, on: boolean): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().setFilterEnabled(id, on));
+  removeFilter = (id: number): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().removeFilter(id));
+
+  /** §12 pin RPC — symmetric with filters; the pins panel is q1f.1. */
+  addPin = (mode: string, pattern: string): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().addPin(mode, pattern));
+  setPinEnabled = (id: number, on: boolean): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().setPinEnabled(id, on));
+  removePin = (id: number): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().removePin(id));
 }
 
 export const console_ = new UiConsole();

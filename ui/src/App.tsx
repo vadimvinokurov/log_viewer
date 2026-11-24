@@ -7,6 +7,8 @@ import { console_ } from "./uiConsole";
 import { ipc } from "./ipcClient";
 import { installHeadlessConsole } from "./headless";
 import { LogTable } from "./LogTable";
+import { LevelBar } from "./LevelBar.tsx";
+import { levelBarState } from "./state";
 import { EmptyState } from "./EmptyState";
 import DevShowcase from "./devShowcase";
 
@@ -69,6 +71,12 @@ export default function App() {
     return busy ? `loading ${lastPathSegment(state.loadingFile ?? "")}…` : null;
   })();
 
+  // §4/§7: the table paginates the VISIBLE sequence, so its row count is the
+  // snapshot's visible count; only while the first snapshot is still in
+  // flight does the load fallback apply. Epochs drive the table's resets.
+  const rowCount = state.visibility?.visibleCount ?? state.file?.load.lineCount ?? 0;
+  const bar = levelBarState(state.visibility);
+
   return (
     <div className="app">
       <main className="content">
@@ -77,7 +85,9 @@ export default function App() {
         ) : state.file ? (
           <LogTable
             ref={(h) => console_.setTableHandle(h)}
-            rowCount={state.file.load.lineCount}
+            rowCount={rowCount}
+            fileEpoch={state.fileEpoch}
+            visibilityEpoch={state.visibilityEpoch}
             selection={state.selection}
             onRowClick={(i, kind) => {
               console_.selectRow(i, kind);
@@ -105,6 +115,15 @@ export default function App() {
           </span>
         )}
         {state.error && <span className="error">{state.error}</span>}
+        {/* §11: the six-level toggle bar on the right side of the bottom bar;
+            hidden until the first visibility snapshot arrives. */}
+        {bar && (
+          <LevelBar
+            counts={bar.counts}
+            enabled={bar.enabled}
+            onToggle={(level) => void console_.setLevel(level, !bar.enabled[level])}
+          />
+        )}
       </footer>
     </div>
   );

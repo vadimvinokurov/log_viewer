@@ -71,15 +71,8 @@ fn handle(mut stream: TcpStream, shared: SharedState, app: tauri::AppHandle) {
     return;
   };
   let result: Option<String> = (|| {
-    let path = json_field(&request.body, "path")?;
     let id = format!("r{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0));
-    // Escape the path as a JS string literal, then drive the real console.
-    let js = format!(
-      "(async () => {{ try {{ const r = await window.__headless.load({path_js}); \
-       await window.__TAURI_INTERNALS__.invoke('driver_report', {{ id: '{id}', value: JSON.stringify(r) }}); }} \
-       catch (e) {{ await window.__TAURI_INTERNALS__.invoke('driver_report', {{ id: '{id}', value: JSON.stringify({{ driverError: String(e) }}) }}); }} }})()",
-      path_js = json_string(&path)
-    );
+    let js = build_eval_js(&request.body, &id)?;
     let Some(webview) = app.get_webview_window("main") else {
       return Some("{\"error\":\"no webview\"}".to_owned());
     };
@@ -173,6 +166,25 @@ fn json_string(s: &str) -> String {
   out
 }
 
+/// Build the `webview.eval` source from a POST body. `{"path": ...}` keeps the
+/// legacy load call; `{"js": ...}` runs an arbitrary async snippet whose
+/// `return` value is reported back (must be JSON-serializable). Both drive
+/// `window.__headless`, the app's own text RPC.
+fn build_eval_js(body: &str, id: &str) -> Option<String> {
+  let script = match (json_field(body, "path"), json_field(body, "js")) {
+    // Escape the path as a JS string literal, then drive the real console.
+    (Some(path), _) => format!("const r = await window.__headless.load({});", json_string(&path)),
+    (None, Some(js)) => format!("const r = await (async () => {{ {js} }})();"),
+    (None, None) => return None,
+  };
+  Some(format!(
+    "(async () => {{ try {{ {script} \
+     await window.__TAURI_INTERNALS__.invoke('driver_report', {{ id: '{id}', \
+     value: JSON.stringify(r === undefined ? null : r) }}); }} \
+     catch (e) {{ await window.__TAURI_INTERNALS__.invoke('driver_report', {{ id: '{id}', value: JSON.stringify({{ driverError: String(e) }}) }}); }} }})()"
+  ))
+}
+
 /// Consume a JSON string literal starting at `s` (expects leading quote).
 fn json_string_value(s: &str) -> Option<String> {
   let bytes: Vec<char> = s.chars().collect();
@@ -251,6 +263,44 @@ mod tests {
       Some("/a b/c d.log".to_owned())
     );
     assert_eq!(json_field("{}", "path"), None);
+  }
+
+  #[test]
+  fn builds_load_js_from_path_field() {
+    let js = build_eval_js(r#"{"path": "/tmp/log.txt"}"#, "r42").expect("path branch");
+    assert!(
+      js.contains("window.__headless.load(\"/tmp/log.txt\")"),
+      "load call in {js}"
+    );
+    assert!(js.contains("driver_report"), "report in {js}");
+    assert!(js.contains("id: 'r42'"), "id in {js}");
+  }
+
+  #[test]
+  fn builds_eval_js_from_js_field() {
+    let js = build_eval_js(r#"{"js": "return window.__headless.state()"}"#, "r7")
+      .expect("js branch");
+    assert!(
+      js.contains("(async () => { return window.__headless.state() })()"),
+      "the snippet runs inside an async IIFE: {js}"
+    );
+    assert!(js.contains("driver_report"), "report in {js}");
+  }
+
+  #[test]
+  fn serializes_undefined_eval_result_as_null() {
+    let js = build_eval_js(r#"{"js": ""}"#, "r1").expect("js branch");
+    assert!(
+      js.contains("JSON.stringify(r === undefined ? null : r)"),
+      "undefined would lose the invoke argument: {js}"
+    );
+  }
+
+  #[test]
+  fn rejects_body_without_command() {
+    assert_eq!(build_eval_js("{}", "r1"), None);
+    assert_eq!(build_eval_js(r#"{"path": 5}"#, "r1"), None);
+    assert_eq!(build_eval_js(r#"{"js": 5}"#, "r1"), None);
   }
 
   #[test]

@@ -57,8 +57,18 @@ Claim tasks in the main session before spawning agents.
   New UI states must be added to the harness and get a golden before their
   task closes; visual changes re-baseline goldens explicitly (`--update-goldens`)
   with a verbal before/after diff.
+  - Rebaseline 2026-11-24 (bead dsq.3, §7 visibility bridge): loaded /
+    loaded-scrolled / 13-selection / 14-selection-menu gained the §11 LevelBar
+    in the footer; new states `loaded-level-off` (dimmed disabled level) and
+    `filters-live-empty`/`filters-live-mixed` (FiltersTab on live console
+    state) with fresh goldens.
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
+- Live-window check runs the committed driver: start the debug app
+  (`npm run dev` in `ui/`, then `cargo run` in `src-tauri/`) and
+  `node scripts/live_check.mjs <test_logs file>` — it drives
+  `window.__headless` (load, levels, filters, selection, copy) through the
+  real IPC and asserts on counts only, never log contents (rule 1).
 - Decision states (empty / loading / loaded / error) are designed before
   polish; look for existing parts before writing new ones; design notes in
   `design.md`.

@@ -12,8 +12,51 @@ export const commands = {
 	 *  Loading must not block the UI: this is an async command.
 	 */
 	loadFile: (path: string, options?: InvokeOptions) => __TAURI_INVOKE<LoadResult>("load_file", { path }, options),
-	/**  A window of rows, 0-based offset over line numbers (§4 virtual scrolling). */
+	/**
+	 *  A window of the VISIBLE row sequence (§4, §7): `offset` indexes the rows
+	 *  passing the combined §7 rule, not raw line numbers. The visible-line list
+	 *  is cached in the shell state and invalidated on every visibility mutation
+	 *  and on file load (contract docs/notes/visibility-bridge.md). Returns []
+	 *  while no file is loaded.
+	 */
 	getRows: (offset: number, limit: number, options?: InvokeOptions) => __TAURI_INVOKE<RowDto[]>("get_rows", { offset, limit }, options),
+	/**
+	 *  Add a text filter, enabled (§10.1: a new filter starts checked).
+	 *  `mode` is one of plain|regex|simple|lineno; an invalid pattern matches
+	 *  nothing (contract).
+	 */
+	addFilter: (mode: string, pattern: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("add_filter", { mode, pattern }, options),
+	/**
+	 *  Add a pinned criterion, enabled (§12; the pin bypasses filters, levels
+	 *  and categories).
+	 */
+	addPin: (mode: string, pattern: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("add_pin", { mode, pattern }, options),
+	/**
+	 *  Toggle the filter at `id` (index in the LATEST snapshot's filter list);
+	 *  out of range is an Err, never a panic.
+	 */
+	setFilterEnabled: (id: number, on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_filter_enabled", { id, on }, options),
+	/**
+	 *  Toggle the pin at `id` (index in the LATEST snapshot's pin list); out of
+	 *  range is an Err, never a panic.
+	 */
+	setPinEnabled: (id: number, on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_pin_enabled", { id, on }, options),
+	/**  Remove the filter at `id`; out of range is an Err, never a panic. */
+	removeFilter: (id: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("remove_filter", { id }, options),
+	/**  Remove the pin at `id`; out of range is an Err, never a panic. */
+	removePin: (id: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("remove_pin", { id }, options),
+	/**
+	 *  Toggle a level by its lowercase long name ("critical".."trace", same
+	 *  spellings as the snapshot's level lists).
+	 */
+	setLevelEnabled: (level: string, on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_level_enabled", { level, on }, options),
+	/**  Enable or disable a category by its full path ("app/main/db"). */
+	setCategoryEnabled: (path: string, on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_category_enabled", { path, on }, options),
+	/**
+	 *  The single read command of the visibility bridge: shape in
+	 *  docs/notes/visibility-bridge.md (RAW; normalizes only in ipcClient.ts).
+	 */
+	visibilitySnapshot: (options?: InvokeOptions) => __TAURI_INVOKE<VisibilitySnapshotDto>("visibility_snapshot", undefined, options),
 	/**  Tauri command the page invokes with the evaluation result. */
 	driverReport: (id: string, value: string, options?: InvokeOptions) => __TAURI_INVOKE<void>("driver_report", { id, value }, options),
 };
@@ -24,8 +67,29 @@ export type CategoryCount = {
 	count: number,
 };
 
+/**
+ *  One text criterion of the snapshot (filter or pin). `id` = index in the
+ *  filters/pins list of the LATEST snapshot.
+ */
+export type CriterionDto = {
+	id: number,
+	mode: string,
+	pattern: string,
+	enabled: boolean,
+};
+
 export type LevelCount = {
 	level: string,
+	count: number,
+};
+
+/**
+ *  One level button of the snapshot: `enabled` is the toggle state, `count`
+ *  is the §11 counter (level toggles IGNORED).
+ */
+export type LevelStateDto = {
+	level: string,
+	enabled: boolean,
 	count: number,
 };
 
@@ -47,4 +111,13 @@ export type RowDto = {
 	level: string,
 	message: string,
 	raw: string,
+};
+
+/**  The single read command's shape (contract, raw snake_case). */
+export type VisibilitySnapshotDto = {
+	visible_count: number,
+	levels: LevelStateDto[],
+	filters: CriterionDto[],
+	pins: CriterionDto[],
+	categories_enabled: string[],
 };

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   appReducer,
+  levelBarState,
   type AppState,
+  type VisibilityState,
   initialAppState,
 } from "./state";
 
@@ -11,6 +13,25 @@ function loadedState(): AppState {
     load: { format: "plain", lineCount: 2, categories: [], levels: [], loadMs: 5 },
     fileName: "log.txt",
   });
+}
+
+/** Snapshot in the fixed §11 level order, as the backend guarantees it. */
+export function snapshot(overrides: Partial<VisibilityState> = {}): VisibilityState {
+  return {
+    visibleCount: 12,
+    levels: [
+      { level: "critical", enabled: true, count: 1 },
+      { level: "error", enabled: true, count: 2 },
+      { level: "warning", enabled: true, count: 3 },
+      { level: "msg", enabled: true, count: 4 },
+      { level: "debug", enabled: true, count: 1 },
+      { level: "trace", enabled: true, count: 1 },
+    ],
+    filters: [{ id: 0, mode: "plain", pattern: "timeout", enabled: true }],
+    pins: [],
+    categoriesEnabled: ["app/db"],
+    ...overrides,
+  };
 }
 
 describe("open/load pipeline (n4y.2, §2)", () => {
@@ -124,5 +145,107 @@ describe("row selection state (§4, qt7.2)", () => {
       fileName: "next.txt",
     });
     expect(s2.selection).toEqual({ selected: [], anchor: null });
+  });
+});
+
+describe("visibility state (§7, dsq.3)", () => {
+  it("starts with no visibility snapshot and zero epochs", () => {
+    const s = initialAppState();
+    expect(s.visibility).toBeNull();
+    expect(s.visibilityEpoch).toBe(0);
+    expect(s.fileEpoch).toBe(0);
+  });
+
+  it("visibility event stores the snapshot and bumps the visibility epoch", () => {
+    const s0 = appReducer(initialAppState(), { kind: "visibility", snapshot: snapshot() });
+    expect(s0.visibility).toEqual(snapshot());
+    expect(s0.visibilityEpoch).toBe(1);
+    expect(s0.fileEpoch).toBe(0);
+    const s1 = appReducer(s0, {
+      kind: "visibility",
+      snapshot: snapshot({ visibleCount: 5 }),
+    });
+    expect(s1.visibility?.visibleCount).toBe(5);
+    expect(s1.visibilityEpoch).toBe(2);
+  });
+
+  it("visibility events keep the selection untouched (qt7.3 owns remapping)", () => {
+    const s0 = appReducer(loadedState(), { kind: "selection-click", index: 4 });
+    const s1 = appReducer(s0, { kind: "visibility", snapshot: snapshot() });
+    expect(s1.selection).toEqual(s0.selection);
+    expect(s1.selection.selected).toEqual([4]);
+  });
+
+  it("load-success resets visibility and bumps the file epoch", () => {
+    const s0 = appReducer(initialAppState(), { kind: "visibility", snapshot: snapshot() });
+    const s1 = appReducer(s0, { kind: "load-request", path: "/next.txt" });
+    const s2 = appReducer(s1, {
+      kind: "load-success",
+      load: { format: "plain", lineCount: 100, categories: [], levels: [], loadMs: 5 },
+      fileName: "next.txt",
+    });
+    expect(s2.visibility).toBeNull();
+    expect(s2.fileEpoch).toBe(1);
+    expect(s2.visibilityEpoch).toBe(1); // unchanged: no fresh snapshot yet
+  });
+
+  it("selection events bump neither epoch", () => {
+    const s = appReducer(loadedState(), { kind: "selection-toggle", index: 1 });
+    expect(s.visibilityEpoch).toBe(0);
+    expect(s.fileEpoch).toBe(1);
+  });
+});
+
+describe("levelBarState (§11 mapping)", () => {
+  it("returns null while no snapshot is known (empty bar state)", () => {
+    expect(levelBarState(null)).toBeNull();
+  });
+
+  it("maps the fixed-order levels to counts and enabled flags", () => {
+    const bar = levelBarState(
+      snapshot({
+        levels: [
+          { level: "critical", enabled: true, count: 7 },
+          { level: "error", enabled: true, count: 96 },
+          { level: "warning", enabled: true, count: 1000 },
+          { level: "msg", enabled: true, count: 24000 },
+          { level: "debug", enabled: false, count: 405 },
+          { level: "trace", enabled: true, count: 681 },
+        ],
+      }),
+    );
+    expect(bar).not.toBeNull();
+    expect(bar?.counts).toEqual({
+      critical: 7,
+      error: 96,
+      warning: 1000,
+      msg: 24000,
+      debug: 405,
+      trace: 681,
+    });
+    expect(bar?.enabled).toEqual({
+      critical: true,
+      error: true,
+      warning: true,
+      msg: true,
+      debug: false,
+      trace: true,
+    });
+  });
+
+  it("spec interpretation: a level missing from the snapshot counts 0 and stays enabled", () => {
+    const bar = levelBarState(
+      snapshot({
+        levels: [
+          { level: "msg", enabled: true, count: 12 },
+          { level: "error", enabled: false, count: 3 },
+        ],
+      }),
+    );
+    expect(bar?.counts.critical).toBe(0);
+    expect(bar?.counts.msg).toBe(12);
+    expect(bar?.counts.trace).toBe(0);
+    expect(bar?.enabled.error).toBe(false);
+    expect(bar?.enabled.trace).toBe(true);
   });
 });

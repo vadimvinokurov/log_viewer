@@ -27,6 +27,11 @@ export interface LogTableHandle {
 
 interface Props {
   rowCount: number;
+  /** Bumped when a new file was loaded: full reset incl. scrollTop = 0 (§4). */
+  fileEpoch: number;
+  /** Bumped on every applied visibility snapshot (§7): chunk cache and rows
+   *  map reset only; scrollTop stays (the anchor is qt7.3's job, §4). */
+  visibilityEpoch: number;
   selection: SelectionState;
   /** Row click: kind comes from the modifiers (§4 click/ctrl/shift). */
   onRowClick(index: number, kind: "click" | "toggle" | "range"): void;
@@ -39,7 +44,7 @@ interface Props {
  * from the design tokens. Selection/context menu/copy land in qt7.2.
  */
 export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
-  { rowCount, selection, onRowClick },
+  { rowCount, fileEpoch, visibilityEpoch, selection, onRowClick },
   ref,
 ) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -57,9 +62,13 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     overscan: 10,
   });
 
-  // New file: throw away the cache, restart chunk planning; selection
+  // New file (file epoch): throw away the cache, restart chunk planning and
+  // also reset the scroll — a new file starts at the top (§4). Selection
   // indexes are per file (the reducer clears them at load-request).
-  useEffect(() => {
+  // Layout effects so the reset beats the chunk-fetch effect below in the
+  // same commit — otherwise the planner still looks loaded and nothing
+  // refetches (this regressed with the dsq.3 visibility epoch).
+  useLayoutEffect(() => {
     plannerRef.current.reset();
     setRows(new Map());
     inFlightRef.current = false;
@@ -67,7 +76,17 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     if (scrollRef.current && scrollRef.current.scrollTop !== 0) {
       scrollRef.current.scrollTop = 0;
     }
-  }, [rowCount]);
+  }, [fileEpoch]);
+
+  // Visibility change (§7): get_rows indexes the visible sequence, so the
+  // chunk cache and rows map refill; scrollTop stays — anchoring the
+  // viewport on filter changes is qt7.3's job (§4, contract dsq.3). The
+  // signal is an epoch, not rowCount: equal-count changes must still refill.
+  useLayoutEffect(() => {
+    plannerRef.current.reset();
+    setRows(new Map());
+    inFlightRef.current = false;
+  }, [visibilityEpoch]);
 
   /** §4 copy: raw lines (Ctrl+C / Copy) or the Message column. Rows missing
    * from the visible cache are fetched first. Resolves to the copy text. */
@@ -168,7 +187,10 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
       })();
     };
     loadNext();
-  }, [virtualItems, rowCount]);
+    // Epochs are deps too: an equal-count file or visibility change resets
+    // the planner above but keeps rowCount/virtualItems, so the refetch
+    // would otherwise never trigger.
+  }, [virtualItems, rowCount, fileEpoch, visibilityEpoch]);
 
   // §4: horizontal scroll by mouse-wheel tilt only; the wheel handler applies
   // a horizontal delta when it dominates the vertical one. Trackpad two-finger

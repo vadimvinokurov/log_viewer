@@ -10,7 +10,9 @@
 use serde::Serialize;
 
 use logviewer_core::format::Format;
+use logviewer_core::matching::Matcher;
 use logviewer_core::parser::Level;
+use logviewer_core::visibility::Visibility;
 use logviewer_core::workspace::FileModel;
 
 /// Shared app state: the currently loaded file, if any.
@@ -18,6 +20,20 @@ pub type FileState = std::sync::Mutex<Option<FileModel>>;
 
 pub fn new_file_state() -> FileState {
   std::sync::Mutex::new(None)
+}
+
+/// Shared visibility state (§7, §10.1, §11): the core engine plus the shell
+/// bookkeeping the engine does not store (pattern texts, mirrors of the on/off
+/// switches it cannot expose, disabled categories across reloads, the cached
+/// visible-line list).
+pub type VisState = std::sync::Mutex<VisibilityState>;
+
+pub fn new_visibility_state() -> VisState {
+  std::sync::Mutex::new(VisibilityState::new())
+}
+
+fn lock_err() -> String {
+  "state poisoned".to_owned()
 }
 
 // ---------------------------------------------------------------- DTOs
@@ -123,6 +139,335 @@ pub fn to_row_dto(row: &logviewer_core::parser::Row) -> RowDto {
   }
 }
 
+// ------------------------------------------------------- visibility bridge
+// Contract: docs/notes/visibility-bridge.md (RAW shapes; normalization to UI
+// shapes lives only in ui/src/ipcClient.ts).
+
+/// One text criterion of the snapshot (filter or pin). `id` = index in the
+/// filters/pins list of the LATEST snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub struct CriterionDto {
+  pub id: u32,
+  pub mode: String,
+  pub pattern: String,
+  pub enabled: bool,
+}
+
+/// One level button of the snapshot: `enabled` is the toggle state, `count`
+/// is the §11 counter (level toggles IGNORED).
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct LevelStateDto {
+  pub level: String,
+  pub enabled: bool,
+  pub count: u32,
+}
+
+/// The single read command's shape (contract, raw snake_case).
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct VisibilitySnapshotDto {
+  pub visible_count: u32,
+  pub levels: Vec<LevelStateDto>,
+  pub filters: Vec<CriterionDto>,
+  pub pins: Vec<CriterionDto>,
+  pub categories_enabled: Vec<String>,
+}
+
+/// Shell metadata for one core `Criterion`: the engine stores only the
+/// compiled matcher, the side panels need the original mode tag, pattern text
+/// and a mirror of the enabled switch the engine does not expose.
+struct CriterionMeta {
+  mode: String,
+  pattern: String,
+  enabled: bool,
+}
+
+/// Shell-managed visibility state over the loaded file (§7, §10.1, §11).
+pub struct VisibilityState {
+  vis: Visibility,
+  /// Parallel to the engine's filter list (same order, same length).
+  filter_meta: Vec<CriterionMeta>,
+  /// Parallel to the engine's pin list.
+  pin_meta: Vec<CriterionMeta>,
+  /// Mirror of the engine's level switches, in `level_order()` order — the
+  /// engine has no getter, and the snapshot reports these values.
+  levels_enabled: [bool; 6],
+  /// Category paths the user disabled; they survive reloads by name while
+  /// new categories start enabled (contract policy 3, §2.1/§10).
+  disabled_categories: std::collections::BTreeSet<String>,
+  /// Cached visible 1-based line numbers; `None` = invalidated by a mutation
+  /// or a file load, recomputed on the next read command.
+  visible_cache: Option<Vec<u32>>,
+}
+
+impl Default for VisibilityState {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl VisibilityState {
+  fn new() -> VisibilityState {
+    VisibilityState {
+      vis: Visibility::new(),
+      filter_meta: Vec::new(),
+      pin_meta: Vec::new(),
+      levels_enabled: [true; 6],
+      disabled_categories: std::collections::BTreeSet::new(),
+      visible_cache: None,
+    }
+  }
+
+  /// Adds one criterion (filter or pin) from the wire parts, keeping the
+  /// shell metadata list parallel to the engine's own list.
+  fn add_criterion(&mut self, mode: &str, pattern: &str, is_filter: bool) -> Result<(), String> {
+    let matcher = matcher_from_parts(mode, pattern)?;
+    let meta = CriterionMeta {
+      mode: mode.to_owned(),
+      pattern: pattern.to_owned(),
+      enabled: true,
+    };
+    if is_filter {
+      self.filter_meta.push(meta);
+      self.vis.add_filter(matcher);
+    } else {
+      self.pin_meta.push(meta);
+      self.vis.add_pin(matcher);
+    }
+    Ok(())
+  }
+
+  /// Recomputes the visible-line cache from `model` when invalidated. With
+  /// no file loaded the visible set is empty.
+  fn ensure_visible_cache(&mut self, model: Option<&FileModel>) {
+    if self.visible_cache.is_none() {
+      self.visible_cache = Some(model.map_or_else(Vec::new, |m| self.vis.visible_lines(m)));
+    }
+  }
+
+  fn invalidate(&mut self) {
+    self.visible_cache = None;
+  }
+}
+
+/// Mode strings of the contract — the same tags `filtersTab.ts` FilterMode
+/// uses. An invalid pattern (bad regex, syntax error, non-numeric lineno)
+/// compiles to a matcher that matches nothing (`Matcher::never()`); an
+/// unknown mode tag is refused (contract: mode is one of the four).
+fn matcher_from_parts(mode: &str, pattern: &str) -> Result<Matcher, String> {
+  match mode {
+    "plain" => Ok(Matcher::plain(pattern)),
+    "regex" => Ok(Matcher::regex(pattern)),
+    "simple" => Ok(Matcher::simple(pattern)),
+    "lineno" => Ok(pattern
+      .trim()
+      .parse::<u32>()
+      .map_or_else(|_| Matcher::never(), Matcher::line_no)),
+    other => Err(format!("unknown mode {other:?}: expected plain|regex|simple|lineno")),
+  }
+}
+
+fn criterion_err(which: &str, id: u32) -> String {
+  format!("no such {which} {id}")
+}
+
+fn level_from_name(name: &str) -> Option<Level> {
+  level_order().into_iter().find(|&l| level_name(l) == name)
+}
+
+pub(crate) fn add_filter_inner(vis: &VisState, mode: &str, pattern: &str) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  guard.invalidate();
+  guard.add_criterion(mode, pattern, true)
+}
+
+pub(crate) fn add_pin_inner(vis: &VisState, mode: &str, pattern: &str) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  guard.invalidate();
+  guard.add_criterion(mode, pattern, false)
+}
+
+pub(crate) fn set_filter_enabled_inner(vis: &VisState, id: u32, on: bool) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  let id = id as usize;
+  let meta = guard
+    .filter_meta
+    .get_mut(id)
+    .ok_or_else(|| criterion_err("filter", id as u32))?;
+  meta.enabled = on;
+  guard.vis.set_filter_enabled(id, on);
+  guard.invalidate();
+  Ok(())
+}
+
+pub(crate) fn set_pin_enabled_inner(vis: &VisState, id: u32, on: bool) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  let id = id as usize;
+  let meta = guard
+    .pin_meta
+    .get_mut(id)
+    .ok_or_else(|| criterion_err("pin", id as u32))?;
+  meta.enabled = on;
+  guard.vis.set_pin_enabled(id, on);
+  guard.invalidate();
+  Ok(())
+}
+
+pub(crate) fn remove_filter_inner(vis: &VisState, id: u32) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  let id = id as usize;
+  if id >= guard.filter_meta.len() {
+    return Err(criterion_err("filter", id as u32));
+  }
+  guard.filter_meta.remove(id);
+  guard.vis.remove_filter(id); // bounds-checked above, never panics
+  guard.invalidate();
+  Ok(())
+}
+
+pub(crate) fn remove_pin_inner(vis: &VisState, id: u32) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  let id = id as usize;
+  if id >= guard.pin_meta.len() {
+    return Err(criterion_err("pin", id as u32));
+  }
+  guard.pin_meta.remove(id);
+  guard.vis.remove_pin(id); // bounds-checked above, never panics
+  guard.invalidate();
+  Ok(())
+}
+
+pub(crate) fn set_level_enabled_inner(vis: &VisState, level: &str, on: bool) -> Result<(), String> {
+  let level = level_from_name(level)
+    .ok_or_else(|| format!("no such level {level:?}: expected critical|error|warning|msg|debug|trace"))?;
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  let idx = level_order()
+    .iter()
+    .position(|&l| l == level)
+    .expect("level_order covers all six levels");
+  guard.levels_enabled[idx] = on;
+  guard.vis.set_level_enabled(level, on);
+  guard.invalidate();
+  Ok(())
+}
+
+pub(crate) fn set_category_enabled_inner(vis: &VisState, path: &str, on: bool) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  guard.vis.set_category_enabled(path, on);
+  if on {
+    guard.disabled_categories.remove(path);
+  } else {
+    guard.disabled_categories.insert(path.to_owned());
+  }
+  guard.invalidate();
+  Ok(())
+}
+
+/// Contract policy 3: after a load the whitelist is repopulated as
+/// `model.categories() - disabled_categories` (disabled survive by name,
+/// new categories start enabled); levels, filters and pins persist because
+/// the core Visibility object simply lives across reloads.
+///
+/// spec interpretation: every ancestor prefix of a category is enabled
+/// alongside it — the engine requires the exact path AND all ancestors in
+/// the whitelist (§10: disabling a node hides its children), and the core
+/// doc comment fixes the load population as "FileModel::categories and the
+/// category tree nodes". Without the ancestors a two-level category whose
+/// parent has no rows of its own would load invisible. A disabled path
+/// stays out of the whitelist; a disabled PARENT therefore also keeps its
+/// children hidden after a reload, which is the §10 behavior.
+fn repopulate_categories(vis: &mut VisibilityState, model: &FileModel) {
+  for (path, _) in model.categories() {
+    let mut prefix = path;
+    loop {
+      if !vis.disabled_categories.contains(prefix) {
+        vis.vis.set_category_enabled(prefix, true);
+      }
+      match prefix.rfind('/') {
+        Some(i) => prefix = &prefix[..i],
+        None => break,
+      }
+    }
+  }
+}
+
+/// Snapshot for the read command; locks in file-then-visibility order
+/// everywhere the two mutexes are taken together (no interleaving).
+pub(crate) fn visibility_snapshot_inner(
+  file: &FileState,
+  vis: &VisState,
+) -> Result<VisibilitySnapshotDto, String> {
+  let file = file.lock().map_err(|_| lock_err())?;
+  let mut vis = vis.lock().map_err(|_| lock_err())?;
+  vis.ensure_visible_cache(file.as_ref());
+  let counts: [u64; 6] = file
+    .as_ref()
+    .map_or([0_u64; 6], |m| vis.vis.level_counts_excluding_levels(m));
+  Ok(VisibilitySnapshotDto {
+    visible_count: vis
+      .visible_cache
+      .as_ref()
+      .map_or(0, |lines| lines.len()) as u32,
+    levels: level_order()
+      .into_iter()
+      .enumerate()
+      .map(|(i, level)| LevelStateDto {
+        level: level_name(level).to_owned(),
+        enabled: vis.levels_enabled[i],
+        count: counts[i] as u32,
+      })
+      .collect(),
+    filters: vis
+      .filter_meta
+      .iter()
+      .enumerate()
+      .map(|(id, m)| CriterionDto {
+        id: id as u32,
+        mode: m.mode.clone(),
+        pattern: m.pattern.clone(),
+        enabled: m.enabled,
+      })
+      .collect(),
+    pins: vis
+      .pin_meta
+      .iter()
+      .enumerate()
+      .map(|(id, m)| CriterionDto {
+        id: id as u32,
+        mode: m.mode.clone(),
+        pattern: m.pattern.clone(),
+        enabled: m.enabled,
+      })
+      .collect(),
+    categories_enabled: vis.vis.categories_enabled().iter().cloned().collect(),
+  })
+}
+
+/// A window of the VISIBLE sequence (contract; §4: `offset` indexes rows
+/// passing §7, not raw line numbers).
+pub(crate) fn get_rows_inner(
+  offset: u32,
+  limit: u32,
+  file: &FileState,
+  vis: &VisState,
+) -> Result<Vec<RowDto>, String> {
+  let file = file.lock().map_err(|_| lock_err())?;
+  let Some(model) = file.as_ref() else {
+    // No file loaded: empty (current behavior, contract).
+    return Ok(Vec::new());
+  };
+  let mut vis = vis.lock().map_err(|_| lock_err())?;
+  vis.ensure_visible_cache(Some(model));
+  let lines = vis.visible_cache.as_deref().unwrap_or(&[]);
+  let start = (offset as usize).min(lines.len());
+  let end = start.saturating_add(limit as usize).min(lines.len());
+  let window = lines.get(start..end).unwrap_or(&[]);
+  Ok(window
+    .iter()
+    .map(|&line| model.row(line as usize - 1).map(to_row_dto))
+    .collect::<Option<Vec<_>>>()
+    .expect("cached visible lines exist in the model"))
+}
+
 // ---------------------------------------------------------------- commands
 
 /// Load a file in the background and make it the active model (§2).
@@ -132,36 +477,144 @@ pub fn to_row_dto(row: &logviewer_core::parser::Row) -> RowDto {
 pub async fn load_file(
   path: String,
   state: tauri::State<'_, FileState>,
+  vis: tauri::State<'_, VisState>,
 ) -> Result<LoadResult, String> {
+  load_file_inner(std::path::Path::new(&path), &state, &vis)
+}
+
+/// Load implementation shared with the shell-crate tests (tauri::State cannot
+/// be built outside an app).
+pub(crate) fn load_file_inner(
+  path: &std::path::Path,
+  state: &FileState,
+  vis: &VisState,
+) -> Result<LoadResult, String> {
+  let path = path.display().to_string();
   let (model, stats) = logviewer_core::workspace::FileModel::load_path(std::path::Path::new(&path))
     .map_err(|e| format!("cannot open {path}: {e}"))?;
   let result = to_load_result(&model, stats.elapsed.as_millis() as u32);
-  let mut guard = state.lock().map_err(|_| "state poisoned".to_owned())?;
+  // Whitelist repopulation (contract policy 3) before the model swaps.
+  {
+    let mut vis = vis.lock().map_err(|_| lock_err())?;
+    repopulate_categories(&mut vis, &model);
+    vis.invalidate();
+  }
+  let mut guard = state.lock().map_err(|_| lock_err())?;
   *guard = Some(model);
   Ok(result)
 }
 
-/// A window of rows, 0-based offset over line numbers (§4 virtual scrolling).
+/// A window of the VISIBLE row sequence (§4, §7): `offset` indexes the rows
+/// passing the combined §7 rule, not raw line numbers. The visible-line list
+/// is cached in the shell state and invalidated on every visibility mutation
+/// and on file load (contract docs/notes/visibility-bridge.md). Returns []
+/// while no file is loaded.
 #[tauri::command]
 #[specta::specta]
 pub async fn get_rows(
   offset: u32,
   limit: u32,
   state: tauri::State<'_, FileState>,
+  vis: tauri::State<'_, VisState>,
 ) -> Result<Vec<RowDto>, String> {
-  let guard = state.lock().map_err(|_| "state poisoned".to_owned())?;
-  Ok(
-    guard
-      .as_ref()
-      .map(|model| {
-        model
-          .rows_slice(offset as usize, limit as usize)
-          .iter()
-          .map(to_row_dto)
-          .collect()
-      })
-      .unwrap_or_default(),
-  )
+  get_rows_inner(offset, limit, &state, &vis)
+}
+
+/// Add a text filter, enabled (§10.1: a new filter starts checked).
+/// `mode` is one of plain|regex|simple|lineno; an invalid pattern matches
+/// nothing (contract).
+#[tauri::command]
+#[specta::specta]
+pub async fn add_filter(
+  mode: String,
+  pattern: String,
+  vis: tauri::State<'_, VisState>,
+) -> Result<(), String> {
+  add_filter_inner(&vis, &mode, &pattern)
+}
+
+/// Add a pinned criterion, enabled (§12; the pin bypasses filters, levels
+/// and categories).
+#[tauri::command]
+#[specta::specta]
+pub async fn add_pin(
+  mode: String,
+  pattern: String,
+  vis: tauri::State<'_, VisState>,
+) -> Result<(), String> {
+  add_pin_inner(&vis, &mode, &pattern)
+}
+
+/// Toggle the filter at `id` (index in the LATEST snapshot's filter list);
+/// out of range is an Err, never a panic.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_filter_enabled(
+  id: u32,
+  on: bool,
+  vis: tauri::State<'_, VisState>,
+) -> Result<(), String> {
+  set_filter_enabled_inner(&vis, id, on)
+}
+
+/// Toggle the pin at `id` (index in the LATEST snapshot's pin list); out of
+/// range is an Err, never a panic.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_pin_enabled(
+  id: u32,
+  on: bool,
+  vis: tauri::State<'_, VisState>,
+) -> Result<(), String> {
+  set_pin_enabled_inner(&vis, id, on)
+}
+
+/// Remove the filter at `id`; out of range is an Err, never a panic.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_filter(id: u32, vis: tauri::State<'_, VisState>) -> Result<(), String> {
+  remove_filter_inner(&vis, id)
+}
+
+/// Remove the pin at `id`; out of range is an Err, never a panic.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_pin(id: u32, vis: tauri::State<'_, VisState>) -> Result<(), String> {
+  remove_pin_inner(&vis, id)
+}
+
+/// Toggle a level by its lowercase long name ("critical".."trace", same
+/// spellings as the snapshot's level lists).
+#[tauri::command]
+#[specta::specta]
+pub async fn set_level_enabled(
+  level: String,
+  on: bool,
+  vis: tauri::State<'_, VisState>,
+) -> Result<(), String> {
+  set_level_enabled_inner(&vis, &level, on)
+}
+
+/// Enable or disable a category by its full path ("app/main/db").
+#[tauri::command]
+#[specta::specta]
+pub async fn set_category_enabled(
+  path: String,
+  on: bool,
+  vis: tauri::State<'_, VisState>,
+) -> Result<(), String> {
+  set_category_enabled_inner(&vis, &path, on)
+}
+
+/// The single read command of the visibility bridge: shape in
+/// docs/notes/visibility-bridge.md (RAW; normalizes only in ipcClient.ts).
+#[tauri::command]
+#[specta::specta]
+pub async fn visibility_snapshot(
+  state: tauri::State<'_, FileState>,
+  vis: tauri::State<'_, VisState>,
+) -> Result<VisibilitySnapshotDto, String> {
+  visibility_snapshot_inner(&state, &vis)
 }
 
 // ---------------------------------------------------------------- tests
@@ -228,5 +681,266 @@ mod tests {
     let state = new_file_state();
     let guard = state.lock().unwrap();
     assert!(guard.as_ref().is_none());
+  }
+
+  // ---------------------------------------------------------- visibility
+  // bridge tests (docs/notes/visibility-bridge.md). They drive the inner
+  // state functions directly: tauri::State cannot be built outside an app.
+
+  /// The mixed log, format A (KSIVA); 1-based lines:
+  ///
+  /// | line | category      | level   | row keywords           |
+  /// |------|---------------|---------|------------------------|
+  /// | 1    | app/main      | Error   | "database failed"      |
+  /// | 2    | app/main      | Msg     | "started fine"         |
+  /// | 3    | app/net       | Error   | "timeout"              |
+  /// | 4    | app           | Warning | "disk"                 |
+  /// | 5    | uncategorized | Msg     | "standalone"           |
+  /// | 6    | app/net       | Debug   | "retry"                |
+  const MIX: &[u8] = concat!(
+    "2024-01-01T10:00:00.000 app/main LOG_ERR database failed\n",
+    "2024-01-01T10:00:01.000 app/main LOG_MSG started fine\n",
+    "2024-01-01T10:00:02.000 app/net LOG_ERR timeout\n",
+    "2024-01-01T10:00:03.000 app LOG_WRN disk almost full\n",
+    "2024-01-01T10:00:04.000 standalone\n",
+    "2024-01-01T10:00:05.000 app/net LOG_DBG retry done\n",
+  )
+  .as_bytes();
+
+  /// Loads `data` through the load command into fresh file + visibility
+  /// states and returns both mutexes.
+  fn bridge(data: &[u8], name: &str) -> (FileState, VisState) {
+    let path = std::env::temp_dir().join(format!("lv_ipc_bridge_{name}.log"));
+    std::fs::write(&path, data).unwrap();
+    let file = new_file_state();
+    let vis = new_visibility_state();
+    load_file_inner(&path, &file, &vis).expect("file loads");
+    (file, vis)
+  }
+
+  #[test]
+  fn snapshot_shape_fixed_level_order_zero_counts() {
+    let (file, vis) = bridge(MIX, "shape");
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    // Fresh load: no disabled categories, no filters -> all 6 lines visible.
+    assert_eq!(snap.visible_count, 6);
+    assert!(snap.filters.is_empty());
+    assert!(snap.pins.is_empty());
+    assert_eq!(
+      snap.categories_enabled,
+      vec!["app", "app/main", "app/net", "uncategorized"]
+    );
+    // Fixed order critical..trace with zero counts included; §11 counters
+    // (level toggles ignored) equal the raw level counts with no filters.
+    let levels: Vec<(&str, bool, u32)> = snap
+      .levels
+      .iter()
+      .map(|l| (l.level.as_str(), l.enabled, l.count))
+      .collect();
+    assert_eq!(
+      levels,
+      vec![
+        ("critical", true, 0),
+        ("error", true, 2),
+        ("warning", true, 1),
+        ("msg", true, 2),
+        ("debug", true, 1),
+        ("trace", true, 0)
+      ]
+    );
+  }
+
+  #[test]
+  fn filters_combine_or_and_enable_toggle() {
+    let (file, vis) = bridge(MIX, "filters_or");
+    add_filter_inner(&vis, "plain", "failed").unwrap(); // line 1
+    add_filter_inner(&vis, "plain", "started").unwrap(); // line 2
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 2);
+    assert_eq!(
+      snap.filters,
+      vec![
+        CriterionDto { id: 0, mode: "plain".into(), pattern: "failed".into(), enabled: true },
+        CriterionDto { id: 1, mode: "plain".into(), pattern: "started".into(), enabled: true },
+      ]
+    );
+    // Disabling one still leaves the other active (OR over ACTIVE filters).
+    set_filter_enabled_inner(&vis, 0, false).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 1);
+    assert!(!snap.filters[0].enabled);
+    // No active filter at all -> filters do not narrow (§7).
+    set_filter_enabled_inner(&vis, 1, false).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 6);
+    remove_filter_inner(&vis, 0).unwrap();
+    set_filter_enabled_inner(&vis, 0, true).unwrap(); // was id 1, now id 0
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 1);
+    assert_eq!(
+      snap.filters,
+      vec![CriterionDto { id: 0, mode: "plain".into(), pattern: "started".into(), enabled: true }]
+    );
+  }
+
+  #[test]
+  fn level_toggle_flips_visibility_not_counters() {
+    let (file, vis) = bridge(MIX, "level_toggle");
+    set_level_enabled_inner(&vis, "error", false).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    // Visibility flips: lines 1 and 3 are hidden.
+    assert_eq!(snap.visible_count, 4);
+    // §11 counters ignore the level toggles: error stays 2.
+    let error = snap.levels.iter().find(|l| l.level == "error").unwrap();
+    assert!(!error.enabled);
+    assert_eq!(error.count, 2);
+    set_level_enabled_inner(&vis, "msg", false).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 2); // lines 4 and 6
+  }
+
+  #[test]
+  fn category_whitelist_repopulates_across_reload() {
+    const NEXT: &[u8] = concat!(
+      "2024-01-01T10:00:00.000 app/net LOG_ERR netline\n",
+      "2024-01-01T10:00:01.000 batch/worker LOG_MSG done\n",
+    )
+    .as_bytes();
+    let path_mix = std::env::temp_dir().join("lv_ipc_bridge_first.log");
+    let path_next = std::env::temp_dir().join("lv_ipc_bridge_next.log");
+    std::fs::write(&path_mix, MIX).unwrap();
+    std::fs::write(&path_next, NEXT).unwrap();
+    let file = new_file_state();
+    let vis = new_visibility_state();
+    load_file_inner(&path_mix, &file, &vis).unwrap();
+    // Disable app/net: lines 3 and 6 hidden.
+    set_category_enabled_inner(&vis, "app/net", false).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 4);
+    // A filter added before the reload persists across it (policy 3).
+    add_filter_inner(&vis, "plain", "disk").unwrap();
+
+    load_file_inner(&path_next, &file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    // New category batch/worker starts enabled; app/net stays disabled;
+    // previously enabled categories of the last file survive by name.
+    assert!(snap.categories_enabled.contains(&"batch/worker".to_owned()));
+    // The engine requires every ancestor in the whitelist, so the synthetic
+    // parent "batch" (no rows of its own) is enabled too.
+    assert!(snap.categories_enabled.contains(&"batch".to_owned()));
+    assert!(!snap.categories_enabled.contains(&"app/net".to_owned()));
+    assert!(snap.categories_enabled.contains(&"app/main".to_owned()));
+    // Visible: only the batch line (netline is app/net; "disk" filter does
+    // not match either line of NEXT).
+    assert_eq!(snap.visible_count, 0);
+    assert!(get_rows_inner(0, 10, &file, &vis).unwrap().is_empty());
+    // The filter survived the reload.
+    assert_eq!(
+      snap.filters,
+      vec![CriterionDto { id: 0, mode: "plain".into(), pattern: "disk".into(), enabled: true }]
+    );
+    // The disabled category becomes visible again after a re-enable: with
+    // the persisted "disk" filter (matches nothing in NEXT) it is still 0,
+    // so drop the filter and both NEXT lines surface.
+    set_category_enabled_inner(&vis, "app/net", true).unwrap();
+    assert_eq!(visibility_snapshot_inner(&file, &vis).unwrap().visible_count, 0);
+    remove_filter_inner(&vis, 0).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 2); // netline + batch line
+    let rows = get_rows_inner(0, 10, &file, &vis).unwrap();
+    assert_eq!(rows.iter().map(|r| r.line_no).collect::<Vec<_>>(), vec![1, 2]);
+  }
+
+  #[test]
+  fn get_rows_serves_visible_window_and_cache_invalidation() {
+    let (file, vis) = bridge(MIX, "rows_window");
+    add_filter_inner(&vis, "plain", "failed").unwrap(); // line 1
+    add_filter_inner(&vis, "plain", "timeout").unwrap(); // line 3
+    add_filter_inner(&vis, "plain", "retry").unwrap(); // line 6
+    // Visible sequence is lines 1, 3, 6.
+    let rows = get_rows_inner(0, 2, &file, &vis).unwrap();
+    assert_eq!(
+      rows.iter().map(|r| r.line_no).collect::<Vec<_>>(),
+      vec![1, 3]
+    );
+    let rows = get_rows_inner(2, 5, &file, &vis).unwrap();
+    assert_eq!(rows.iter().map(|r| r.line_no).collect::<Vec<_>>(), vec![6]);
+    assert_eq!(rows[0].category, "app/net");
+    assert_eq!(rows[0].level, "debug");
+    // Offset past the end -> empty.
+    assert!(get_rows_inner(3, 2, &file, &vis).unwrap().is_empty());
+    // A visibility mutation invalidates the cache: adding a pin (line 5)
+    // immediately extends the served window (ascending line order).
+    add_pin_inner(&vis, "lineno", "5").unwrap();
+    let rows = get_rows_inner(2, 2, &file, &vis).unwrap();
+    assert_eq!(rows.iter().map(|r| r.line_no).collect::<Vec<_>>(), vec![5, 6]);
+  }
+
+  #[test]
+  fn pins_bypass_filters_and_disable() {
+    let (file, vis) = bridge(MIX, "pins");
+    add_filter_inner(&vis, "plain", "failed").unwrap(); // visible {1}
+    add_pin_inner(&vis, "lineno", "5").unwrap(); // pinned {5}
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 2); // filter OR pin
+    // The pin bypasses the filter and the level toggles (§12).
+    set_level_enabled_inner(&vis, "msg", false).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 2); // rows 1 and 5 still visible
+    set_pin_enabled_inner(&vis, 0, false).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 1);
+  }
+
+  #[test]
+  fn out_of_range_ids_and_bad_input_error() {
+    let (file, vis) = bridge(MIX, "errors");
+    assert_eq!(
+      set_filter_enabled_inner(&vis, 0, true).unwrap_err(),
+      "no such filter 0"
+    );
+    assert_eq!(remove_filter_inner(&vis, 0).unwrap_err(), "no such filter 0");
+    assert_eq!(set_pin_enabled_inner(&vis, 0, true).unwrap_err(), "no such pin 0");
+    assert_eq!(remove_pin_inner(&vis, 0).unwrap_err(), "no such pin 0");
+    assert!(set_level_enabled_inner(&vis, "fatal", true)
+      .unwrap_err()
+      .contains("no such level"));
+    assert!(add_filter_inner(&vis, "bogus", "x").unwrap_err().contains("unknown mode"));
+    assert_eq!(visibility_snapshot_inner(&file, &vis).unwrap().visible_count, 6);
+    // Empty state: snapshot still answers, get_rows is empty.
+    let empty_file = new_file_state();
+    let empty_vis = new_visibility_state();
+    let snap = visibility_snapshot_inner(&empty_file, &empty_vis).unwrap();
+    assert_eq!(snap.visible_count, 0);
+    assert_eq!(
+      snap
+        .levels
+        .iter()
+        .map(|l| l.count)
+        .collect::<Vec<_>>(),
+      vec![0; 6]
+    );
+    assert!(get_rows_inner(0, 5, &empty_file, &empty_vis)
+      .unwrap()
+      .is_empty());
+  }
+
+  #[test]
+  fn invalid_patterns_match_nothing() {
+    let (file, vis) = bridge(MIX, "invalid_patterns");
+    // Bad regex (contract: matches nothing, never()).
+    add_filter_inner(&vis, "regex", "[").unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 0);
+    // Non-numeric lineno criterion matches nothing.
+    remove_filter_inner(&vis, 0).unwrap();
+    add_filter_inner(&vis, "lineno", "abc").unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 0);
+    // A valid lineno criterion selects exactly one line.
+    remove_filter_inner(&vis, 0).unwrap();
+    add_filter_inner(&vis, "lineno", "4").unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 1);
   }
 }
