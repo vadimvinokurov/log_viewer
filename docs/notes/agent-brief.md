@@ -29,17 +29,17 @@ the coordinator must not restate spec semantics in prompts (CLAUDE.md rule 7).
 
 ## Sub-agent usage (CLAUDE.md rule 7)
 
-- **Lookups/analysis**: read-only fan-out (find usages, measure, compare) — the agent
-  reads so the coordinator does not; the conclusion (not the file dumps) comes back.
-- **Self-contained builds**: the contract must be fully written down before spawning —
-  bead [Actions]/[Pseudocode]/[Acceptance] + this brief + the spec section. The prompt is
-  only pointers (task id, paths, gates), a few lines; if it needs to explain *why*,
-  write that into the bead/note first.
-- **Prompt template**: `bd id: <id> — read docs/notes/agent-brief.md + <spec section>;
-  touch only <files>; gates: <commands>; bd update <id> --notes at the end.`
-- **Return format**: files changed, gates run and results, risks/follow-ups — no
-  file dumps back to the coordinator.
-- Integration and shared files are always the coordinator's inline job.
+- **Inline by default**: small edits (2–3 tool calls), judgment calls, integration into
+  shared files. Spawn overhead + the agent's fresh re-reads beat a small inline task.
+- **Delegate bulky process noise**: module builds with test cycles, multi-file analysis,
+  gate/debug loops, benchmark runs — the coordinator never pays for those outputs again.
+- **Two small agents over one fat one**; checkpoint via `bd update <id> --notes` at every
+  milestone, mid-task included (a dead agent without notes is a total loss).
+- **Contract before spawn**: bead [Actions]/[Pseudocode]/[Acceptance] + this brief + the
+  spec section; the prompt is pointers only (`bd id: <id> — read docs/notes/agent-brief.md
+  + <spec section>; touch only <files>; gates: <commands>; bd update <id> --notes at the end.`).
+- **Return format**: files changed, gates run and results, risks/follow-ups — no file
+  dumps back to the coordinator.
 
 ## Known traps
 - macOS case-insensitive FS: `import "./LevelBar"` resolves to `levelBar.ts` — always
