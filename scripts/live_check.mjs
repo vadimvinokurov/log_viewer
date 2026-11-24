@@ -23,7 +23,7 @@ function readPort() {
   return Number(fs.readFileSync(file, "utf8").trim());
 }
 
-function request(port, path_, body) {
+function request(port, path_, body, timeoutMs = 300_000) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const socket = net.connect(port, "127.0.0.1", () => {
@@ -31,6 +31,12 @@ function request(port, path_, body) {
         `POST ${path_} HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(data)}\r\nConnection: close\r\n\r\n${data}`,
       );
     });
+    // A wedged server thread (lost report, hung queue) must fail the call
+    // instead of hanging the whole run (bead vdr: the Node side had no
+    // socket timeout at all).
+    socket.setTimeout(timeoutMs, () =>
+      socket.destroy(new Error(`driver socket no reply within ${timeoutMs}ms`)),
+    );
     let raw = "";
     socket.on("data", (chunk) => (raw += chunk));
     socket.on("end", () => {
@@ -46,7 +52,7 @@ async function waitForApp(timeoutMs) {
   for (;;) {
     try {
       const port = readPort();
-      await request(port, "/load", { path: target });
+      await request(port, "/load", { path: target }, 3_000);
       return port;
     } catch {
       if (Date.now() > deadline) {
@@ -66,26 +72,23 @@ function check(name, ok, detail) {
 
 /** Runs an async JS snippet against the real window's console and returns the
  *  snippet's `return` value. The snippet must only produce numbers, booleans
- *  and short enum strings — raw log content stays on the page side. */
+ *  and short enum strings — raw log content stays on the page side.
+ *  NO retry (bead vdr): a lost report means the snippet already RAN, and a
+ *  re-execution would double every mutating batch (loads/filters/pins) the
+ *  first run silently applied. A transport loss is a first-class failure. */
 async function evalJs(port, js) {
-  const run = async () => {
-    const response = await request(port, "/load", { js });
-    const parsed = JSON.parse(response).result;
-    const result = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
-    if (result && typeof result === "object" && result.driverError) {
-      throw new Error(`page error: ${result.driverError}`);
-    }
-    return result;
-  };
-  // The driver is single-slot per webview eval; a lost report lands as a
-  // 60s timeout on busy pages. One retry converts that transport flake into
-  // a deterministic pass without masking real page errors (result undefined
-  // = transport loss; driverError = the page refused).
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const result = await run();
-    if (result !== undefined) return result;
+  const response = await request(port, "/load", { js });
+  const parsed = JSON.parse(response).result;
+  const result = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+  if (result && typeof result === "object" && result.driverError) {
+    throw new Error(`page error: ${result.driverError}`);
   }
-  return undefined;
+  if (result === undefined) {
+    throw new Error(
+      "transport loss: the page produced no report; not retrying a possibly mutating snippet",
+    );
+  }
+  return result;
 }
 
 const port = await waitForApp(120_000);

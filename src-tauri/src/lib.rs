@@ -12,6 +12,32 @@ fn dirs_home() -> std::path::PathBuf {
   std::env::temp_dir()
 }
 
+/// Held by a running app for its whole lifetime: the OS releases the flock
+/// the moment the process dies (even a kill -9), so no stale cleanup step.
+/// The file is only kept alive to own the lock, never read.
+pub struct InstanceLock(#[allow(dead_code)] std::fs::File);
+
+/// Single-instance guard (bead vdr): concurrent app instances raced the
+/// shared port file and made live probes nondeterministic. The second
+/// start is refused; the lock lives in `dir` so tests can point elsewhere.
+pub fn try_acquire_instance(dir: &std::path::Path) -> Result<InstanceLock, String> {
+  let path = dir.join("logviewer.lock");
+  let file = std::fs::File::options()
+    .read(true)
+    .write(true)
+    .create(true)
+    .truncate(false)
+    .open(&path)
+    .map_err(|e| format!("instance lock {path:?}: {e}"))?;
+  match file.try_lock() {
+    Ok(()) => Ok(InstanceLock(file)),
+    Err(std::fs::TryLockError::WouldBlock) => Err(format!(
+      "another logviewer instance holds {path:?} — refusing a second app"
+    )),
+    Err(std::fs::TryLockError::Error(e)) => Err(format!("instance lock {path:?}: {e}")),
+  }
+}
+
 /// The shared specta builder: commands of the IPC contract (docs/STACK.md
 /// "IPC layer"; dsq.3 visibility bridge commands live in ipc.rs).
 fn build_bindings() -> tauri_specta::Builder<tauri::Wry> {
@@ -59,10 +85,32 @@ mod tests {
       .expect("failed to export typescript bindings");
   }
 
+  /// A second acquire of the same lock file fails while the first lives and
+  /// succeeds again once it is dropped (the guard's whole point).
+  #[test]
+  fn instance_lock_refuses_a_second_holder_until_the_first_releases() {
+    let dir = std::env::temp_dir().join(format!("lv_instance_lock_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let first = super::try_acquire_instance(&dir).expect("first acquire");
+    let second = super::try_acquire_instance(&dir);
+    assert!(second.is_err(), "a second acquire must be refused");
+    drop(first);
+    super::try_acquire_instance(&dir).expect("releases after the holder drops");
+  }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  // Single-instance guard (bead vdr): the second start leaves the shared
+  // port file alone and exits before any window exists. The lock is held
+  // for the process lifetime; the OS releases it even on kill -9.
+  let _instance = match try_acquire_instance(&dirs_home()) {
+    Ok(l) => l,
+    Err(msg) => {
+      eprintln!("logviewer: {msg}");
+      std::process::exit(3);
+    }
+  };
   let bindings = build_bindings();
   #[cfg(debug_assertions)]
   bindings
