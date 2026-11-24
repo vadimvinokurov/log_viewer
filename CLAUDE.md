@@ -25,6 +25,15 @@
    comments, commits, issues, etc. — in English. Exception: `docs/FUNCTIONAL_SPEC.html`
    stays Russian (see rule 2).
 
+7. **Token economy.** (Owner's feedback, 2026-11-24 — based on `docs/token-usage-report.html`; the coordinator pays the whole visible conversation every turn, so size of turns and of agent prompts is the main lever.)
+   - **Short turns, milestones as checkpoints.** End a turn at a committed milestone instead of continuing through several milestones in one turn; long turns grow a replay tail that is paid again on every turn. Commit per milestone (with the owner's approval) also makes usage-limit interruptions harmless.
+   - **Agent prompts point at a shared brief.** Write `docs/notes/agent-brief.md` once (per-layer rules, file-partition conventions, style, gates, known traps — e.g. the case-insensitive import trap) and keep it current; agent prompts reference it + the one bead id instead of restating spec semantics inline (they were paid 9+ times across agents).
+   - **Never debug by shell-escaping into files.** A second failed `sed`/heredoc edit → stop and rewrite the whole file (or the affected block) with the Write/Edit tools; each extra quoting round-trip costs a full read+edit cycle (the `driver.rs` fight cost tens of thousands of tokens).
+   - **Numbers instead of screenshots.** Non-visual checks (element present, counts, sizes, returned copy text) go through text results from evaluate/tests; reading a PNG is for visual acceptance only (rule 4), and element-scope shots beat full-window ones when a shot is needed.
+   - **Scoped gates between steps, full gates once.** Run the single module's test file (`npx vitest run <name>` / `cargo test -p <crate> <module>`) while iterating; run the full workspace suite + clippy + e2e once before a commit, not after every micro-edit. Run everything from the directory the config lives in (`ui/` for JS) — a run from the repo root silently tests the wrong environment and forces a paid rerun.
+   - **Cap and checkpoint agents.** Keep one task's engine + its QA surfaces from ballooning; if an agent nears its budget it checkpoints (notes + beads update) instead of pushing through and dying mid-run at a usage limit.
+   - **Use the banked automation, not window screenshots:** the design oracle (`scripts/design_check.mjs`) and the live driver (`scripts/live_check.mjs`) already answer visual and real-window questions headlessly (rules 4–5); manual screenshots are not part of the loop.
+
 ## Workflow
 
 Three storage roles:
