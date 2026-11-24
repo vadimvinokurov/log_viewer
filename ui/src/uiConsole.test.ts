@@ -246,6 +246,17 @@ describe("console visibility actions (dsq.3, §7)", () => {  beforeEach(() => {
     expect(snap.visibility?.levels).toHaveLength(6);
   });
 
+  // §2.1 action 5 (bead n4y.2): loading a file closes the search panel.
+  it("load closes the search panel", async () => {
+    const { console_ } = await freshConsole(visibilityStub());
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("error");
+    expect(console_.getSnapshot().search?.open).toBe(true);
+    const snap = await console_.load("/tmp/log2.txt");
+    expect(snap.search?.open).toBe(false);
+  });
+
   it("setLevel re-dispatches a fresh snapshot with the level off", async () => {
     const { console_ } = await freshConsole(visibilityStub());
     await console_.load("/tmp/log.txt");

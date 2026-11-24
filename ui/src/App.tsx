@@ -72,6 +72,15 @@ export default function App() {
         }
       }
       const current = console_.getState();
+      // §14/§2.1 (bead n4y.2): Ctrl+R / Cmd+R reloads; preventDefault keeps
+      // the webview from reloading the PAGE itself.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        if (current.file !== null && current.loadingFile === null) {
+          void console_.load(current.file.path);
+        }
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         if (current.file !== null && current.search.open === false) {
           e.preventDefault();

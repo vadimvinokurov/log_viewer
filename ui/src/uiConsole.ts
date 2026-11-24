@@ -331,6 +331,11 @@ class UiConsole {
       this.dispatch({ kind: "load-request", path });
       try {
         const load = await ipc().loadFile(path);
+        if (this.state.search.open) {
+          // §2.1 (bead n4y.2): a load closes the search panel; mode/query
+          // survive for the next open (the search-open contract).
+          this.dispatch({ kind: "search-close" });
+        }
         this.dispatch({
           kind: "load-success",
           load,
