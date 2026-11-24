@@ -212,6 +212,9 @@ pub struct VisibilityState {
   /// Category paths the user disabled; they survive reloads by name while
   /// new categories start enabled (contract policy 3, §2.1/§10).
   disabled_categories: std::collections::BTreeSet<String>,
+  /// Test seam (bead 7c3): full-file walks through this state (recompute,
+  /// §11 counts). get_rows/search on a valid cache must not increment it.
+  walks: u64,
   /// Cached visible 1-based line numbers; `None` = invalidated by a mutation
   /// or a file load, recomputed on the next read command.
   visible_cache: Option<Vec<u32>>,
@@ -232,6 +235,7 @@ impl VisibilityState {
       levels_enabled: [true; 6],
       disabled_categories: std::collections::BTreeSet::new(),
       visible_cache: None,
+      walks: 0,
     }
   }
 
@@ -262,6 +266,9 @@ impl VisibilityState {
   /// need their own walk (they ignore the level toggles); with no file
   /// loaded both are empty. The cached list stays the source for
   /// get_rows/search.
+  ///
+  /// Snapshot-only: get_rows/search go through `ensure_visible_lines`,
+  /// which never pays the counts walk on a valid cache (bead 7c3).
   fn ensure_visible_cache(&mut self, model: Option<&FileModel>) -> [u64; 6] {
     match (self.visible_cache.is_none(), model) {
       (true, None) => {
@@ -269,12 +276,33 @@ impl VisibilityState {
         [0_u64; 6]
       }
       (true, Some(m)) => {
+        self.walks += 1;
         let (lines, counts) = self.vis.visible_with_counts(m);
         self.visible_cache = Some(lines);
         counts
       }
       (false, None) => [0_u64; 6],
-      (false, Some(m)) => self.vis.level_counts_excluding_levels(m),
+      (false, Some(m)) => {
+        self.walks += 1;
+        self.vis.level_counts_excluding_levels(m)
+      }
+    }
+  }
+
+  /// Read-path twin of `ensure_visible_cache` for get_rows/search: only the
+  /// cached line sequence matters, so a walk happens exactly once per
+  /// invalidation and a valid-cache read costs no full-file pass at all.
+  fn ensure_visible_lines(&mut self, model: Option<&FileModel>) {
+    if self.visible_cache.is_none() {
+      match model {
+        None => {
+          self.visible_cache = Some(Vec::new());
+        }
+        Some(m) => {
+          self.walks += 1;
+          self.visible_cache = Some(self.vis.visible_lines(m));
+        }
+      }
     }
   }
 
@@ -543,7 +571,7 @@ pub(crate) fn get_rows_inner(
     return Ok(Vec::new());
   };
   let mut vis = vis.lock().map_err(|_| lock_err())?;
-  vis.ensure_visible_cache(Some(model));
+  vis.ensure_visible_lines(Some(model));
   let hl = hl.lock().map_err(|_| lock_err())?;
   let lines = vis.visible_cache.as_deref().unwrap_or(&[]);
   let start = (offset as usize).min(lines.len());
@@ -614,7 +642,7 @@ pub(crate) fn search_visible_inner(
     });
   };
   let mut vis = vis.lock().map_err(|_| lock_err())?;
-  vis.ensure_visible_cache(Some(model));
+  vis.ensure_visible_lines(Some(model));
   let lines = vis.visible_cache.as_deref().unwrap_or(&[]);
   let mut positions = Vec::new();
   for (idx, &line) in lines.iter().enumerate() {
@@ -1494,6 +1522,33 @@ fn history_roundtrip_and_persistence() {
     assert_eq!(
       rows.iter().map(|r| r.line_no).collect::<Vec<_>>(),
       vec![1, 2, 3, 4, 5, 6]
+    );
+  }
+
+  #[test]
+  fn get_rows_and_search_on_valid_cache_do_not_walk() {
+    let (file, vis, _hl) = bridge(MIX, "walk_free_reads");
+    // The first read recomputes the invalid cache: one walk.
+    let rows = get_rows_inner(0, 6, &file, &vis, &_hl).unwrap();
+    assert_eq!(rows.len(), 6);
+    let before = vis.lock().unwrap().walks;
+    assert_eq!(before, 1);
+    // Further reads on the VALID cache cost no walk (bead 7c3): get_rows
+    // and search discard the §11 counters, so only the line list matters.
+    get_rows_inner(0, 3, &file, &vis, &_hl).unwrap();
+    search_visible_inner(&file, &vis, "plain", "disk").unwrap();
+    assert_eq!(
+      vis.lock().unwrap().walks,
+      before,
+      "reads on a valid cache must not walk the file"
+    );
+    // The snapshot keeps its counts walk (§11 totals are its payload):
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
+    assert_eq!(vis.lock().unwrap().walks, before + 1);
+    assert_eq!(snap.visible_count, 6);
+    assert_eq!(
+      snap.levels.iter().find(|l| l.level == "error").unwrap().count,
+      2
     );
   }
 
