@@ -27,6 +27,20 @@ the coordinator must not restate spec semantics in prompts (CLAUDE.md rule 7).
 - File partition for parallel agents: pre-created stubs + pre-added deps; agents never
   touch `lib.rs`, `Cargo.toml`, or other agents' files; integration is the coordinator's job.
 
+## Sub-agent usage (CLAUDE.md rule 7)
+
+- **Lookups/analysis**: read-only fan-out (find usages, measure, compare) — the agent
+  reads so the coordinator does not; the conclusion (not the file dumps) comes back.
+- **Self-contained builds**: the contract must be fully written down before spawning —
+  bead [Actions]/[Pseudocode]/[Acceptance] + this brief + the spec section. The prompt is
+  only pointers (task id, paths, gates), a few lines; if it needs to explain *why*,
+  write that into the bead/note first.
+- **Prompt template**: `bd id: <id> — read docs/notes/agent-brief.md + <spec section>;
+  touch only <files>; gates: <commands>; bd update <id> --notes at the end.`
+- **Return format**: files changed, gates run and results, risks/follow-ups — no
+  file dumps back to the coordinator.
+- Integration and shared files are always the coordinator's inline job.
+
 ## Known traps
 - macOS case-insensitive FS: `import "./LevelBar"` resolves to `levelBar.ts` — always
   import components with the explicit `.tsx` extension.
