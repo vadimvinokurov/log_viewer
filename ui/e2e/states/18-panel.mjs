@@ -40,6 +40,7 @@ const STUB = `(function () {
     level: LEVEL_CYCLE[n % LEVEL_CYCLE.length],
     message: "Synthetic message " + n + " \\u2014 deterministic harness text.",
     raw: "raw " + n,
+    spans: [],
   });
   const visibleRows = () => {
     const rows = [];
@@ -79,6 +80,7 @@ const STUB = `(function () {
         })),
         filters: [],
         pins: [],
+        highlights: [],
         categories_enabled: [...enabled].sort(),
       };
     },

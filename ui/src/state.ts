@@ -10,6 +10,7 @@
 import { EMPTY_SELECTION, range, select, toggle, type SelectionState } from "./selection";
 import { LEVEL_ORDER, type EnabledLevels, type Level, type LevelCounts } from "./levelBar";
 import type { FilterItem } from "./filtersTab";
+import type { HighlightItem } from "./highlights";
 
 export interface LoadInfo {
   format: string;
@@ -38,6 +39,8 @@ export interface VisibilityState {
   levels: VisibilityLevel[];
   filters: FilterItem[];
   pins: FilterItem[];
+  /** §9 highlight rules (exx.2); they SURVIVE reload (§2.1, unlike pins). */
+  highlights: HighlightItem[];
   categoriesEnabled: string[];
 }
 

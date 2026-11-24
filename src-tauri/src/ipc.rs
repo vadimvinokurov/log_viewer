@@ -10,6 +10,7 @@
 use serde::Serialize;
 
 use logviewer_core::format::Format;
+use logviewer_core::highlights::{HighlightEngine, Rule};
 use logviewer_core::matching::Matcher;
 use logviewer_core::parser::Level;
 use logviewer_core::visibility::Visibility;
@@ -92,6 +93,9 @@ pub struct RowDto {
   // spec interpretation: the raw line travels as lossy UTF-8 text; raw bytes
   // with invalid encoding cannot be represented in the webview strings anyway.
   pub raw: String,
+  /// §9 highlight spans of the Message text (empty: no active rule). Byte
+  /// offsets inside `message` — kept raw, converted in ipcClient.ts.
+  pub spans: Vec<SpanDto>,
 }
 
 pub fn level_order() -> [Level; 6] {
@@ -136,6 +140,9 @@ pub fn to_row_dto(row: &logviewer_core::parser::Row) -> RowDto {
     level: level_name(row.level).to_owned(),
     message: row.message.clone(),
     raw: String::from_utf8_lossy(&row.raw).into_owned(),
+    // Highlights are shell state, so the shared mapper starts spanless; the
+    // get_rows reader fills the spans in for active rules.
+    spans: Vec::new(),
   }
 }
 
@@ -170,6 +177,8 @@ pub struct VisibilitySnapshotDto {
   pub filters: Vec<CriterionDto>,
   pub pins: Vec<CriterionDto>,
   pub categories_enabled: Vec<String>,
+  /// §9 highlight rules (they survive reloads; opposite of pins).
+  pub highlights: Vec<HighlightDto>,
 }
 
 /// Shell metadata for one core `Criterion`: the engine stores only the
@@ -404,18 +413,22 @@ fn repopulate_categories(vis: &mut VisibilityState, model: &FileModel) {
   }
 }
 
-/// Snapshot for the read command; locks in file-then-visibility order
-/// everywhere the two mutexes are taken together (no interleaving).
+/// Snapshot for the read command; locks in file-then-visibility-then-
+/// highlights order everywhere the mutexes are taken together
+/// (no interleaving; highlights are independent of both others).
 pub(crate) fn visibility_snapshot_inner(
   file: &FileState,
   vis: &VisState,
+  hl: &HighlightState,
 ) -> Result<VisibilitySnapshotDto, String> {
   let file = file.lock().map_err(|_| lock_err())?;
   let mut vis = vis.lock().map_err(|_| lock_err())?;
   vis.ensure_visible_cache(file.as_ref());
+  let hl = hl.lock().map_err(|_| lock_err())?;
   let counts: [u64; 6] = file
     .as_ref()
     .map_or([0_u64; 6], |m| vis.vis.level_counts_excluding_levels(m));
+  let highlights = highlight_dtos(&hl);
   Ok(VisibilitySnapshotDto {
     visible_count: vis
       .visible_cache
@@ -453,6 +466,7 @@ pub(crate) fn visibility_snapshot_inner(
       })
       .collect(),
     categories_enabled: vis.vis.categories_enabled().iter().cloned().collect(),
+    highlights,
   })
 }
 
@@ -463,6 +477,7 @@ pub(crate) fn get_rows_inner(
   limit: u32,
   file: &FileState,
   vis: &VisState,
+  hl: &HighlightState,
 ) -> Result<Vec<RowDto>, String> {
   let file = file.lock().map_err(|_| lock_err())?;
   let Some(model) = file.as_ref() else {
@@ -471,15 +486,27 @@ pub(crate) fn get_rows_inner(
   };
   let mut vis = vis.lock().map_err(|_| lock_err())?;
   vis.ensure_visible_cache(Some(model));
+  let hl = hl.lock().map_err(|_| lock_err())?;
   let lines = vis.visible_cache.as_deref().unwrap_or(&[]);
   let start = (offset as usize).min(lines.len());
   let end = start.saturating_add(limit as usize).min(lines.len());
   let window = lines.get(start..end).unwrap_or(&[]);
+  // A cheap guard first: with no active rule every row gets an empty spans
+  // list (to_row_dto default) and nothing else is computed.
+  let has_active = hl.engine.rules().iter().any(|h| h.enabled);
   Ok(window
     .iter()
-    .map(|&line| model.row(line as usize - 1).map(to_row_dto))
-    .collect::<Option<Vec<_>>>()
-    .expect("cached visible lines exist in the model"))
+    .map(|&line| {
+      let row = model
+        .row(line as usize - 1)
+        .expect("cached visible lines exist in the model");
+      let mut dto = to_row_dto(row);
+      if has_active {
+        dto.spans = row_span_dtos(&hl, row);
+      }
+      dto
+    })
+    .collect::<Vec<_>>())
 }
 
 // ------------------------------------------------------------- search (§8)
@@ -547,6 +574,231 @@ pub(crate) fn search_visible_inner(
   })
 }
 
+// ------------------------------------------------------- highlights (§9)
+
+/// Shared highlight state (§9): the core engine plus the shell bookkeeping
+/// the engine does not store (mode tags, pattern texts, user override colors,
+/// mirrors of the on/off switches). Highlights SURVIVE a file reload (§2.1 —
+/// the opposite policy of pins), and they never touch the visible cache:
+/// coloring does not change which rows are visible.
+pub type HighlightState = std::sync::Mutex<HighlightShellState>;
+
+pub fn new_highlight_state() -> HighlightState {
+  std::sync::Mutex::new(HighlightShellState::new())
+}
+
+/// Shell metadata for one core `Highlight`, parallel to the engine's rule
+/// list (same order, same length) — mirrors CriterionMeta.
+struct HighlightMeta {
+  mode: String,
+  pattern: String,
+  enabled: bool,
+  override_color: Option<String>,
+}
+
+pub struct HighlightShellState {
+  engine: HighlightEngine,
+  meta: Vec<HighlightMeta>,
+}
+
+impl HighlightShellState {
+  fn new() -> HighlightShellState {
+    HighlightShellState { engine: HighlightEngine::new(), meta: Vec::new() }
+  }
+}
+
+/// One §9 highlight rule of the snapshot: `id` = index (rule order) in the
+/// highlights list of the LATEST snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub struct HighlightDto {
+  pub id: u32,
+  pub mode: String,
+  pub pattern: String,
+  pub enabled: bool,
+  pub color_index: u8,
+  pub override_color: Option<String>,
+}
+
+/// One span of a RowDto (§9): a semi-transparent rectangle behind matched
+/// text. SPEC NOTE: `start`/`len` are BYTE offsets inside the raw MESSAGE
+/// text; the DTO deliberately keeps bytes raw — converting to JS string
+/// indexes happens exactly once in ui/src/ipcClient.ts (single normalization
+/// point). Overlapping rules are kept unmerged, in rule order, and a
+/// disabled rule contributes nothing.
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub struct SpanDto {
+  pub start: u32,
+  pub len: u32,
+  pub color_index: u8,
+  pub override_color: Option<String>,
+}
+
+/// Mode tags of the contract — the same spellings the filters and search
+/// use. For `lineno` the pattern is the LINE NUMBER of an `hn` rule, not a
+/// matcher: a parseable number maps to the whole-line `Rule::LineNo`;
+/// a non-number — the dsq.3 test precedent (`invalid_patterns_match_nothing`,
+/// core `MatchMode::matcher`) — compiles to a never-matching pattern rule
+/// that keeps its slot in the tab (like add_filter, it must not Err). An
+/// unknown mode tag is refused (contract: mode is one of the four).
+fn highlight_rule_from_parts(mode: &str, pattern: &str) -> Result<Rule, String> {
+  match mode {
+    "plain" => Ok(Rule::Pattern { matcher: Matcher::plain(pattern) }),
+    "regex" => Ok(Rule::Pattern { matcher: Matcher::regex(pattern) }),
+    "simple" => Ok(Rule::Pattern { matcher: Matcher::simple(pattern) }),
+    "lineno" => Ok(pattern.trim().parse::<u32>().map_or_else(
+      |_| Rule::Pattern { matcher: Matcher::never() },
+      |n| Rule::LineNo { line_no: n },
+    )),
+    other => Err(format!("unknown mode {other:?}: expected plain|regex|simple|lineno")),
+  }
+}
+
+/// Contract errors for the highlights list, in the dsq.3 style.
+fn highlight_err(id: u32) -> String {
+  format!("no such highlight {id}")
+}
+
+/// A user override color: CSS "#rrggbb" (seven chars, lowercase or
+/// uppercase hex digits); anything else is bad input and is refused.
+fn is_css_hex_color(s: &str) -> bool {
+  s.len() == 7
+    && s.starts_with('#')
+    && s.as_bytes()[1..]
+      .iter()
+      .all(|&b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || (b'A'..=b'F').contains(&b))
+}
+
+pub(crate) fn add_highlight_inner(
+  hl: &HighlightState,
+  mode: &str,
+  pattern: &str,
+) -> Result<(), String> {
+  let rule = highlight_rule_from_parts(mode, pattern)?;
+  let mut guard = hl.lock().map_err(|_| lock_err())?;
+  // The color rotation is the core engine's counter: the shell adds nothing
+  // to it (continuity across removals is core behavior).
+  guard.engine.add(rule);
+  guard.meta.push(HighlightMeta {
+    mode: mode.to_owned(),
+    pattern: pattern.to_owned(),
+    enabled: true,
+    override_color: None,
+  });
+  Ok(())
+}
+
+pub(crate) fn remove_highlight_inner(hl: &HighlightState, id: u32) -> Result<(), String> {
+  let id = id as usize;
+  let mut guard = hl.lock().map_err(|_| lock_err())?;
+  if id >= guard.meta.len() {
+    return Err(highlight_err(id as u32));
+  }
+  guard.meta.remove(id);
+  guard.engine.remove(id); // bounds-checked above, never panics
+  Ok(())
+}
+
+pub(crate) fn set_highlight_enabled_inner(
+  hl: &HighlightState,
+  id: u32,
+  on: bool,
+) -> Result<(), String> {
+  let id = id as usize;
+  let mut guard = hl.lock().map_err(|_| lock_err())?;
+  let meta = guard
+    .meta
+    .get_mut(id)
+    .ok_or_else(|| highlight_err(id as u32))?;
+  meta.enabled = on;
+  guard.engine.set_enabled(id, on); // bounds-checked above, never panics
+  Ok(())
+}
+
+pub(crate) fn set_highlight_color_inner(
+  hl: &HighlightState,
+  id: u32,
+  hex: Option<String>,
+) -> Result<(), String> {
+  if let Some(hex) = &hex
+    && !is_css_hex_color(hex)
+  {
+    return Err(format!(
+      "bad highlight color {hex:?}: expected a CSS \"#rrggbb\" value"
+    ));
+  }
+  let mut guard = hl.lock().map_err(|_| lock_err())?;
+  let meta = guard
+    .meta
+    .get_mut(id as usize)
+    .ok_or_else(|| highlight_err(id))?;
+  meta.override_color = hex;
+  Ok(())
+}
+
+pub(crate) fn clear_highlights_inner(hl: &HighlightState) -> Result<(), String> {
+  let mut guard = hl.lock().map_err(|_| lock_err())?;
+  guard.engine.clear();
+  guard.meta.clear();
+  Ok(())
+}
+
+/// Spans of one row over ACTIVE (enabled) rules only (§9: a semi-transparent
+/// rectangle behind matched text, Message column only). This mirrors the
+/// core `row_spans` rule by rule because it also needs the SHELL metadata
+/// (the user override color) attached to the rule that produced each span,
+/// which the core function does not return; the byte-range semantics are
+/// the core's (`Matcher::spans`; LineNo colors the whole message). The two
+/// lists inside `HighlightShellState` are parallel, so `idx` addresses both.
+pub(crate) fn row_span_dtos(
+  hl: &HighlightShellState,
+  row: &logviewer_core::parser::Row,
+) -> Vec<SpanDto> {
+  let mut out = Vec::new();
+  for (idx, h) in hl.engine.rules().iter().enumerate() {
+    if !h.enabled {
+      continue; // an off checkbox renders nothing (§9)
+    }
+    let ranges: Vec<(usize, usize)> = match &h.rule {
+      Rule::Pattern { matcher } => matcher.spans(&row.message),
+      // spec interpretation: an empty message is the zero-length `0..0`
+      // (core doc comment); a zero-length span renders nothing.
+      Rule::LineNo { line_no } => {
+        if *line_no == row.line_no {
+          vec![(0, row.message.len())]
+        } else {
+          Vec::new()
+        }
+      }
+    };
+    for (start, end) in ranges {
+      out.push(SpanDto {
+        start: start as u32,
+        len: (end - start) as u32,
+        color_index: h.color_index,
+        override_color: hl.meta[idx].override_color.clone(),
+      });
+    }
+  }
+  out
+}
+
+/// The snapshot's highlight list: engine rule order, `id` = index.
+fn highlight_dtos(hl: &HighlightShellState) -> Vec<HighlightDto> {
+  hl
+    .meta
+    .iter()
+    .enumerate()
+    .map(|(id, m)| HighlightDto {
+      id: id as u32,
+      mode: m.mode.clone(),
+      pattern: m.pattern.clone(),
+      enabled: m.enabled,
+      color_index: hl.engine.rules()[id].color_index,
+      override_color: m.override_color.clone(),
+    })
+    .collect()
+}
+
 // ---------------------------------------------------------------- commands
 
 /// Load a file in the background and make it the active model (§2).
@@ -601,8 +853,9 @@ pub async fn get_rows(
   limit: u32,
   state: tauri::State<'_, FileState>,
   vis: tauri::State<'_, VisState>,
+  hl: tauri::State<'_, HighlightState>,
 ) -> Result<Vec<RowDto>, String> {
-  get_rows_inner(offset, limit, &state, &vis)
+  get_rows_inner(offset, limit, &state, &vis, &hl)
 }
 
 /// Add a text filter, enabled (§10.1: a new filter starts checked).
@@ -706,8 +959,9 @@ pub async fn set_category_enabled(
 pub async fn visibility_snapshot(
   state: tauri::State<'_, FileState>,
   vis: tauri::State<'_, VisState>,
+  hl: tauri::State<'_, HighlightState>,
 ) -> Result<VisibilitySnapshotDto, String> {
-  visibility_snapshot_inner(&state, &vis)
+  visibility_snapshot_inner(&state, &vis, &hl)
 }
 
 /// Search the VISIBLE sequence (§8): `mode` is one of plain|regex|simple,
@@ -722,6 +976,64 @@ pub async fn search_visible(
   vis: tauri::State<'_, VisState>,
 ) -> Result<SearchMatchDto, String> {
   search_visible_inner(&state, &vis, &mode, &pattern)
+}
+
+/// Add a §9 highlight rule, enabled, with the palette rotation color
+/// assigned by the core. `mode` is one of plain|regex|simple|lineno, where
+/// lineno is the LINE NUMBER of an hn rule (not a matcher pattern): a
+/// non-numeric lineno becomes a never-matching rule that keeps its slot
+/// (add_filter behavior); an unknown mode is an Err.
+#[tauri::command]
+#[specta::specta]
+pub async fn add_highlight(
+  mode: String,
+  pattern: String,
+  hl: tauri::State<'_, HighlightState>,
+) -> Result<(), String> {
+  add_highlight_inner(&hl, &mode, &pattern)
+}
+
+/// Remove the highlight at `id` (index in the LATEST snapshot's highlights
+/// list); out of range is an Err, never a panic.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_highlight(
+  id: u32,
+  hl: tauri::State<'_, HighlightState>,
+) -> Result<(), String> {
+  remove_highlight_inner(&hl, id)
+}
+
+/// Toggle the highlight at `id`; out of range is an Err, never a panic.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_highlight_enabled(
+  id: u32,
+  on: bool,
+  hl: tauri::State<'_, HighlightState>,
+) -> Result<(), String> {
+  set_highlight_enabled_inner(&hl, id, on)
+}
+
+/// Set the §9 highlight color of the rule at `id`: a CSS "#rrggbb" override,
+/// or `null` to reset to the palette rotation color. Out of range or a
+/// malformed hex is an Err.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_highlight_color(
+  id: u32,
+  hex: Option<String>,
+  hl: tauri::State<'_, HighlightState>,
+) -> Result<(), String> {
+  set_highlight_color_inner(&hl, id, hex)
+}
+
+/// Drop every highlight at once (§12: the rmc/rmh-style wholesale removal;
+/// the cmdline epic calls this for `:rmh`).
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_highlights(hl: tauri::State<'_, HighlightState>) -> Result<(), String> {
+  clear_highlights_inner(&hl)
 }
 
 // ---------------------------------------------------------------- tests
@@ -814,25 +1126,27 @@ mod tests {
   )
   .as_bytes();
 
-  /// Loads `data` through the load command into fresh file + visibility
-  /// states and returns both mutexes.
-  fn bridge(data: &[u8], name: &str) -> (FileState, VisState) {
+  /// Loads `data` through the load command into fresh file, visibility and
+  /// highlight states and returns the three mutexes.
+  fn bridge(data: &[u8], name: &str) -> (FileState, VisState, HighlightState) {
     let path = std::env::temp_dir().join(format!("lv_ipc_bridge_{name}.log"));
     std::fs::write(&path, data).unwrap();
     let file = new_file_state();
     let vis = new_visibility_state();
+    let hl = new_highlight_state();
     load_file_inner(&path, &file, &vis).expect("file loads");
-    (file, vis)
+    (file, vis, hl)
   }
 
   #[test]
   fn snapshot_shape_fixed_level_order_zero_counts() {
-    let (file, vis) = bridge(MIX, "shape");
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let (file, vis, hl) = bridge(MIX, "shape");
+    let snap = visibility_snapshot_inner(&file, &vis, &hl).unwrap();
     // Fresh load: no disabled categories, no filters -> all 6 lines visible.
     assert_eq!(snap.visible_count, 6);
     assert!(snap.filters.is_empty());
     assert!(snap.pins.is_empty());
+    assert!(snap.highlights.is_empty(), "a fresh state has no highlights");
     assert_eq!(
       snap.categories_enabled,
       vec!["app", "app/main", "app/net", "uncategorized"]
@@ -859,10 +1173,10 @@ mod tests {
 
   #[test]
   fn filters_combine_or_and_enable_toggle() {
-    let (file, vis) = bridge(MIX, "filters_or");
+    let (file, vis, _hl) = bridge(MIX, "filters_or");
     add_filter_inner(&vis, "plain", "failed").unwrap(); // line 1
     add_filter_inner(&vis, "plain", "started").unwrap(); // line 2
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 2);
     assert_eq!(
       snap.filters,
@@ -873,16 +1187,16 @@ mod tests {
     );
     // Disabling one still leaves the other active (OR over ACTIVE filters).
     set_filter_enabled_inner(&vis, 0, false).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 1);
     assert!(!snap.filters[0].enabled);
     // No active filter at all -> filters do not narrow (§7).
     set_filter_enabled_inner(&vis, 1, false).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 6);
     remove_filter_inner(&vis, 0).unwrap();
     set_filter_enabled_inner(&vis, 0, true).unwrap(); // was id 1, now id 0
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 1);
     assert_eq!(
       snap.filters,
@@ -892,9 +1206,9 @@ mod tests {
 
   #[test]
   fn level_toggle_flips_visibility_not_counters() {
-    let (file, vis) = bridge(MIX, "level_toggle");
+    let (file, vis, _hl) = bridge(MIX, "level_toggle");
     set_level_enabled_inner(&vis, "error", false).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     // Visibility flips: lines 1 and 3 are hidden.
     assert_eq!(snap.visible_count, 4);
     // §11 counters ignore the level toggles: error stays 2.
@@ -902,7 +1216,7 @@ mod tests {
     assert!(!error.enabled);
     assert_eq!(error.count, 2);
     set_level_enabled_inner(&vis, "msg", false).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 2); // lines 4 and 6
   }
 
@@ -919,16 +1233,17 @@ mod tests {
     std::fs::write(&path_next, NEXT).unwrap();
     let file = new_file_state();
     let vis = new_visibility_state();
+    let hl = new_highlight_state();
     load_file_inner(&path_mix, &file, &vis).unwrap();
     // Disable app/net: lines 3 and 6 hidden.
     set_category_enabled_inner(&vis, "app/net", false).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &hl).unwrap();
     assert_eq!(snap.visible_count, 4);
     // A filter added before the reload persists across it (policy 3).
     add_filter_inner(&vis, "plain", "disk").unwrap();
 
     load_file_inner(&path_next, &file, &vis).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &hl).unwrap();
     // New category batch/worker starts enabled; app/net stays disabled;
     // previously enabled categories of the last file survive by name.
     assert!(snap.categories_enabled.contains(&"batch/worker".to_owned()));
@@ -940,7 +1255,7 @@ mod tests {
     // Visible: only the batch line (netline is app/net; "disk" filter does
     // not match either line of NEXT).
     assert_eq!(snap.visible_count, 0);
-    assert!(get_rows_inner(0, 10, &file, &vis).unwrap().is_empty());
+    assert!(get_rows_inner(0, 10, &file, &vis, &hl).unwrap().is_empty());
     // The filter survived the reload.
     assert_eq!(
       snap.filters,
@@ -950,53 +1265,52 @@ mod tests {
     // the persisted "disk" filter (matches nothing in NEXT) it is still 0,
     // so drop the filter and both NEXT lines surface.
     set_category_enabled_inner(&vis, "app/net", true).unwrap();
-    assert_eq!(visibility_snapshot_inner(&file, &vis).unwrap().visible_count, 0);
+    assert_eq!(visibility_snapshot_inner(&file, &vis, &hl).unwrap().visible_count, 0);
     remove_filter_inner(&vis, 0).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &hl).unwrap();
     assert_eq!(snap.visible_count, 2); // netline + batch line
-    let rows = get_rows_inner(0, 10, &file, &vis).unwrap();
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
     assert_eq!(rows.iter().map(|r| r.line_no).collect::<Vec<_>>(), vec![1, 2]);
   }
 
   #[test]
   fn get_rows_serves_visible_window_and_cache_invalidation() {
-    let (file, vis) = bridge(MIX, "rows_window");
+    let (file, vis, hl) = bridge(MIX, "rows_window");
     add_filter_inner(&vis, "plain", "failed").unwrap(); // line 1
     add_filter_inner(&vis, "plain", "timeout").unwrap(); // line 3
     add_filter_inner(&vis, "plain", "retry").unwrap(); // line 6
     // Visible sequence is lines 1, 3, 6.
-    let rows = get_rows_inner(0, 2, &file, &vis).unwrap();
+    let rows = get_rows_inner(0, 2, &file, &vis, &hl).unwrap();
     assert_eq!(
       rows.iter().map(|r| r.line_no).collect::<Vec<_>>(),
       vec![1, 3]
     );
-    let rows = get_rows_inner(2, 5, &file, &vis).unwrap();
+    let rows = get_rows_inner(2, 5, &file, &vis, &hl).unwrap();
     assert_eq!(rows.iter().map(|r| r.line_no).collect::<Vec<_>>(), vec![6]);
     assert_eq!(rows[0].category, "app/net");
     assert_eq!(rows[0].level, "debug");
     // Offset past the end -> empty.
-    assert!(get_rows_inner(3, 2, &file, &vis).unwrap().is_empty());
+    assert!(get_rows_inner(3, 2, &file, &vis, &hl).unwrap().is_empty());
     // A visibility mutation invalidates the cache: adding a pin (line 5)
     // immediately extends the served window (ascending line order).
     add_pin_inner(&vis, "lineno", "5").unwrap();
-    let rows = get_rows_inner(2, 2, &file, &vis).unwrap();
+    let rows = get_rows_inner(2, 2, &file, &vis, &hl).unwrap();
     assert_eq!(rows.iter().map(|r| r.line_no).collect::<Vec<_>>(), vec![5, 6]);
   }
 
   #[test]
   // §12: clear_pins (the rmp command) drops every pin and invalidates the
   // visible cache; the surviving filter narrows back on its own.
-  #[test]
   fn clear_pins_clears_all_and_invalidates() {
-    let (file, vis) = bridge(MIX, "clear_pins");
+    let (file, vis, _hl) = bridge(MIX, "clear_pins");
     add_filter_inner(&vis, "plain", "novelty").unwrap(); // matches nothing
     add_pin_inner(&vis, "plain", "failed").unwrap(); // pins line 1
     add_pin_inner(&vis, "lineno", "3").unwrap(); // pins line 3
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.pins.len(), 2);
     assert_eq!(snap.visible_count, 2);
     clear_pins_inner(&vis).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert!(snap.pins.is_empty());
     assert_eq!(snap.visible_count, 0); // only the non-matching filter remains
   }
@@ -1009,16 +1323,17 @@ mod tests {
     std::fs::write(&path, MIX).unwrap();
     let file = new_file_state();
     let vis = new_visibility_state();
+    let hl = new_highlight_state();
     load_file_inner(&path, &file, &vis).expect("file loads");
     // Hide everything except the pinned row, then pin a row the filter
     // rejects: it stays visible only through the pin override (§7).
     add_filter_inner(&vis, "plain", "failed").unwrap();
     add_pin_inner(&vis, "plain", "retry").unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &hl).unwrap();
     assert_eq!(snap.visible_count, 2); // line 1 (filter) + line 6 (pin)
     // Reload the same path: pins are gone, the filter persists (§12).
     load_file_inner(&path, &file, &vis).expect("reload");
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &hl).unwrap();
     assert!(snap.pins.is_empty());
     assert_eq!(snap.filters.len(), 1);
     assert_eq!(snap.visible_count, 1);
@@ -1026,23 +1341,23 @@ mod tests {
 
   #[test]
   fn pins_bypass_filters_and_disable() {
-    let (file, vis) = bridge(MIX, "pins");
+    let (file, vis, _hl) = bridge(MIX, "pins");
     add_filter_inner(&vis, "plain", "failed").unwrap(); // visible {1}
     add_pin_inner(&vis, "lineno", "5").unwrap(); // pinned {5}
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 2); // filter OR pin
     // The pin bypasses the filter and the level toggles (§12).
     set_level_enabled_inner(&vis, "msg", false).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 2); // rows 1 and 5 still visible
     set_pin_enabled_inner(&vis, 0, false).unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 1);
   }
 
   #[test]
   fn out_of_range_ids_and_bad_input_error() {
-    let (file, vis) = bridge(MIX, "errors");
+    let (file, vis, hl) = bridge(MIX, "errors");
     assert_eq!(
       set_filter_enabled_inner(&vis, 0, true).unwrap_err(),
       "no such filter 0"
@@ -1054,11 +1369,12 @@ mod tests {
       .unwrap_err()
       .contains("no such level"));
     assert!(add_filter_inner(&vis, "bogus", "x").unwrap_err().contains("unknown mode"));
-    assert_eq!(visibility_snapshot_inner(&file, &vis).unwrap().visible_count, 6);
+    assert_eq!(visibility_snapshot_inner(&file, &vis, &hl).unwrap().visible_count, 6);
     // Empty state: snapshot still answers, get_rows is empty.
     let empty_file = new_file_state();
     let empty_vis = new_visibility_state();
-    let snap = visibility_snapshot_inner(&empty_file, &empty_vis).unwrap();
+    let empty_hl = new_highlight_state();
+    let snap = visibility_snapshot_inner(&empty_file, &empty_vis, &empty_hl).unwrap();
     assert_eq!(snap.visible_count, 0);
     assert_eq!(
       snap
@@ -1068,7 +1384,7 @@ mod tests {
         .collect::<Vec<_>>(),
       vec![0; 6]
     );
-    assert!(get_rows_inner(0, 5, &empty_file, &empty_vis)
+    assert!(get_rows_inner(0, 5, &empty_file, &empty_vis, &empty_hl)
       .unwrap()
       .is_empty());
   }
@@ -1078,18 +1394,19 @@ mod tests {
 
   /// Same build path as `bridge` but a unique temp prefix: concurrent test
   /// writers to one temp file SIGBUS under the mmap scanner (agent-brief).
-  fn bridge_search(data: &[u8], name: &str) -> (FileState, VisState) {
+  fn bridge_search(data: &[u8], name: &str) -> (FileState, VisState, HighlightState) {
     let path = std::env::temp_dir().join(format!("lv_search_{name}.log"));
     std::fs::write(&path, data).unwrap();
     let file = new_file_state();
     let vis = new_visibility_state();
+    let hl = new_highlight_state();
     load_file_inner(&path, &file, &vis).expect("file loads");
-    (file, vis)
+    (file, vis, hl)
   }
 
   #[test]
   fn search_plain_is_case_insensitive_and_scopes_to_visible_rows() {
-    let (file, vis) = bridge_search(MIX, "plain");
+    let (file, vis, _hl) = bridge_search(MIX, "plain");
     // All six lines visible -> 0-based indexes are line-1. Case folding:
     // the stored text is "database failed", the query is uppercase.
     let r = search_visible_inner(&file, &vis, "plain", "FAILED").unwrap();
@@ -1109,7 +1426,7 @@ mod tests {
 
   #[test]
   fn search_regex_and_simple_modes_match_the_core_matcher() {
-    let (file, vis) = bridge_search(MIX, "modes");
+    let (file, vis, _hl) = bridge_search(MIX, "modes");
     // Regex over the visible sequence: lines 1,2,3,4,6 carry a LOG_ tag,
     // line 5 (standalone) does not; positions ascend and skip the gap.
     let r = search_visible_inner(&file, &vis, "regex", "LOG_[A-Z]+").unwrap();
@@ -1127,7 +1444,7 @@ mod tests {
 
   #[test]
   fn search_edge_cases_empty_invalid_unknown_and_no_file() {
-    let (file, vis) = bridge_search(MIX, "edge");
+    let (file, vis, _hl) = bridge_search(MIX, "edge");
     let none = SearchMatchDto { total: 0, positions: vec![] };
     // Invalid regex matches nothing (contract), never errors.
     let r = search_visible_inner(&file, &vis, "regex", "[").unwrap();
@@ -1140,7 +1457,7 @@ mod tests {
     assert!(search_visible_inner(&file, &vis, "lineno", "3").unwrap_err().contains("unknown mode"));
     assert!(search_visible_inner(&file, &vis, "bogus", "x").unwrap_err().contains("unknown mode"));
     // The erroring calls left state untouched.
-    assert_eq!(visibility_snapshot_inner(&file, &vis).unwrap().visible_count, 6);
+    assert_eq!(visibility_snapshot_inner(&file, &vis, &_hl).unwrap().visible_count, 6);
     // No file loaded: {0, []} for every valid mode.
     let empty_file = new_file_state();
     let empty_vis = new_visibility_state();
@@ -1156,20 +1473,256 @@ mod tests {
 
   #[test]
   fn invalid_patterns_match_nothing() {
-    let (file, vis) = bridge(MIX, "invalid_patterns");
+    let (file, vis, _hl) = bridge(MIX, "invalid_patterns");
     // Bad regex (contract: matches nothing, never()).
     add_filter_inner(&vis, "regex", "[").unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 0);
     // Non-numeric lineno criterion matches nothing.
     remove_filter_inner(&vis, 0).unwrap();
     add_filter_inner(&vis, "lineno", "abc").unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 0);
     // A valid lineno criterion selects exactly one line.
     remove_filter_inner(&vis, 0).unwrap();
     add_filter_inner(&vis, "lineno", "4").unwrap();
-    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert_eq!(snap.visible_count, 1);
+  }
+
+  // ------------------------------------------------------- highlights (§9)
+  // Highlights carry NO file dependency for mutations (add/remove/toggle/
+  // color/clear), they never touch the visible cache, and they survive a
+  // reload (§2.1 — opposite of pins).
+
+  /// The snapshot's highlight list for `hl` read against never-loaded file
+  /// and visibility states (highlights are independent of both).
+  fn highlights_of(hl: &HighlightState) -> Vec<HighlightDto> {
+    visibility_snapshot_inner(&new_file_state(), &new_visibility_state(), hl)
+      .unwrap()
+      .highlights
+  }
+
+  /// Two-line §9 playground, 1-based:
+  /// | line | category | level | message         | message length |
+  /// |------|----------|-------|-----------------|----------------|
+  /// | 1    | app      | Msg   | "boom here boom" | 14 bytes      |
+  /// | 2    | app      | Error | "boom again"     | 10 bytes      |
+  const HL_LOG: &[u8] = concat!(
+    "2024-01-01T10:00:00.000 app LOG_MSG boom here boom\n",
+    "2024-01-01T10:00:01.000 app LOG_ERR boom again\n",
+  )
+  .as_bytes();
+
+  #[test]
+  fn highlight_add_remove_toggle_clear_round_trip() {
+    let hl = new_highlight_state();
+    // Out-of-range on the empty list: Err, no panic (dsq.3 style).
+    assert_eq!(
+      remove_highlight_inner(&hl, 0).unwrap_err(),
+      "no such highlight 0"
+    );
+    assert_eq!(
+      set_highlight_enabled_inner(&hl, 0, false).unwrap_err(),
+      "no such highlight 0"
+    );
+    assert_eq!(
+      set_highlight_color_inner(&hl, 0, None).unwrap_err(),
+      "no such highlight 0"
+    );
+    add_highlight_inner(&hl, "plain", "failed").unwrap();
+    add_highlight_inner(&hl, "regex", "e[r]{2}").unwrap();
+    add_highlight_inner(&hl, "simple", "\"disk\"").unwrap();
+    add_highlight_inner(&hl, "lineno", "3").unwrap();
+    assert_eq!(
+      highlights_of(&hl),
+      vec![
+        HighlightDto { id: 0, mode: "plain".into(), pattern: "failed".into(), enabled: true, color_index: 0, override_color: None },
+        HighlightDto { id: 1, mode: "regex".into(), pattern: "e[r]{2}".into(), enabled: true, color_index: 1, override_color: None },
+        HighlightDto { id: 2, mode: "simple".into(), pattern: "\"disk\"".into(), enabled: true, color_index: 2, override_color: None },
+        HighlightDto { id: 3, mode: "lineno".into(), pattern: "3".into(), enabled: true, color_index: 3, override_color: None },
+      ]
+    );
+    // The on/off checkbox toggles without shifting ids or colors.
+    set_highlight_enabled_inner(&hl, 1, false).unwrap();
+    let list = highlights_of(&hl);
+    assert!(!list[1].enabled);
+    assert!(list[1].pattern == "e[r]{2}" && list[1].color_index == 1);
+    // Removing shifts ids; the surviving rules keep their assigned colors.
+    remove_highlight_inner(&hl, 0).unwrap();
+    assert_eq!(
+      highlights_of(&hl),
+      vec![
+        HighlightDto { id: 0, mode: "regex".into(), pattern: "e[r]{2}".into(), enabled: false, color_index: 1, override_color: None },
+        HighlightDto { id: 1, mode: "simple".into(), pattern: "\"disk\"".into(), enabled: true, color_index: 2, override_color: None },
+        HighlightDto { id: 2, mode: "lineno".into(), pattern: "3".into(), enabled: true, color_index: 3, override_color: None },
+      ]
+    );
+    // rmh: everything at once.
+    clear_highlights_inner(&hl).unwrap();
+    assert!(highlights_of(&hl).is_empty());
+  }
+
+  #[test]
+  fn highlight_rotation_continues_across_removal() {
+    let hl = new_highlight_state();
+    add_highlight_inner(&hl, "plain", "a").unwrap(); // color 0
+    add_highlight_inner(&hl, "plain", "b").unwrap(); // color 1
+    add_highlight_inner(&hl, "plain", "c").unwrap(); // color 2
+    remove_highlight_inner(&hl, 0).unwrap(); // ids shift, colors stick
+    add_highlight_inner(&hl, "plain", "d").unwrap(); // color 3
+    let colors: Vec<u8> = highlights_of(&hl)
+      .iter()
+      .map(|h| h.color_index)
+      .collect();
+    assert_eq!(colors, vec![1, 2, 3], "rotation continues, no re-indexing");
+  }
+
+  #[test]
+  fn highlight_override_color_survives_and_resets_via_null() {
+    let hl = new_highlight_state();
+    add_highlight_inner(&hl, "plain", "boom").unwrap();
+    assert_eq!(highlights_of(&hl)[0].override_color, None);
+    set_highlight_color_inner(&hl, 0, Some("#112233".to_owned())).unwrap();
+    assert_eq!(highlights_of(&hl)[0].override_color.as_deref(), Some("#112233"));
+    // Null resets to the palette rotation color (override_color -> None).
+    set_highlight_color_inner(&hl, 0, None).unwrap();
+    assert_eq!(highlights_of(&hl)[0].override_color, None);
+    // Bad input: a non-"#rrggbb" value is refused, state untouched.
+    assert!(set_highlight_color_inner(&hl, 0, Some("red".to_owned()))
+      .unwrap_err()
+      .contains("bad highlight color"));
+    assert_eq!(highlights_of(&hl)[0].override_color, None);
+    assert_eq!(
+      set_highlight_color_inner(&hl, 1, Some("#112233".to_owned())).unwrap_err(),
+      "no such highlight 1"
+    );
+  }
+
+  #[test]
+  fn add_highlight_bad_input_unknown_mode_and_never_match_lineno() {
+    let hl = new_highlight_state();
+    // Unknown mode tag: Err in the dsq.3 style; nothing added.
+    assert!(add_highlight_inner(&hl, "bogus", "x")
+      .unwrap_err()
+      .contains("unknown mode"));
+    assert!(highlights_of(&hl).is_empty(), "an erroring add adds nothing");
+    // Non-numeric lineno: the dsq.3 test precedent
+    // (`invalid_patterns_match_nothing`, core `MatchMode::matcher`) — the
+    // invalid pattern MATCHES NOTHING and KEEPS THE SLOT (like add_filter:
+    // the tab shows the malformed rule, the user can delete it), it does
+    // not Err. A hn rule with a real line number is covered by the file
+    // tests below.
+    add_highlight_inner(&hl, "lineno", "abc").unwrap();
+    assert_eq!(
+      highlights_of(&hl),
+      vec![HighlightDto {
+        id: 0,
+        mode: "lineno".into(),
+        pattern: "abc".into(),
+        enabled: true,
+        color_index: 0,
+        override_color: None,
+      }]
+    );
+  }
+
+  #[test]
+  fn get_rows_spans_of_overlapping_rules_and_lineno() {
+    let (file, vis, hl) = bridge(HL_LOG, "hl_spans");
+    add_highlight_inner(&hl, "plain", "boom").unwrap(); // color 0
+    add_highlight_inner(&hl, "regex", "o{2}").unwrap(); // color 1
+    set_highlight_color_inner(&hl, 1, Some("#0a0b0c".to_owned())).unwrap();
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
+    assert_eq!(rows[0].message, "boom here boom");
+    // Rule order, overlaps kept; here (ASCII-only messages) the byte offsets
+    // coincide with JS indexes. Multi-byte texts do NOT, which is why the
+    // DTO keeps bytes raw and ipcClient.ts converts.
+    assert_eq!(
+      rows[0].spans,
+      vec![
+        SpanDto { start: 0, len: 4, color_index: 0, override_color: None },
+        SpanDto { start: 10, len: 4, color_index: 0, override_color: None },
+        SpanDto { start: 1, len: 2, color_index: 1, override_color: Some("#0a0b0c".to_owned()) },
+        SpanDto { start: 11, len: 2, color_index: 1, override_color: Some("#0a0b0c".to_owned()) },
+      ]
+    );
+    assert_eq!(
+      rows[1].spans,
+      vec![
+        SpanDto { start: 0, len: 4, color_index: 0, override_color: None },
+        SpanDto { start: 1, len: 2, color_index: 1, override_color: Some("#0a0b0c".to_owned()) },
+      ]
+    );
+    // A line-number rule colors the WHOLE message of its line only, on top
+    // of the pattern spans (§9 overlapping rules).
+    add_highlight_inner(&hl, "lineno", "2").unwrap(); // color 2
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
+    assert_eq!(
+      rows[1].spans,
+      vec![
+        SpanDto { start: 0, len: 4, color_index: 0, override_color: None },
+        SpanDto { start: 1, len: 2, color_index: 1, override_color: Some("#0a0b0c".to_owned()) },
+        SpanDto { start: 0, len: 10, color_index: 2, override_color: None },
+      ]
+    );
+    assert!(
+      rows[0].spans.iter().all(|s| s.color_index != 2),
+      "hn 2 does not touch line 1"
+    );
+  }
+
+  #[test]
+  fn disabled_highlight_and_never_match_rule_render_no_spans() {
+    let (file, vis, hl) = bridge(HL_LOG, "hl_disabled");
+    add_highlight_inner(&hl, "plain", "boom").unwrap(); // color 0
+    add_highlight_inner(&hl, "regex", "a").unwrap(); // color 1
+    set_highlight_enabled_inner(&hl, 1, false).unwrap();
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
+    // "boom again" holds two 'a's, but the rule is OFF: plain spans only.
+    assert_eq!(
+      rows[1].spans,
+      vec![SpanDto { start: 0, len: 4, color_index: 0, override_color: None }]
+    );
+    // A never-match rule (non-numeric lineno) keeps its slot, renders nothing.
+    add_highlight_inner(&hl, "lineno", "abc").unwrap();
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
+    assert_eq!(rows[1].spans.len(), 1);
+    // Toggling the rule back on restores its spans.
+    set_highlight_enabled_inner(&hl, 1, true).unwrap();
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
+    assert_eq!(rows[1].spans.len(), 3); // plain + two 'a' matches
+  }
+
+  #[test]
+  fn rows_carry_empty_spans_without_active_rules() {
+    let (file, vis, hl) = bridge(HL_LOG, "hl_empty");
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
+    assert!(rows.iter().all(|r| r.spans.is_empty()), "no highlights, no spans");
+    // After a clear_highlights the spans are empty again.
+    add_highlight_inner(&hl, "plain", "boom").unwrap();
+    clear_highlights_inner(&hl).unwrap();
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
+    assert!(
+      rows.iter().all(|r| r.spans.is_empty()),
+      "cleared highlights leave no spans"
+    );
+  }
+
+  #[test]
+  fn highlights_survive_a_reload_the_opposite_of_pins() {
+    let (file, vis, hl) = bridge(HL_LOG, "hl_reload");
+    add_highlight_inner(&hl, "plain", "boom").unwrap();
+    add_highlight_inner(&hl, "lineno", "1").unwrap();
+    let before = highlights_of(&hl);
+    assert_eq!(before.len(), 2);
+    // §2.1: a reload keeps the highlights entirely (§12 clears pins — the
+    // opposite policy, covered by reload_clears_pins_but_keeps_filters).
+    let path = std::env::temp_dir().join("lv_ipc_bridge_hl_reload.log");
+    load_file_inner(&path, &file, &vis).unwrap();
+    assert_eq!(highlights_of(&hl), before);
+    // Spans still render after the reload.
+    let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
+    assert_eq!(rows[0].spans.len(), 3); // two boom spans + the whole line
   }
 }

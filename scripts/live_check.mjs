@@ -603,6 +603,45 @@ check(
   JSON.stringify(pinRes.afterReload),
 );
 
+// (i) highlights (bead exx.2, §9): a Message-column rule paints spans on
+// get_rows, overlapping rules stack, disabling drops its spans, a picked
+// override color lands on spans and snapshot, highlights survive reload
+// (§2.1), clear removes them all.
+const hlRes = await evalJs(port, `
+  const h = window.__headless;
+  await h.clearHighlights();
+  const dto = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 1 });
+  const row = dto[0];
+  const tok = (row.message.split(/[^A-Za-z0-9_-]+/).filter((t) => t.length >= 4)[0] ?? row.message).slice(0, 12);
+  const a = await h.addHighlight("plain", tok);
+  const r1 = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 5 });
+  const r0s = r1[0].spans.length;
+  const b = await h.addHighlight("regex", ".");
+  const r2 = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 5 });
+  const overlap = r2[0].spans.length > r0s;
+  const bothCount = r2[0].spans.length;
+  const off = await h.setHighlightEnabled(0, false);
+  const r3 = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 5 });
+  const offSpans = r3[0].spans.length; // now only the regex rule's own spans
+  const col = await h.setHighlightColor(0, "#123456");
+  const snap = h.state().visibility ? h.state().visibility.highlights : [];
+  const overrideSet = Array.isArray(snap) ? snap.some((hl) => hl.overrideColor === "#123456") : false;
+  const on = await h.setHighlightEnabled(0, true); // re-enable: disabled rules paint nothing
+  const r4 = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 5 });
+  const overrideSpan = r4[0].spans.some((sp) => (sp.override_color ?? sp.overrideColor) === "#123456");
+  const reloaded = await h.load(${JSON.stringify(target)});
+  const snap2 = reloaded.visibility ? reloaded.visibility.highlights : [];
+  const survived = reloaded.visibility ? reloaded.visibility.highlights.length : null;
+  await h.clearHighlights();
+  const r5 = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 1 });
+  return { tok, r0s, overlap, bothCount, offSpans, overrideSet, overrideSpan, survived, afterClear: r5[0].spans.length };`);
+check("i0. a Message rule paints spans on get_rows rows", hlRes.r0s > 0, `spans=${hlRes.r0s}`);
+check("i1. overlapping rules stack spans on the same row", hlRes.overlap === true, `grew=${hlRes.overlap}`);
+check("i2. a disabled rule stops painting its spans", hlRes.offSpans < hlRes.bothCount, `both=${hlRes.bothCount} afterOff=${hlRes.offSpans}`);
+check("i3. picked color lands in the snapshot and on spans", hlRes.overrideSet === true && hlRes.overrideSpan === true, `snapSet=${hlRes.overrideSet} spanSet=${hlRes.overrideSpan}`);
+check("i4. highlights survive reload (two rules)", hlRes.survived === 2, `n=${hlRes.survived}`);
+check("i5. clear removes spans entirely", hlRes.afterClear === 0, `spans=${hlRes.afterClear}`);
+
 const failed = checks.filter((c) => !c.ok).length;
 const verdict = failed === 0 ? "OK" : "FAILED (" + failed + "/" + checks.length + ")";
 console.log(

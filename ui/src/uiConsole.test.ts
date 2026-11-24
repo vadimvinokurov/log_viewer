@@ -8,6 +8,20 @@ import { installHeadlessConsole } from "./headless";
 import type { RawIpc } from "./ipcClient";
 import type { RowDto, VisibilitySnapshotDto } from "./bindings";
 
+/** The five §9 highlight RAW methods, no-op defaults (exx.2); the highlight
+ *  describe swaps the ones it needs. */
+const highlightNoops = (): Pick<
+  RawIpc,
+  "addHighlight" | "setHighlightEnabled" | "setHighlightColor" | "removeHighlight" | "clearHighlights"
+> => ({
+  addHighlight: async () => null,
+  setHighlightEnabled: async () => null,
+  setHighlightColor: async () => null,
+  removeHighlight: async () => null,
+  clearHighlights: async () => null,
+});
+
+
 /** RAW stub mirroring the contract shapes with an in-memory visibility model. */
 function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
   const enabledLevels: Record<string, boolean> = {
@@ -20,6 +34,10 @@ function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
   };
   const filters: { id: number; mode: string; pattern: string; enabled: boolean }[] = [];
   const pins: { id: number; mode: string; pattern: string; enabled: boolean }[] = [];
+  const highlights: {
+    id: number; mode: string; pattern: string; enabled: boolean;
+    color_index: number; override_color: string | null;
+  }[] = [];
   const counts: Record<string, number> = {
     critical: 1, error: 2, warning: 3, msg: 4, debug: 5, trace: 6,
   };
@@ -30,9 +48,11 @@ function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
     })),
     filters: filters.map((f, id) => ({ ...f, id })),
     pins: pins.map((p, id) => ({ ...p, id })),
+    highlights: highlights.map((h, id) => ({ ...h, id })),
     categories_enabled: ["app/db"],
   });
   return {
+    ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
       format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
@@ -71,6 +91,36 @@ function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
     },
     clearPins: async () => {
       pins.length = 0;
+      return null;
+    },
+    addHighlight: async (mode: string, pattern: string) => {
+      if (options.failMutation === "addHighlight") throw new Error("no such mode");
+      highlights.push({
+        id: 0, mode, pattern, enabled: true,
+        color_index: highlights.length % 10, override_color: null,
+      });
+      return null;
+    },
+    setHighlightEnabled: async (id: number, on: boolean) => {
+      const h = highlights[id];
+      if (!h) throw new Error("no such highlight");
+      h.enabled = on;
+      return null;
+    },
+    setHighlightColor: async (id: number, hex: string | null) => {
+      const h = highlights[id];
+      if (!h) throw new Error("no such highlight");
+      h.override_color = hex;
+      return null;
+    },
+    removeHighlight: async (id: number) => {
+      const h = highlights[id];
+      if (!h) throw new Error("no such highlight");
+      highlights.splice(id, 1);
+      return null;
+    },
+    clearHighlights: async () => {
+      highlights.length = 0;
       return null;
     },
     setLevelEnabled: async (level: string, on: boolean) => {
@@ -122,8 +172,10 @@ function sequenceStub(options: { failMutation?: string } = {}): SequenceStub {
     level: isTrace(n) ? "trace" : "msg",
     message: "line " + n,
     raw: "raw " + n,
+    spans: [],
   });
   return {
+    ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
       format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
@@ -161,6 +213,7 @@ function sequenceStub(options: { failMutation?: string } = {}): SequenceStub {
       ),
       filters: [],
       pins: [],
+      highlights: [],
       categories_enabled: ["app/db"],
     }),
     getRowsCalls: () => getRowsCalls,
@@ -394,6 +447,7 @@ function categoryStub() {
     return true;
   };
   const stub: RawIpc & { setCategoryCalls(): string[] } = {
+    ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
       format: "plain", line_count: 100,
@@ -420,6 +474,7 @@ function categoryStub() {
       levels: [],
       filters: [],
       pins: [],
+      highlights: [],
       categories_enabled: [...enabled].sort(),
     }),
     setCategoryCalls: () => calls,
@@ -592,6 +647,7 @@ function searchStub(): SearchStub {
   const visible = (): boolean => msgOn.value;
   const calls: { mode: string; pattern: string }[] = [];
   return {
+    ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
       format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
@@ -607,6 +663,7 @@ function searchStub(): SearchStub {
           level: "msg",
           message: messageOf(n),
           raw: "raw " + n,
+          spans: [],
         });
       }
       return rows;
@@ -656,6 +713,7 @@ function searchStub(): SearchStub {
       ),
       filters: [],
       pins: [],
+      highlights: [],
       categories_enabled: ["app/db"],
     }),
     searchVisibleCalls: () => calls,
@@ -958,6 +1016,7 @@ function deferredSearchStub(): DeferredSearchStub {
   const messageOf = (n: number): string => "line " + n;
   const pending: DeferredSearchStub["pending"] = [];
   return {
+    ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
       format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
@@ -1000,6 +1059,7 @@ function deferredSearchStub(): DeferredSearchStub {
       ),
       filters: [],
       pins: [],
+      highlights: [],
       categories_enabled: ["app/db"],
     }),
     pending,
@@ -1149,6 +1209,7 @@ function categoryBurstStub(): BurstStub {
   const visible = (n: number): boolean => applied[categoryOf(n)];
   const searchInvokes: number[] = [];
   return {
+    ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
       format: "plain", line_count: 10,
@@ -1194,6 +1255,7 @@ function categoryBurstStub(): BurstStub {
       ),
       filters: [],
       pins: [],
+      highlights: [],
       categories_enabled: (["a", "b"] as const).filter((c) => applied[c]),
     }),
     searchInvokes,
@@ -1271,10 +1333,12 @@ describe("pin selection actions (q1f.1, §12)", () => {
       level: "msg",
       message: "line " + n,
       raw: "raw " + n,
+      spans: [],
     });
     return {
       calls,
       snapshotCalls: () => snapshots,
+      ...highlightNoops(),
       pickFile: async () => null,
       loadFile: async () => ({
         format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
@@ -1323,6 +1387,7 @@ describe("pin selection actions (q1f.1, §12)", () => {
           levels: [],
           filters: [],
           pins: pins.map((p) => ({ ...p })),
+          highlights: [],
           categories_enabled: ["app/db"],
         };
       },
@@ -1413,5 +1478,111 @@ describe("pin selection actions (q1f.1, §12)", () => {
     ]);
     expect(stub.snapshotCalls()).toBe(4);
     expect(snap.visibility?.pins).toEqual([]);
+  });
+});
+
+describe("highlight console actions (exx.2, §9)", () => {
+  let calls: { fn: string; args: unknown[] }[];
+
+  async function stubConsole(stub: RawIpc): Promise<Console> {
+    return (await freshConsole(stub)).console_;
+  }
+
+  beforeEach(() => {
+    calls = [];
+  });
+
+  it("add/setEnabled/setColor/remove/clear flow through the RAW commands", async () => {
+    const rec = (fn: string) => async (...args: unknown[]) => {
+      calls.push({ fn, args });
+      return null;
+    };
+    const console_ = await stubConsole(visibilityStub());
+    // Wrap the installed stub's highlight methods to record the RAW calls.
+    const raw = (window as unknown as Record<string, unknown>).__ipcStub as RawIpc;
+    raw.addHighlight = rec("addHighlight");
+    raw.setHighlightEnabled = rec("setHighlightEnabled");
+    raw.setHighlightColor = rec("setHighlightColor");
+    raw.removeHighlight = rec("removeHighlight");
+    raw.clearHighlights = rec("clearHighlights");
+    await console_.load("/tmp/log.txt");
+    calls = [];
+    await console_.addHighlight("plain", "timeout");
+    await console_.setHighlightEnabled(0, false);
+    await console_.setHighlightColor(0, "#00aabb");
+    await console_.setHighlightColor(0, null);
+    await console_.removeHighlight(0);
+    await console_.clearAllHighlights();
+    expect(calls).toEqual([
+      { fn: "addHighlight", args: ["plain", "timeout"] },
+      { fn: "setHighlightEnabled", args: [0, false] },
+      { fn: "setHighlightColor", args: [0, "#00aabb"] },
+      { fn: "setHighlightColor", args: [0, null] },
+      { fn: "removeHighlight", args: [0] },
+      { fn: "clearHighlights", args: [] },
+    ]);
+  });
+
+  it("the snapshot's highlights come back normalized and reachable on the text RPC", async () => {
+    const console_ = await stubConsole(visibilityStub());
+    await console_.load("/tmp/log.txt");
+    await console_.addHighlight("lineno", "42");
+    await console_.addHighlight("regex", "^retry");
+    await console_.setHighlightEnabled(1, false);
+    await console_.setHighlightColor(0, "#123456");
+    const snap = console_.getSnapshot();
+    expect(snap.visibility?.highlights).toEqual([
+      { id: 0, mode: "lineno", pattern: "42", enabled: true, colorIndex: 0, overrideColor: "#123456" },
+      { id: 1, mode: "regex", pattern: "^retry", enabled: false, colorIndex: 1, overrideColor: null },
+    ]);
+  });
+
+  it("a failing highlight mutation surfaces through the error state and keeps the snapshot", async () => {
+    const console_ = await stubConsole(visibilityStub());
+    await console_.load("/tmp/log.txt");
+    await console_.addHighlight("plain", "x");
+    const before = console_.getSnapshot();
+    const raw = (window as unknown as Record<string, unknown>).__ipcStub as RawIpc;
+    raw.addHighlight = async () => {
+      throw new Error("no such mode");
+    };
+    const snap = await console_.addHighlight("no-such-mode", "y");
+    expect(snap.error).toContain("no such mode");
+    expect(snap.visibility).toEqual(before.visibility);
+  });
+
+  it("the headless mirror exposes the five actions (addHighlight/setHighlightEnabled/setHighlightColor/removeHighlight/clearHighlights)", async () => {
+    const console_ = await stubConsole(visibilityStub());
+    await console_.load("/tmp/log.txt");
+    const reset = installHeadlessConsole();
+    try {
+      const headless = (window as unknown as Record<string, unknown>)
+        .__headless as Record<string, unknown> | undefined;
+      expect(headless).not.toBeUndefined();
+      for (const name of [
+        "addHighlight", "setHighlightEnabled", "setHighlightColor",
+        "removeHighlight", "clearHighlights",
+      ]) {
+        expect(typeof headless?.[name]).toBe("function");
+      }
+      const mirror = headless as {
+        addHighlight(mode: string, pattern: string): Promise<unknown>;
+        setHighlightEnabled(id: number, on: boolean): Promise<unknown>;
+        setHighlightColor(id: number, hex: string | null): Promise<unknown>;
+        removeHighlight(id: number): Promise<unknown>;
+        clearHighlights(): Promise<unknown>;
+      };
+      await mirror.addHighlight("plain", "timeout");
+      await mirror.setHighlightEnabled(0, false);
+      await mirror.setHighlightColor(0, "#ff00ff");
+      await mirror.removeHighlight(0);
+      await mirror.addHighlight("lineno", "7");
+      await mirror.clearHighlights();
+      const snap = console_.getSnapshot();
+      expect(snap.visibility?.highlights).toEqual([]);
+      expect(snap.error).toBeNull();
+    } finally {
+      reset();
+    }
   });
 });

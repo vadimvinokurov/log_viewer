@@ -83,6 +83,11 @@ Claim tasks in the main session before spawning agents.
     removes the exact-row pin) with fresh goldens; `14-selection-menu`
     re-baselined - the Pin command un-dims (live §4 presence evaluation,
     Unpin stays dim on an unpinned selection).
+  - Addition 2026-11-24 (bead exx.2, §9 highlights UI): new states `22-highlights-overlap`
+    (two stacked tints, Message column only), `23-highlights-disabled` (dimmed tab item,
+    no spans), `24-highlights-color-picked` (user override hex + byte-offset match) and
+    `25-highlights-lineno` (:hn whole-message row) with fresh goldens; no existing golden
+    shifted (all diffs 0.000%).
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

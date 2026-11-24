@@ -14,6 +14,7 @@ import { SidePanel, usePanelHotkey } from "./SidePanel.tsx";
 import { CategoriesTab } from "./CategoriesTab.tsx";
 import { FiltersTab } from "./FiltersTab.tsx";
 import { PinnedTab } from "./PinnedTab.tsx";
+import { HighlightsTab } from "./HighlightsTab.tsx";
 import { SearchPanel } from "./SearchPanel.tsx";
 import { EmptyState } from "./EmptyState";
 import DevShowcase from "./devShowcase";
@@ -224,6 +225,17 @@ export default function App() {
                   items={state.visibility?.pins ?? []}
                   onToggle={(id, on) => void console_.setPinEnabled(id, on)}
                   onRemove={(id) => void console_.removePin(id)}
+                />
+              ),
+              // §9 (exx.2): the color dot's system picker (webview
+              // <input type="color">) drives set_highlight_color; the
+              // console refetches the snapshot after each mutation.
+              highlights: (
+                <HighlightsTab
+                  items={state.visibility?.highlights ?? []}
+                  onToggle={(id, on) => void console_.setHighlightEnabled(id, on)}
+                  onColor={(id, hex) => void console_.setHighlightColor(id, hex)}
+                  onRemove={(id) => void console_.removeHighlight(id)}
                 />
               ),
             }}

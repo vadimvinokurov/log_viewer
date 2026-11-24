@@ -19,7 +19,7 @@ export const commands = {
 	 *  and on file load (contract docs/notes/visibility-bridge.md). Returns []
 	 *  while no file is loaded.
 	 */
-	getRows: (offset: number, limit: number, options?: InvokeOptions) => __TAURI_INVOKE<RowDto[]>("get_rows", { offset, limit }, options),
+	getRows: (offset: number, limit: number, options?: InvokeOptions) => __TAURI_INVOKE<RowDto_Serialize[]>("get_rows", { offset, limit }, options),
 	/**
 	 *  Add a text filter, enabled (§10.1: a new filter starts checked).
 	 *  `mode` is one of plain|regex|simple|lineno; an invalid pattern matches
@@ -61,13 +61,39 @@ export const commands = {
 	 *  The single read command of the visibility bridge: shape in
 	 *  docs/notes/visibility-bridge.md (RAW; normalizes only in ipcClient.ts).
 	 */
-	visibilitySnapshot: (options?: InvokeOptions) => __TAURI_INVOKE<VisibilitySnapshotDto>("visibility_snapshot", undefined, options),
+	visibilitySnapshot: (options?: InvokeOptions) => __TAURI_INVOKE<VisibilitySnapshotDto_Serialize>("visibility_snapshot", undefined, options),
 	/**
 	 *  Search the VISIBLE sequence (§8): `mode` is one of plain|regex|simple,
 	 *  positions are 0-based visible indexes ascending. An unknown mode is an
 	 *  Err; an empty pattern or an unloaded file return «0 of 0».
 	 */
 	searchVisible: (mode: string, pattern: string, options?: InvokeOptions) => __TAURI_INVOKE<SearchMatchDto>("search_visible", { mode, pattern }, options),
+	/**
+	 *  Add a §9 highlight rule, enabled, with the palette rotation color
+	 *  assigned by the core. `mode` is one of plain|regex|simple|lineno, where
+	 *  lineno is the LINE NUMBER of an hn rule (not a matcher pattern): a
+	 *  non-numeric lineno becomes a never-matching rule that keeps its slot
+	 *  (add_filter behavior); an unknown mode is an Err.
+	 */
+	addHighlight: (mode: string, pattern: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("add_highlight", { mode, pattern }, options),
+	/**
+	 *  Remove the highlight at `id` (index in the LATEST snapshot's highlights
+	 *  list); out of range is an Err, never a panic.
+	 */
+	removeHighlight: (id: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("remove_highlight", { id }, options),
+	/**  Toggle the highlight at `id`; out of range is an Err, never a panic. */
+	setHighlightEnabled: (id: number, on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_highlight_enabled", { id, on }, options),
+	/**
+	 *  Set the §9 highlight color of the rule at `id`: a CSS "#rrggbb" override,
+	 *  or `null` to reset to the palette rotation color. Out of range or a
+	 *  malformed hex is an Err.
+	 */
+	setHighlightColor: (id: number, hex: string | null, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_highlight_color", { id, hex }, options),
+	/**
+	 *  Drop every highlight at once (§12: the rmc/rmh-style wholesale removal;
+	 *  the cmdline epic calls this for `:rmh`).
+	 */
+	clearHighlights: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_highlights", undefined, options),
 	/**  Tauri command the page invokes with the evaluation result. */
 	driverReport: (id: string, value: string, options?: InvokeOptions) => __TAURI_INVOKE<void>("driver_report", { id, value }, options),
 };
@@ -87,6 +113,38 @@ export type CriterionDto = {
 	mode: string,
 	pattern: string,
 	enabled: boolean,
+};
+
+/**
+ *  One §9 highlight rule of the snapshot: `id` = index (rule order) in the
+ *  highlights list of the LATEST snapshot.
+ */
+export type HighlightDto = HighlightDto_Serialize | HighlightDto_Deserialize;
+
+/**
+ *  One §9 highlight rule of the snapshot: `id` = index (rule order) in the
+ *  highlights list of the LATEST snapshot.
+ */
+export type HighlightDto_Deserialize = {
+	id: number,
+	mode: string,
+	pattern: string,
+	enabled: boolean,
+	color_index: number,
+	override_color?: string | null,
+};
+
+/**
+ *  One §9 highlight rule of the snapshot: `id` = index (rule order) in the
+ *  highlights list of the LATEST snapshot.
+ */
+export type HighlightDto_Serialize = {
+	id: number,
+	mode: string,
+	pattern: string,
+	enabled: boolean,
+	color_index: number,
+	override_color: string | null,
 };
 
 export type LevelCount = {
@@ -114,7 +172,9 @@ export type LoadResult = {
 	load_ms: number,
 };
 
-export type RowDto = {
+export type RowDto = RowDto_Serialize | RowDto_Deserialize;
+
+export type RowDto_Deserialize = {
 	/**  1-based line number in the source file. */
 	line_no: number,
 	time_display: string,
@@ -122,6 +182,26 @@ export type RowDto = {
 	level: string,
 	message: string,
 	raw: string,
+	/**
+	 *  §9 highlight spans of the Message text (empty: no active rule). Byte
+	 *  offsets inside `message` — kept raw, converted in ipcClient.ts.
+	 */
+	spans: SpanDto_Deserialize[],
+};
+
+export type RowDto_Serialize = {
+	/**  1-based line number in the source file. */
+	line_no: number,
+	time_display: string,
+	category: string,
+	level: string,
+	message: string,
+	raw: string,
+	/**
+	 *  §9 highlight spans of the Message text (empty: no active rule). Byte
+	 *  offsets inside `message` — kept raw, converted in ipcClient.ts.
+	 */
+	spans: SpanDto_Serialize[],
 };
 
 /**
@@ -133,11 +213,67 @@ export type SearchMatchDto = {
 	positions: number[],
 };
 
+/**
+ *  One span of a RowDto (§9): a semi-transparent rectangle behind matched
+ *  text. SPEC NOTE: `start`/`len` are BYTE offsets inside the raw MESSAGE
+ *  text; the DTO deliberately keeps bytes raw — converting to JS string
+ *  indexes happens exactly once in ui/src/ipcClient.ts (single normalization
+ *  point). Overlapping rules are kept unmerged, in rule order, and a
+ *  disabled rule contributes nothing.
+ */
+export type SpanDto = SpanDto_Serialize | SpanDto_Deserialize;
+
+/**
+ *  One span of a RowDto (§9): a semi-transparent rectangle behind matched
+ *  text. SPEC NOTE: `start`/`len` are BYTE offsets inside the raw MESSAGE
+ *  text; the DTO deliberately keeps bytes raw — converting to JS string
+ *  indexes happens exactly once in ui/src/ipcClient.ts (single normalization
+ *  point). Overlapping rules are kept unmerged, in rule order, and a
+ *  disabled rule contributes nothing.
+ */
+export type SpanDto_Deserialize = {
+	start: number,
+	len: number,
+	color_index: number,
+	override_color?: string | null,
+};
+
+/**
+ *  One span of a RowDto (§9): a semi-transparent rectangle behind matched
+ *  text. SPEC NOTE: `start`/`len` are BYTE offsets inside the raw MESSAGE
+ *  text; the DTO deliberately keeps bytes raw — converting to JS string
+ *  indexes happens exactly once in ui/src/ipcClient.ts (single normalization
+ *  point). Overlapping rules are kept unmerged, in rule order, and a
+ *  disabled rule contributes nothing.
+ */
+export type SpanDto_Serialize = {
+	start: number,
+	len: number,
+	color_index: number,
+	override_color: string | null,
+};
+
 /**  The single read command's shape (contract, raw snake_case). */
-export type VisibilitySnapshotDto = {
+export type VisibilitySnapshotDto = VisibilitySnapshotDto_Serialize | VisibilitySnapshotDto_Deserialize;
+
+/**  The single read command's shape (contract, raw snake_case). */
+export type VisibilitySnapshotDto_Deserialize = {
 	visible_count: number,
 	levels: LevelStateDto[],
 	filters: CriterionDto[],
 	pins: CriterionDto[],
 	categories_enabled: string[],
+	/**  §9 highlight rules (they survive reloads; opposite of pins). */
+	highlights: HighlightDto_Deserialize[],
+};
+
+/**  The single read command's shape (contract, raw snake_case). */
+export type VisibilitySnapshotDto_Serialize = {
+	visible_count: number,
+	levels: LevelStateDto[],
+	filters: CriterionDto[],
+	pins: CriterionDto[],
+	categories_enabled: string[],
+	/**  §9 highlight rules (they survive reloads; opposite of pins). */
+	highlights: HighlightDto_Serialize[],
 };

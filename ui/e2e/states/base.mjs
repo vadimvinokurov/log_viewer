@@ -11,16 +11,16 @@ export const STUB = `(function () {
   const levelEnabled = { critical: true, error: true, warning: true, msg: true, debug: true, trace: true };
   const filters = [];
   const pins = [];
+  // §9 highlights (exx.2): rules with a rotation color_index and an optional
+  // override_color; they SURVIVE loadFile (§2.1, opposite of pins). Spans
+  // are computed per row for ACTIVE rules only, as BYTE offsets inside the
+  // message (the RAW contract) — the byte->JS-index conversion lives in the
+  // ipc adapter, which these goldens exercise through the real page.
+  const highlights = [];
+  let highlightSeq = 0;
+  const encoder = new TextEncoder();
   const levelOf = (n) => LEVEL_CYCLE[n % LEVEL_CYCLE.length];
   const messageOf = (n) => "Synthetic message " + n + " \\u2014 deterministic harness text.";
-  const row = (n) => ({
-    line_no: n,
-    time_display: "10:00:0" + (n % 10) + "." + String(n % 1000).padStart(3, "0"),
-    category: "app/harness/db",
-    level: levelOf(n),
-    message: messageOf(n),
-    raw: "raw " + n,
-  });
   // The stub approximates filter semantics per mode: plain/simple as a
   // case-insensitive substring on the message, regex as an anchored JS
   // regex (a broken pattern matches nothing, the backend contract); exact
@@ -49,6 +49,61 @@ export const STUB = `(function () {
       return false;
     });
   const visible = (n) => pinCovers(n) || (levelEnabled[levelOf(n)] && passesFilters(n));
+  // §9 span extraction (exx.2): case-insensitive substring/regex positions
+  // in the JS string, emitted as BYTE offsets; lineno rules cover the whole
+  // message. Disabled rules contribute nothing (render nothing, no slot).
+  const highlightSpans = (n) => {
+    const m = messageOf(n);
+    if (highlights.length === 0) return [];
+    const spans = [];
+    for (const h of highlights) {
+      if (!h.enabled) continue;
+      const ranges = [];
+      if (h.mode === "lineno") {
+        // :hn N matches the 1-based LINE NUMBER only (the whole message);
+        // a non-numeric lineno is a never-match rule that keeps its slot.
+        if (h.linenoOk && String(n) === String(h.pattern).trim()) ranges.push([0, m.length]);
+      } else if (h.mode === "regex") {
+        try {
+          const re = new RegExp(h.pattern, "gi");
+          let match;
+          while ((match = re.exec(m)) !== null) {
+            ranges.push([match.index, match.index + match[0].length]);
+            if (match[0].length === 0) re.lastIndex++;
+          }
+        } catch {
+          // a broken pattern is a never-match rule (add_filter behavior)
+        }
+      } else {
+        const needle = String(h.pattern).toLowerCase();
+        const hay = m.toLowerCase();
+        if (needle.length > 0) {
+          let i = hay.indexOf(needle);
+          while (i !== -1) {
+            ranges.push([i, i + needle.length]);
+            i = hay.indexOf(needle, i + 1);
+          }
+        }
+      }
+      const bytesOf = (from, to) => ({
+        start: encoder.encode(m.slice(0, from)).length,
+        len: encoder.encode(m.slice(from, to)).length,
+      });
+      for (const [from, to] of ranges) {
+        spans.push({ ...bytesOf(from, to), color_index: h.color_index, override_color: h.override_color });
+      }
+    }
+    return spans;
+  };
+  const row = (n) => ({
+    line_no: n,
+    time_display: "10:00:0" + (n % 10) + "." + String(n % 1000).padStart(3, "0"),
+    category: "app/harness/db",
+    level: levelOf(n),
+    message: messageOf(n),
+    raw: "raw " + n,
+    spans: highlightSpans(n),
+  });
   const countVisible = () => {
     let c = 0;
     for (let n = 1; n <= LINE_COUNT; n++) if (visible(n)) c++;
@@ -66,7 +121,7 @@ export const STUB = `(function () {
   window.__ipcStub = {
     async pickFile() { return "/tmp/synthetic.log"; },
     async loadFile() {
-      pins.length = 0; // §2.1: a reload clears ALL pins
+      pins.length = 0; // §2.1: a reload clears ALL pins — highlights survive
       return { format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 3 };
     },
     async getRows(offset, limit) {
@@ -103,6 +158,34 @@ export const STUB = `(function () {
       return null;
     },
     async clearPins() { pins.length = 0; return null; },
+    // §9 highlights (exx.2): the rotation counter continues across removals
+    // (core behavior, bead exx2-design); an unknown mode throws like the
+    // backend Err; a non-numeric lineno keeps a never-matching rule slot.
+    async addHighlight(mode, pattern) {
+      const KNOWN = ["plain", "regex", "simple", "lineno"];
+      if (!KNOWN.includes(mode)) throw new Error("no such mode: " + mode);
+      const linenoOk = mode !== "lineno" || String(pattern).trim() !== "" && !isNaN(Number(pattern));
+      highlights.push({ mode, pattern, enabled: true, color_index: highlightSeq++ % 10, override_color: null, linenoOk });
+      return null;
+    },
+    async setHighlightEnabled(id, on) {
+      const h = highlights[id];
+      if (!h) throw new Error("no such highlight");
+      h.enabled = on;
+      return null;
+    },
+    async setHighlightColor(id, hex) {
+      const h = highlights[id];
+      if (!h) throw new Error("no such highlight");
+      h.override_color = hex;
+      return null;
+    },
+    async removeHighlight(id) {
+      if (!highlights[id]) throw new Error("no such highlight");
+      highlights.splice(id, 1);
+      return null;
+    },
+    async clearHighlights() { highlights.length = 0; return null; },
     async setLevelEnabled(level, on) { levelEnabled[level] = on; return null; },
     async setCategoryEnabled() { return null; },
     // §8 search (2wu.1): over the VISIBLE sequence only. Mode semantics are
@@ -142,6 +225,14 @@ export const STUB = `(function () {
         })),
         filters: filters.map((f, id) => ({ id, mode: f.mode, pattern: f.pattern, enabled: f.enabled })),
         pins: pins.map((p, id) => ({ id, mode: p.mode, pattern: p.pattern, enabled: p.enabled })),
+        highlights: highlights.map((h, id) => ({
+          id,
+          mode: h.mode,
+          pattern: h.pattern,
+          enabled: h.enabled,
+          color_index: h.color_index,
+          override_color: h.override_color,
+        })),
         categories_enabled: ["app/harness/db"],
       };
     },

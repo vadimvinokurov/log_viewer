@@ -32,6 +32,7 @@ export function snapshot(overrides: Partial<VisibilityState> = {}): VisibilitySt
     ],
     filters: [{ id: 0, mode: "plain", pattern: "timeout", enabled: true }],
     pins: [],
+    highlights: [],
     categoriesEnabled: ["app/db"],
     ...overrides,
   };

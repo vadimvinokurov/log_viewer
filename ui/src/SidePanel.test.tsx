@@ -64,17 +64,13 @@ describe("SidePanel (rhl.2, §10.1)", () => {
     expect(c2.querySelector('[data-testid="categories-content"]')).toBeNull();
   });
 
-  it("muted placeholders render for the tabs without live content yet", () => {
+  it("the generic pending note renders when a tab's live content is missing (exx.2: every tab is live now)", () => {
     const { container } = render(
-      createElement(SidePanel, baseProps({ panel: { ...panel(), tab: "highlights" } })),
-    );
-    const placeholder = container.querySelector("[data-panel-placeholder]");
-    expect(placeholder).not.toBeNull();
-    expect(placeholder?.textContent).toContain("Highlights");
-    const pinned = render(
       createElement(SidePanel, baseProps({ panel: { ...panel(), tab: "pinned" } })),
     );
-    expect(pinned.container.querySelector("[data-panel-placeholder='pinned']")).not.toBeNull();
+    const placeholder = container.querySelector("[data-panel-placeholder='pinned']");
+    expect(placeholder).not.toBeNull();
+    expect(placeholder?.textContent).toContain("Pending");
   });
 
   it("closed renders nothing", () => {

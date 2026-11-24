@@ -46,6 +46,13 @@ export function installHeadlessConsole(): () => void {
           : undefined,
       ),
     clearAllPins: () => console_.clearAllPins(),
+    /** §9 highlights (exx.2): symmetric with the filters; clearHighlights is
+     *  the future :rmh command (the cmdline epic wires it). */
+    addHighlight: (mode: string, pattern: string) => console_.addHighlight(mode, pattern),
+    setHighlightEnabled: (id: number, on: boolean) => console_.setHighlightEnabled(id, on),
+    setHighlightColor: (id: number, hex: string | null) => console_.setHighlightColor(id, hex),
+    removeHighlight: (id: number) => console_.removeHighlight(id),
+    clearHighlights: () => console_.clearAllHighlights(),
     /** §10 categories (rhl.2): apply the propagateToggle differential and
      *  refetch the snapshot. */
     toggleCategory: (path: string, on: boolean) => console_.toggleCategory(path, on),

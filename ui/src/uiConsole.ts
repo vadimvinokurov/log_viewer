@@ -89,6 +89,7 @@ class UiConsole {
             levels: v.levels.map((l) => ({ ...l })),
             filters: v.filters.map((i) => ({ ...i })),
             pins: v.pins.map((i) => ({ ...i })),
+            highlights: v.highlights.map((i) => ({ ...i })),
             categoriesEnabled: [...v.categoriesEnabled],
           }
         : null,
@@ -361,6 +362,43 @@ class UiConsole {
   /** §12 :rmp equivalent — clears every pin with one refetch. */
   clearAllPins = (): Promise<ConsoleSnapshot> =>
     this.mutateVisibility(() => ipc().clearPins());
+
+  /** §9 highlight mutations never change the visible sequence, so unlike
+   *  mutateVisibility there is NO selection remap and no visible probes:
+   *  the mutation + one snapshot refetch covers the round (the snapshot
+   *  dispatch bumps visibilityEpoch, which also recolors the table's spans
+   *  and re-arms an open search panel harmlessly). */
+  private mutateHighlights = async (
+    mutator: () => Promise<unknown>,
+  ): Promise<ConsoleSnapshot> => {
+    this.mutating += 1;
+    try {
+      try {
+        await mutator();
+      } catch (e) {
+        this.dispatch({ kind: "load-error", message: String(e) });
+        return this.getSnapshot();
+      }
+      await this.refreshVisibility();
+    } finally {
+      this.mutating -= 1;
+    }
+    return this.getSnapshot();
+  };
+
+  /** §9 highlight RPC (exx.2): mode/pattern semantics are the backend's
+   *  (:h :hr :hs :hn); an unknown mode is an Err and surfaces as before. */
+  addHighlight = (mode: string, pattern: string): Promise<ConsoleSnapshot> =>
+    this.mutateHighlights(() => ipc().addHighlight(mode, pattern));
+  setHighlightEnabled = (id: number, on: boolean): Promise<ConsoleSnapshot> =>
+    this.mutateHighlights(() => ipc().setHighlightEnabled(id, on));
+  setHighlightColor = (id: number, hex: string | null): Promise<ConsoleSnapshot> =>
+    this.mutateHighlights(() => ipc().setHighlightColor(id, hex));
+  removeHighlight = (id: number): Promise<ConsoleSnapshot> =>
+    this.mutateHighlights(() => ipc().removeHighlight(id));
+  /** §9 rmh wholesale removal (the cmdline epic wires the :rmh command). */
+  clearAllHighlights = (): Promise<ConsoleSnapshot> =>
+    this.mutateHighlights(() => ipc().clearHighlights());
 
   // ---- §10.1 side panel (bead rhl.2) ----
 

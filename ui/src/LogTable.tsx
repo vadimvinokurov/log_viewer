@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChunkPlanner, type RowDto } from "./table";
@@ -18,6 +19,7 @@ import { ContextMenu } from "./ContextMenu";
 import { ipc } from "./ipcClient";
 import { console_ } from "./uiConsole";
 import type { CopyMode } from "./uiConsole";
+import { overlaySegments, type HighlightSpan } from "./highlights";
 import {
   ROW_HEIGHT_PX,
   anchorScrollTop,
@@ -69,6 +71,11 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const plannerRef = useRef(new ChunkPlanner());
   const [rows, setRows] = useState<Map<number, RowDto>>(new Map());
+  /** §9 (exx.2): the message spans per visible index, kept beside the row
+   *  cache (the rows DTO is the table.ts shape, which is outside this
+   *  task's file list — the spans travel through this parallel map and are
+   *  reset with the rows at every epoch, exactly like the row cache). */
+  const [spans, setSpans] = useState<Map<number, HighlightSpan[]>>(new Map());
   const inFlightRef = useRef(false);
   // Live mirror of the rows cache for callbacks that must not re-create
   // across renders (the line probes below, §4 qt7.3).
@@ -111,6 +118,7 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     rowsRef.current = new Map(); // mirror cleared in the same flush: a probe
     // started by the anchor restore below must not read the old sequence.
     setRows(new Map());
+    setSpans(new Map());
     inFlightRef.current = false;
     setMenuPos(null);
     // A new file starts at the top and has no usable anchor (§2/§4).
@@ -128,6 +136,7 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     plannerRef.current.reset();
     rowsRef.current = new Map(); // mirror cleared with the state (see fileEpoch)
     setRows(new Map());
+    setSpans(new Map());
     inFlightRef.current = false;
   }, [visibilityEpoch]);
 
@@ -156,6 +165,9 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
         setRows((prev) =>
           prev.has(index) ? prev : new Map(prev).set(index, dto),
         );
+        // The probe's spans travel with it (exx.2; already JS indexes from
+        // the ipc adapter's normalization).
+        setSpans((prev) => new Map(prev).set(index, raw.spans ?? []));
       }
       return dto.line_no;
     } catch {
@@ -364,6 +376,15 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
               );
               return next;
             });
+            // The chunk's spans land beside the rows (exx.2): the adapter
+            // already converted the byte offsets to JS string indexes.
+            setSpans((prev) => {
+              const next = new Map(prev);
+              chunk.forEach((row, offset) =>
+                next.set(range.start + offset, row.spans ?? []),
+              );
+              return next;
+            });
             plannerRef.current.markLoaded(range.start);
           }
         } catch {
@@ -456,8 +477,50 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuPos]);
 
-  const menuCommands: ContextMenuProps = {
-    x: 0,
+  /** §9 Message cell content (exx.2): with spans, the text is cut at the
+   *  segment boundaries (overlaySegments composes the stacked translucent
+   *  layers) and every matched range renders its rectangle BEHIND the text;
+   *  the level tint stays underneath on the row (the marks carry no text
+   *  color, color inherit). The plain path avoids per-cell work for the
+   *  overwhelmingly common span-less case. */
+  const renderMessage = (index: number, row: RowDto | undefined): ReactNode => {
+    if (!row) {
+      return "";
+    }
+    const rowSpans = spans.get(index);
+    if (!rowSpans || rowSpans.length === 0) {
+      return row.message;
+    }
+    const segments = overlaySegments(row.message.length, rowSpans);
+    if (segments.length === 0) {
+      return row.message;
+    }
+    const parts: ReactNode[] = [];
+    let cursor = 0;
+    segments.forEach((segment, i) => {
+      if (segment.start > cursor) {
+        parts.push(row.message.slice(cursor, segment.start));
+      }
+      parts.push(
+        <span
+          key={i}
+          data-message-mark={i}
+          style={{
+            background: segment.background,
+            color: "inherit",
+            borderRadius: 2,
+          }}
+        >
+          {row.message.slice(segment.start, segment.start + segment.len)}
+        </span>,
+      );
+      cursor = segment.start + segment.len;
+    });
+    parts.push(row.message.slice(cursor));
+    return parts;
+  };
+
+  const menuCommands: ContextMenuProps = {    x: 0,
     y: 0,
     // Copy commands. §4 Pin/Unpin are live since q1f.1: the presence comes
     // from the snapshot pin list, the handlers route to the console (one
@@ -524,7 +587,7 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
               <span className="cell cell-line">{row ? row.line_no : ""}</span>
               <span className="cell cell-time">{row ? row.time_display : ""}</span>
               <span className="cell cell-category">{row ? row.category : ""}</span>
-              <span className="cell cell-message">{row ? row.message : ""}</span>
+              <span className="cell cell-message">{renderMessage(vi.index, row)}</span>
             </div>
           );
         })}

@@ -4,6 +4,7 @@
 
 import { commands } from "./bindings";
 import type { FilterItem, FilterMode } from "./filtersTab";
+import { type HighlightItem } from "./highlights";
 import type { LoadInfo, SearchMatches, VisibilityState } from "./state";
 
 /** Raw IPC contracts, exactly as the backend returns them
@@ -27,9 +28,17 @@ export interface RawIpc {
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   /** Categories panel (rhl.2); path = full category path ("app/main/db"). */
   setCategoryEnabled(path: string, on: boolean): Promise<null>;
-  /** §8 search (bead 2wu.1): mode ∈ plain|regex|simple; unknown mode → the
+  /** §8 search over the visible sequence (bead 2wu.1): mode ∈ plain|regex|simple; unknown mode → the
    *  backend rejects; an invalid pattern matches nothing. */
   searchVisible(mode: string, pattern: string): Promise<import("./bindings").SearchMatchDto>;
+  /** §9 highlights (exx.2): modes as filters; an unknown mode is an Err. */
+  addHighlight(mode: string, pattern: string): Promise<null>;
+  setHighlightEnabled(id: number, on: boolean): Promise<null>;
+  /** hex = css "#rrggbb", or null to reset to the palette rotation color. */
+  setHighlightColor(id: number, hex: string | null): Promise<null>;
+  removeHighlight(id: number): Promise<null>;
+  /** §9 rmh wholesale removal (the cmdline epic wires the command). */
+  clearHighlights(): Promise<null>;
   /** The single read command of the visibility bridge (§7). */
   visibilitySnapshot(): Promise<import("./bindings").VisibilitySnapshotDto>;
 }
@@ -38,6 +47,11 @@ export interface RawIpc {
 export interface IpcClient {
   pickFile(lastDir: string): Promise<string | null>;
   loadFile(path: string): Promise<LoadInfo>;
+  /**
+   * get_rows rows with the §9 spans normalized in place: `start`/`len` are
+   * JS string indexes of `message` (the RAW DTO carries UTF-8 byte offsets;
+   * the conversion happens HERE once, the single normalization point).
+   */
   getRows(offset: number, limit: number): Promise<import("./bindings").RowDto[]>;
   addFilter(mode: string, pattern: string): Promise<null>;
   setFilterEnabled(id: number, on: boolean): Promise<null>;
@@ -48,6 +62,12 @@ export interface IpcClient {
   clearPins(): Promise<null>;
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   setCategoryEnabled(path: string, on: boolean): Promise<null>;
+  /** §9 highlight RPC (exx.2); symmetric with the filters. */
+  addHighlight(mode: string, pattern: string): Promise<null>;
+  setHighlightEnabled(id: number, on: boolean): Promise<null>;
+  setHighlightColor(id: number, hex: string | null): Promise<null>;
+  removeHighlight(id: number): Promise<null>;
+  clearHighlights(): Promise<null>;
   /** §8 search over the visible sequence (bead 2wu.1). */
   searchVisible(mode: string, pattern: string): Promise<SearchMatches>;
   visibilitySnapshot(): Promise<VisibilityState>;
@@ -75,9 +95,107 @@ const FILTER_MODES: readonly FilterMode[] = ["plain", "regex", "simple", "lineno
 /** The backend rejects unknown modes at add_filter time (contract), so an
  *  unexpected snapshot mode is defensive only; it falls back to "plain"
  *  instead of an `as` cast (strict-types rule). */
+function toFilterMode(raw: string): FilterMode {
+  return FILTER_MODES.find((candidate) => candidate === raw) ?? "plain";
+}
+
 function toFilterItem(raw: { id: number; mode: string; pattern: string; enabled: boolean }): FilterItem {
-  const mode = FILTER_MODES.find((candidate) => candidate === raw.mode) ?? "plain";
-  return { id: raw.id, mode, pattern: raw.pattern, enabled: raw.enabled };
+  return { id: raw.id, mode: toFilterMode(raw.mode), pattern: raw.pattern, enabled: raw.enabled };
+}
+
+/** §9 highlight rule of the snapshot: the filter shape plus the palette
+ *  rotation slot and the optional user color override. */
+function toHighlightItem(raw: {
+  id: number;
+  mode: string;
+  pattern: string;
+  enabled: boolean;
+  color_index: number;
+  override_color?: string | null;
+}): HighlightItem {
+  return {
+    id: raw.id,
+    mode: toFilterMode(raw.mode),
+    pattern: raw.pattern,
+    enabled: raw.enabled,
+    colorIndex: raw.color_index,
+    overrideColor: raw.override_color ?? null,
+  };
+}
+
+/** UTF-8 byte-width of one JS string unit (lone surrogates cannot occur in
+ *  the text the backend sends — Rust strings are valid UTF-8). */
+function utf8Width(cp: number): number {
+  if (cp < 0x80) return 1;
+  if (cp < 0x800) return 2;
+  if (cp <= 0xffff) return 3;
+  return 4;
+}
+
+/** Maps the message's byte offsets to JS string code-unit indexes: one walk
+ *  over the text, byte offset -> index of the code point starting there. */
+function byteIndexMap(message: string): Map<number, number> {
+  const map = new Map<number, number>([[0, 0]]);
+  let byte = 0;
+  let index = 0;
+  for (let i = 0; i < message.length; ) {
+    const cp = message.codePointAt(i);
+    if (cp === undefined) {
+      break;
+    }
+    const units = cp > 0xffff ? 2 : 1;
+    byte += utf8Width(cp);
+    index += units;
+    i += units;
+    map.set(byte, index);
+  }
+  return map;
+}
+
+interface RawSpan {
+  start: number;
+  len: number;
+  color_index: number;
+  override_color?: string | null;
+}
+
+interface NormalizedSpan {
+  start: number;
+  len: number;
+  color_index: number;
+  override_color: string | null;
+}
+
+/** §9 SINGLE normalization point (exx.2): the RAW SpanDto carries BYTE
+ *  offsets inside the message text; the UI consumes JS string indexes.
+ *  One walk of the message builds the offset map, every span converts
+ *  through it in O(1). */
+function normalizeSpans(spans: readonly RawSpan[] | undefined, message: string): NormalizedSpan[] {
+  if (!spans || spans.length === 0) {
+    return [];
+  }
+  const offsets = byteIndexMap(message);
+  // The map ends with the full message's byte length (its end offset), so a
+  // boundary at/past the end walks down to it and resolves to the full
+  // length; a boundary that lands mid-code-point (cannot occur from the
+  // backend's char-aligned matchers) rounds down to the code-point start.
+  const resolve = (target: number): number => {
+    let offset = target;
+    while (offset > 0 && !offsets.has(offset)) {
+      offset--;
+    }
+    return offsets.get(offset) ?? 0;
+  };
+  return spans.map((raw) => {
+    const start = resolve(raw.start);
+    const end = resolve(raw.start + raw.len);
+    return {
+      start,
+      len: Math.max(0, end - start),
+      color_index: raw.color_index,
+      override_color: raw.override_color ?? null,
+    };
+  });
 }
 
 /** Normalizes visibility_snapshot's RAW shape into VisibilityState — the
@@ -88,12 +206,21 @@ function fromSnapshot(raw: {
   filters: { id: number; mode: string; pattern: string; enabled: boolean }[];
   pins: { id: number; mode: string; pattern: string; enabled: boolean }[];
   categories_enabled: string[];
+  highlights: {
+    id: number;
+    mode: string;
+    pattern: string;
+    enabled: boolean;
+    color_index: number;
+    override_color?: string | null;
+  }[];
 }): VisibilityState {
   return {
     visibleCount: raw.visible_count,
     levels: raw.levels.map((l) => ({ level: l.level, enabled: l.enabled, count: l.count })),
     filters: raw.filters.map(toFilterItem),
     pins: raw.pins.map(toFilterItem),
+    highlights: raw.highlights.map(toHighlightItem),
     categoriesEnabled: [...raw.categories_enabled],
   };
 }
@@ -103,6 +230,17 @@ function fromSnapshot(raw: {
  *  ownership of the copy — the UI type, not the bindings alias, is consumed. */
 function fromSearch(raw: { total: number; positions: number[] }): SearchMatches {
   return { total: raw.total, positions: [...raw.positions] };
+}
+
+/** Converts the byte offsets of one get_rows chunk's spans (exx.2): each row
+ *  is copied with its spans in JS string indexes; a row without spans is
+ *  returned unchanged (defensive over older stubs). */
+function fromChunkRows(rows: Awaited<ReturnType<RawIpc["getRows"]>>): typeof rows {
+  return rows.map((row) =>
+    row.spans && row.spans.length > 0
+      ? { ...row, spans: normalizeSpans(row.spans, row.message) }
+      : row,
+  );
 }
 
 export const realIpc: RawIpc = {
@@ -148,6 +286,21 @@ export const realIpc: RawIpc = {
   async setCategoryEnabled(path: string, on: boolean) {
     return commands.setCategoryEnabled(path, on);
   },
+  async addHighlight(mode: string, pattern: string) {
+    return commands.addHighlight(mode, pattern);
+  },
+  async setHighlightEnabled(id: number, on: boolean) {
+    return commands.setHighlightEnabled(id, on);
+  },
+  async setHighlightColor(id: number, hex: string | null) {
+    return commands.setHighlightColor(id, hex);
+  },
+  async removeHighlight(id: number) {
+    return commands.removeHighlight(id);
+  },
+  async clearHighlights() {
+    return commands.clearHighlights();
+  },
   async searchVisible(mode: string, pattern: string) {
     return commands.searchVisible(mode, pattern);
   },
@@ -170,7 +323,9 @@ export function ipc(): IpcClient {
     async loadFile(path: string) {
       return fromBindings(await source.loadFile(path));
     },
-    getRows: (offset: number, limit: number) => source.getRows(offset, limit),
+    async getRows(offset: number, limit: number) {
+      return fromChunkRows(await source.getRows(offset, limit));
+    },
     addFilter: (mode: string, pattern: string) => source.addFilter(mode, pattern),
     setFilterEnabled: (id: number, on: boolean) => source.setFilterEnabled(id, on),
     removeFilter: (id: number) => source.removeFilter(id),
@@ -180,6 +335,11 @@ export function ipc(): IpcClient {
     clearPins: () => source.clearPins(),
     setLevelEnabled: (level: string, on: boolean) => source.setLevelEnabled(level, on),
     setCategoryEnabled: (path: string, on: boolean) => source.setCategoryEnabled(path, on),
+    addHighlight: (mode: string, pattern: string) => source.addHighlight(mode, pattern),
+    setHighlightEnabled: (id: number, on: boolean) => source.setHighlightEnabled(id, on),
+    setHighlightColor: (id: number, hex: string | null) => source.setHighlightColor(id, hex),
+    removeHighlight: (id: number) => source.removeHighlight(id),
+    clearHighlights: () => source.clearHighlights(),
     async searchVisible(mode: string, pattern: string) {
       return fromSearch(await source.searchVisible(mode, pattern));
     },

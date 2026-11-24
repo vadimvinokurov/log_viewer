@@ -30,6 +30,11 @@ fn build_bindings() -> tauri_specta::Builder<tauri::Wry> {
     ipc::set_category_enabled,
     ipc::visibility_snapshot,
     ipc::search_visible,
+    ipc::add_highlight,
+    ipc::remove_highlight,
+    ipc::set_highlight_enabled,
+    ipc::set_highlight_color,
+    ipc::clear_highlights,
     driver::driver_report
   ])
 }
@@ -62,6 +67,7 @@ pub fn run() {
     .plugin(tauri_plugin_clipboard_manager::init())
     .manage(ipc::new_file_state())
     .manage(ipc::new_visibility_state())
+    .manage(ipc::new_highlight_state())
     .invoke_handler(bindings.invoke_handler())
     .setup(|app| {
       if cfg!(debug_assertions) {
