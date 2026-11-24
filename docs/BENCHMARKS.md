@@ -83,21 +83,45 @@ second full run was compared to the first by criterion — the
 relative-change lines of that run are meaningless; the absolute medians above
 are from the second run only.
 
+## After the recompute optimization (bead log_viewer2-6yf)
+
+Same stages and stages names, same machine, one full run right after the
+change (interned category paths + allowed bitmap, and one shared walk that
+fills the visible list AND the §11 counters in a single pass):
+`visibility recompute` = `visible_lines`, still the shell's per-mutation
+pass, still 10 samples / 6 s.
+
+| visibility recompute stage | small | big | measured factor vs baseline |
+|---|---|---|---|
+| empty whitelist (fresh default) | 1.78 ms | 58.8 ms | ~1.2x / ~1.0x |
+| all categories | 2.54 ms | 75.7 ms | 3.9x / 2.0x |
+| all categories + one plain filter | 5.08 ms | 148.3 ms | 1.9x / 1.5x |
+
+Per-pass factors only. The snapshot-level mutation latency drops further: the
+big all-categories snapshot used to cost two passes (153.8 ms visible + the
+equivalent counter pass, ~308 ms total — the counter walk was not separately
+benched, it reuses the same `visit` body) and now costs one 75.7 ms pass
+(~4x aggregate, win 2). The empty-whitelist floor keeps its pre-optimization
+cost: the interned index short-circuits to "no category allowed" without any
+lookup, and the walk keeps its lossy+matcher work.
+
 ## Hot-spots (one line per file)
 
-- **big (175 MB):** visibility full recompute is the slowest actionable
-  stage — 154 ms per mutation (222 ms with one plain filter), and the shell
-  pays a *second* full pass for the §11 level counters on every
-  visibility snapshot (`level_counts_excluding_levels` right after
-  `ensure_visible_cache`); search over the full visible set is next at
-  77–136 ms; everything windowed (parse 23 ms/100k, highlight ≤1.2 ms/10k,
+- **big (175 MB):** visibility full recompute was the slowest actionable
+  stage; after the recompute optimization (log_viewer2-6yf, table above) the
+  per-mutation snapshot is one 76 ms pass (list + §11 counters in a single
+  walk; was 154 ms + a second full pass, 222 ms with one plain filter, now
+  148 ms); search over the full visible set is next at 77–137 ms;
+  everything windowed (parse 23 ms/100k, highlight ≤1.2 ms/10k,
   get_rows 16 µs/1000) is already instant-class.
 - **small (5.4 MB):** no hot spot — worst stage is 4.4 ms (search plain),
   everything else ≤ 10 ms; the file is instant on this stage set.
 
 ## Follow-up: the 3 cheapest wins (measurement only — not implemented here)
 
-1. **Intern category paths into ids + an id→allowed bitmap** — where:
+1. **Intern category paths into ids + an id→allowed bitmap** (implemented in
+   log_viewer2-6yf — measured 2.0x on the big all-categories pass, 3.9x on
+   small; see the table above) — where:
    `visibility.rs::category_allowed` (with a category-id table built once in
    `workspace.rs::FileModel` at load). Why: every `visible_lines` iteration
    runs 1–3 `BTreeSet<String>` lookups per row over freshly-owned strings;
@@ -106,7 +130,9 @@ are from the second run only.
    154 ms all-categories recompute (also trims the 60 ms empty-whitelist
    floor slightly); filter/search paths see the same benefit because the same
    category check runs in `visit_pre_level`.
-2. **One shared walk for visible_lines + level_counts** — where:
+2. **One shared walk for visible_lines + level_counts** (implemented in
+   log_viewer2-6yf — the snapshot's list and counters come from one
+   `visible_with_counts` pass; aggregate factor in the table above) — where:
    `visibility.rs` (`visit_pre_level` already centralizes the row filter) +
    `src-tauri/src/ipc.rs::visibility_snapshot_inner`. Why: today every
    visibility mutation costs two full O(N) passes on the next snapshot

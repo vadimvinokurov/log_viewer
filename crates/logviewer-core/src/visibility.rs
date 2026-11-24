@@ -27,10 +27,10 @@
 //! for categories that appear after a reload is a UI concern (§2.1), not
 //! part of this engine.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::matching::Matcher;
-use crate::parser::{self, Level};
+use crate::parser::Level;
 use crate::workspace::{FileModel, LEVELS};
 
 /// One user criterion with an on/off switch (filters, pins).
@@ -131,46 +131,73 @@ impl Visibility {
 
   /// Sorted (ascending) 1-based line numbers of all visible rows.
   pub fn visible_lines(&self, model: &FileModel) -> Vec<u32> {
-    let mut lines = Vec::new();
-    self.visit_pre_level(model, &mut |row, pinned| {
-      // The full §7 rule: visible = (filters OR none) AND level AND category
-      // OR pinned — the pin bypasses the level toggle as well, so the level
-      // check only gates the non-pinned branch.
-      if pinned || self.levels_enabled[level_index(row.level)] {
-        lines.push(row.line_no);
-      }
-    });
-    lines
+    self.visible_with_counts(model).0
   }
 
   /// For each level (in `LEVELS` order): rows that would be visible IF that
   /// level were enabled — text filters and categories applied, the level
   /// toggles ignored (§11).
   pub fn level_counts_excluding_levels(&self, model: &FileModel) -> [u64; 6] {
-    let mut counts = [0_u64; 6];
-    self.visit_pre_level(model, &mut |row, _pinned| counts[level_index(row.level)] += 1);
-    counts
+    self.visible_with_counts(model).1
   }
 
-  /// Visit every row that passes the combined rule of §7 WITH the level
-  /// toggles ignored: `pinned OR (filters OR none) AND category enabled`.
-  /// The callback reports whether the row matched through the pin clause.
-  fn visit_pre_level<'a>(
-    &self,
-    model: &'a FileModel,
-    sink: &mut dyn FnMut(&'a parser::Row, bool),
-  ) {
+  /// One shared walk over the rows (§7, the single pass behind both
+  /// `visible_lines` and `level_counts_excluding_levels`): fills the
+  /// visible-line list AND the §11 per-level counters from the same
+  /// pre-level row stream, so a snapshot after a mutation costs one pass
+  /// instead of two. The line rule is the full §7 formula
+  /// `pinned OR (filters OR none) AND category`, AND level enabled (the pin
+  /// bypasses the level toggle as well); the counters ignore the level
+  /// toggles and count pinned rows at their own level.
+  pub fn visible_with_counts(&self, model: &FileModel) -> (Vec<u32>, [u64; 6]) {
+    // The interned-path index is rebuilt per recompute from the model's
+    // distinct categories only — O(distinct paths), not O(rows).
+    let index = CategoryIndex::build(model, &self.categories_enabled);
+    let mut lines = Vec::new();
+    let mut counts = [0_u64; 6];
     let count = model.line_count() as usize;
     for i in 0..count {
       let Some(row) = model.row(i) else { break };
       let text = String::from_utf8_lossy(&row.raw);
       let pinned = self.pinned(&text, row.line_no);
-      if pinned
-        || (self.matches_any_filter(&text, row.line_no) && self.category_allowed(&row.category))
+      if !pinned
+        && !(self.matches_any_filter(&text, row.line_no)
+          && index.row_allowed(self, &row.category))
       {
-        sink(row, pinned);
+        continue;
+      }
+      counts[level_index(row.level)] += 1;
+      if pinned || self.levels_enabled[level_index(row.level)] {
+        lines.push(row.line_no);
       }
     }
+    (lines, counts)
+  }
+
+  #[cfg(test)]
+  /// The naive combined walk — the dual-path test oracle: identical
+  /// row-by-row decisions to `visible_with_counts`, but every passing row
+  /// re-walks its `/`-separated ancestor prefixes against the whitelist.
+  fn visible_with_counts_reference(&self, model: &FileModel) -> (Vec<u32>, [u64; 6]) {
+    let mut lines = Vec::new();
+    let mut counts = [0_u64; 6];
+    let count = model.line_count() as usize;
+    for i in 0..count {
+      let Some(row) = model.row(i) else { break };
+      let text = String::from_utf8_lossy(&row.raw);
+      let pinned = self.pinned(&text, row.line_no);
+      if !pinned
+        && !(self.matches_any_filter(&text, row.line_no)
+          && self.category_allowed_reference(&row.category))
+      {
+        continue;
+      }
+      counts[level_index(row.level)] += 1;
+      if pinned || self.levels_enabled[level_index(row.level)] {
+        lines.push(row.line_no);
+      }
+    }
+    (lines, counts)
   }
 
   /// §7, §12: an ACTIVE pin makes its row visible unconditionally.
@@ -184,11 +211,59 @@ impl Visibility {
     !self.filters.iter().any(|c| c.enabled) || self.filters.iter().any(|c| c.enabled && c.matcher.matches(text, line_no))
   }
 
-  /// §10 through the engine's path lens: the row's exact category path and
-  /// every `/`-separated ancestor prefix must be in the enabled whitelist
-  /// (disabling a node hides its children).
-  fn category_allowed(&self, path: &str) -> bool {
-    let enabled = &self.categories_enabled;
+  #[cfg(test)]
+  /// §10 through the engine's path lens, per-row (the naive reference kept
+  /// as the oracle for `interned_category_paths_match_the_naive_reference`):
+  /// the row's exact category path and every `/`-separated ancestor prefix
+  /// must be in the enabled whitelist (disabling a node hides its children).
+  fn category_allowed_reference(&self, path: &str) -> bool {
+    CategoryIndex::path_allowed(path, &self.categories_enabled)
+  }
+}
+
+/// Interned category table for one recompute (§10): every distinct category
+/// path of the model gets an id plus a precomputed allowed bit meaning "the
+/// exact path AND all ancestor prefixes are in the whitelist". Built at
+/// recompute start over borrowed keys and dropped after the walk; the
+/// `Visibility` struct holds no interior shared state (the shell's vis
+/// mutex serializes recomputes), so the layout stays `Sync`-safe.
+struct CategoryIndex<'m> {
+  /// `false` when the whitelist is empty: no path can pass, ids/allowed
+  /// stay empty and every row check short-circuits.
+  any_enabled: bool,
+  /// Full path -> id, over the model's distinct category keys.
+  ids: HashMap<&'m str, u32>,
+  /// Allowed bit per id, in the build enumeration order.
+  allowed: Vec<bool>,
+}
+
+impl<'m> CategoryIndex<'m> {
+  fn build(model: &'m FileModel, enabled: &BTreeSet<String>) -> CategoryIndex<'m> {
+    if enabled.is_empty() {
+      return CategoryIndex {
+        any_enabled: false,
+        ids: HashMap::new(),
+        allowed: Vec::new(),
+      };
+    }
+    let paths: Vec<&'m str> = model.categories().map(|(path, _)| path).collect();
+    let mut ids: HashMap<&'m str, u32> = HashMap::with_capacity(paths.len());
+    for (id, path) in paths.iter().enumerate() {
+      ids.insert(path, id as u32);
+    }
+    let allowed = paths.iter().map(|path| Self::path_allowed(path, enabled)).collect();
+    CategoryIndex {
+      any_enabled: true,
+      ids,
+      allowed,
+    }
+  }
+
+  /// §10 over one distinct path: the exact path and every `/`-separated
+  /// ancestor prefix must be in the whitelist. The same logic as
+  /// `category_allowed_reference`, but run once per distinct path instead
+  /// of once per row — that relocation is the whole optimization.
+  fn path_allowed(path: &str, enabled: &BTreeSet<String>) -> bool {
     let mut prefix = path;
     loop {
       if !enabled.contains(prefix) {
@@ -200,11 +275,27 @@ impl Visibility {
       }
     }
   }
+
+  /// §10 for a row: one map lookup plus one bit. A path outside the
+  /// interned set falls back to the naive per-row check (the reference
+  /// logic), so parity never depends on the index being complete. An empty
+  /// whitelist lets no path through at all, so the check stays O(1) without
+  /// any lookup — the fresh-engine floor keeps its pre-interning cost.
+  fn row_allowed(&self, vis: &Visibility, category: &str) -> bool {
+    if !self.any_enabled {
+      return false;
+    }
+    self.ids.get(category).map_or_else(
+      || Self::path_allowed(category, &vis.categories_enabled),
+      |&id| self.allowed[id as usize],
+    )
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::format::Format;
 
   // ---------------------------------------------------------------- helpers
 
@@ -456,5 +547,169 @@ mod tests {
     let vis = all_categories(&model);
     assert!(vis.visible_lines(&model).is_empty());
     assert_eq!(vis.level_counts_excluding_levels(&model), [0_u64; 6]);
+  }
+
+  // --------------------------------------------- shared walk + dual-path parity
+
+  /// The single shared walk must agree with the two separate passes for any
+  /// config: visible lines (level toggles + pins applied) and the §11
+  /// counters (level toggles ignored).
+  #[test]
+  fn shared_walk_matches_the_two_separate_passes() {
+    let model = mixed_model();
+    let mut vis = all_categories(&model);
+    vis.add_filter(Matcher::plain("LOG_WRN")); // line 4 only
+    vis.set_level_enabled(Level::Error, false);
+    vis.add_pin(Matcher::line_no(5)); // an uncategorized row
+    let (lines, counts) = vis.visible_with_counts(&model);
+    assert_eq!(lines, vis.visible_lines(&model));
+    assert_eq!(counts, vis.level_counts_excluding_levels(&model));
+  }
+
+  #[test]
+  fn shared_walk_on_empty_model_yields_nothing() {
+    let model = model_from("lv_visibility_empty", b"");
+    let vis = all_categories(&model);
+    assert_eq!(vis.visible_with_counts(&model), (Vec::<u32>::new(), [0_u64; 6]));
+  }
+
+  /// Deterministic generated row set (no test_logs/ content): 48 rows per
+  /// format covering nested latin paths, unicode paths, and uncategorized
+  /// rows, all six levels. Only counts and shapes — no corpus bytes.
+  const GEN_PATHS: [&str; 10] = [
+    "app",
+    "app/main",
+    "app/net",
+    "app/main/db",
+    "α",
+    "α/β",
+    "α/β/δ",
+    "café/sélection",
+    "svc",
+    "путь/вложенный/узел",
+  ];
+
+  fn generated_model(format: Format) -> FileModel {
+    let level_tags_a = ["LOG_CRT", "LOG_ERR", "LOG_WRN", "LOG_MSG", "LOG_DBG", "LOG_TRC"];
+    let level_tags_b = ["crt", "err", "wrn", "msg", "dbg", "trc"];
+    let mut data = String::new();
+    for i in 0..48_u32 {
+      if i % 11 == 7 {
+        // A two-field line: uncategorized (§3), format-dependent prefix.
+        let line = match format {
+          Format::Ksiva => format!("2024-01-01T10:00:{:02}.000 standalone{}", i % 60, i),
+          Format::Plain => format!("10:00:{:02}.000 standalone{}", i % 60, i),
+        };
+        data.push_str(&line);
+        data.push('\n');
+        continue;
+      }
+      let path = GEN_PATHS[i as usize % GEN_PATHS.len()];      let k = (i % 6) as usize;
+      let line = match format {
+        Format::Ksiva => format!(
+          "2024-01-01T10:00:{:02}.{:03} {path} {} message {i}",
+          i % 60,
+          i % 1000,
+          level_tags_a[k],
+        ),
+        Format::Plain => format!(
+          "10:00:{:02}.{:03} 0.0{i} {} {path} message {i}",
+          i % 60,
+          i % 1000,
+          level_tags_b[k],
+        ),
+      };
+      data.push_str(&line);
+      data.push('\n');
+    }
+    model_from("lv_visibility_parity", data.as_bytes())
+  }
+
+  /// Every category AND its ancestor prefixes enabled — the shell's
+  /// post-load whitelist.
+  fn all_with_ancestors(path: &str, set: &mut Visibility) {
+    let mut prefix: &str = path;
+    loop {
+      set.set_category_enabled(prefix, true);
+      match prefix.rfind('/') {
+        Some(i) => prefix = &prefix[..i],
+        None => break,
+      }
+    }
+  }
+
+  /// Dual-path oracle: the optimized (interned-path) walk must decide the
+  /// naive per-row ancestor walk row by row.
+  fn check_parity(vis: &Visibility, model: &FileModel, ctx: &str) {
+    assert_eq!(
+      vis.visible_with_counts(model),
+      vis.visible_with_counts_reference(model),
+      "parity failed: {ctx}"
+    );
+  }
+
+  #[test]
+  fn interned_category_paths_match_the_naive_reference() {
+    for (format_label, format) in [("a", Format::Ksiva), ("b", Format::Plain)] {
+      let model = generated_model(format);
+
+      // Full whitelist with ancestors: plenty of visible rows.
+      let mut vis = Visibility::new();
+      for (path, _) in model.categories() {
+        all_with_ancestors(path, &mut vis);
+      }
+      check_parity(&vis, &model, &format!("[{format_label}] all enabled"));
+      let (lines, _) = vis.visible_with_counts(&model);
+      assert!(!lines.is_empty(), "[{format_label}] all enabled must show rows");
+
+      // Empty whitelist: nothing visible, both engine paths hidden.
+      check_parity(&Visibility::new(), &model, &format!("[{format_label}] empty whitelist"));
+      let (lines, counts) = Visibility::new().visible_with_counts(&model);
+      assert!(lines.is_empty(), "[{format_label}] empty whitelist must hide all");
+      assert_eq!(counts, [0_u64; 6]);
+
+      // Leaf paths only: the missing ancestors hide the leaves (§10).
+      let mut vis = Visibility::new();
+      for path in ["app/main/db", "α/β/δ", "uncategorized"] {
+        vis.set_category_enabled(path, true);
+      }
+      check_parity(&vis, &model, &format!("[{format_label}] leaves only"));
+
+      // Parents disabled on top of a full whitelist.
+      let mut vis = Visibility::new();
+      for (path, _) in model.categories() {
+        all_with_ancestors(path, &mut vis);
+      }
+      vis.set_category_enabled("app", false);
+      vis.set_category_enabled("α", false);
+      check_parity(&vis, &model, &format!("[{format_label}] parents disabled"));
+
+      // A mid-node disabled: its children hide too.
+      let mut vis = Visibility::new();
+      for (path, _) in model.categories() {
+        all_with_ancestors(path, &mut vis);
+      }
+      vis.set_category_enabled("путь/вложенный", false);
+      vis.set_category_enabled("café", false);
+      check_parity(&vis, &model, &format!("[{format_label}] mid nodes disabled"));
+
+      // Pins: pinned rows bypass the category rule entirely (§12).
+      vis.set_category_enabled("app", false);
+      vis.add_pin(Matcher::line_no(2)).add_pin(Matcher::line_no(17));
+      // And a filter narrows the passing set (OR semantics).
+      vis.add_filter(Matcher::plain("message"));
+      check_parity(&vis, &model, &format!("[{format_label}] pins + filter + disabled parents"));
+
+      // Level toggles off must not disturb the per-level counters.
+      vis.set_level_enabled(Level::Error, false);
+      vis.set_level_enabled(Level::Trace, false);
+      check_parity(&vis, &model, &format!("[{format_label}] pins + filter + levels off"));
+      let (lines, _) = vis.visible_with_counts(&model);
+      assert!(!lines.is_empty(), "[{format_label}] pins must stay visible");
+
+      // Disabled pin: the rows fall back under the category rule.
+      vis.set_pin_enabled(0, false);
+      check_parity(&vis, &model, &format!("[{format_label}] half-disabled pins"));
+    }
   }
 }

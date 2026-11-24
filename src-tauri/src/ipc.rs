@@ -254,11 +254,27 @@ impl VisibilityState {
     Ok(())
   }
 
-  /// Recomputes the visible-line cache from `model` when invalidated. With
-  /// no file loaded the visible set is empty.
-  fn ensure_visible_cache(&mut self, model: Option<&FileModel>) {
-    if self.visible_cache.is_none() {
-      self.visible_cache = Some(model.map_or_else(Vec::new, |m| self.vis.visible_lines(m)));
+  /// Recomputes the visible-line cache from `model` when invalidated and
+  /// returns the §11 per-level counters. The recompute is the core's single
+  /// shared walk (`visible_with_counts`): the cached visible list and the
+  /// counters come from one pass, so a snapshot after a mutation costs one
+  /// walk instead of two. With the cache already valid the counters still
+  /// need their own walk (they ignore the level toggles); with no file
+  /// loaded both are empty. The cached list stays the source for
+  /// get_rows/search.
+  fn ensure_visible_cache(&mut self, model: Option<&FileModel>) -> [u64; 6] {
+    match (self.visible_cache.is_none(), model) {
+      (true, None) => {
+        self.visible_cache = Some(Vec::new());
+        [0_u64; 6]
+      }
+      (true, Some(m)) => {
+        let (lines, counts) = self.vis.visible_with_counts(m);
+        self.visible_cache = Some(lines);
+        counts
+      }
+      (false, None) => [0_u64; 6],
+      (false, Some(m)) => self.vis.level_counts_excluding_levels(m),
     }
   }
 
@@ -445,11 +461,8 @@ pub(crate) fn visibility_snapshot_inner(
 ) -> Result<VisibilitySnapshotDto, String> {
   let file = file.lock().map_err(|_| lock_err())?;
   let mut vis = vis.lock().map_err(|_| lock_err())?;
-  vis.ensure_visible_cache(file.as_ref());
+  let counts = vis.ensure_visible_cache(file.as_ref());
   let hl = hl.lock().map_err(|_| lock_err())?;
-  let counts: [u64; 6] = file
-    .as_ref()
-    .map_or([0_u64; 6], |m| vis.vis.level_counts_excluding_levels(m));
   let highlights = highlight_dtos(&hl);
   Ok(VisibilitySnapshotDto {
     visible_count: vis
