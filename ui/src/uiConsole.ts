@@ -7,8 +7,9 @@ import { appReducer, expandedForToggleAll, initialAppState, type AppState, type 
 import type { VisibilityState } from "./state";
 import { buildTree, propagateToggle, toggleAll } from "./categories";
 import { ipc } from "./ipcClient";
+import { commands } from "./bindings";
 import { exactPinIdsCovering } from "./pins";
-import { appendHistory, initialCmdlineState, recallHistory, resolveCommand, type CmdlineState } from "./cmdline";
+import { appendHistory, initialCmdlineState, mergeHistory, recallHistory, resolveCommand, type CmdlineState } from "./cmdline";
 import {
   remapSelection,
   resolveLineIndex,
@@ -57,6 +58,37 @@ export interface ConsoleSnapshot {
 /** Copy column selection: raw file lines or the Message column (§4). */
 export type CopyMode = "raw" | "message";
 
+// ---- §13.2 persistent command history (bead 7rf.2) ----
+
+/** RAW shape of the settings-core history store: history_get returns the
+ *  persisted commands oldest first (the most recent last), history_push
+ *  appends one (empty ignored, consecutive duplicates collapsed, capped by
+ *  the history_size setting on the backend — the UI never re-caps). */
+interface HistoryCommands {
+  historyGet(): Promise<string[]>;
+  historyPush(cmd: string): Promise<null>;
+}
+
+const realHistoryCommands: HistoryCommands = {
+  historyGet: () => commands.historyGet(),
+  historyPush: (cmd) => commands.historyPush(cmd),
+};
+
+/** Resolves the history commands through the same window.__ipcStub the ipc()
+ *  adapter looks at (the headless harness substitutes a recording pair) —
+ *  anything without BOTH history methods falls back to the generated
+ *  bindings, so unit stubs that don't mirror the history commands simply get
+ *  the real (failing, best-effort-caught) path. */
+const historyCommands = (): HistoryCommands => {
+  const stub = (window as unknown as { __ipcStub?: Partial<HistoryCommands> })
+    .__ipcStub;
+  const historyGet = typeof stub?.historyGet === "function" ? stub.historyGet : null;
+  const historyPush = typeof stub?.historyPush === "function" ? stub.historyPush : null;
+  return stub !== null && historyGet !== null && historyPush !== null
+    ? { historyGet, historyPush }
+    : realHistoryCommands;
+};
+
 interface TableHandle {
   scrollToRow(lineNo: number): void;
   /** Builds the copy text for the selection (loading uncached rows),
@@ -75,6 +107,22 @@ class UiConsole {
    *  state.ts is the load/filter/search domain (the slice rides the same
    *  listener set through getCmdline). */
   private cmdline: CmdlineState = initialCmdlineState();
+
+  /** §13.2 (bead 7rf.2): the persistent history seeds the in-session
+   *  cycle ONCE, at construction — fire-and-forget with catch, a failed
+   *  read leaves the in-session list alone. */
+  constructor() {
+    try {
+      void historyCommands()
+        .historyGet()
+        .then(
+          (loaded) => this.seedHistory(loaded),
+          () => undefined,
+        );
+    } catch {
+      // Persistence is best-effort; the session list is the cycle's truth.
+    }
+  }
 
   /** The command-line slice as a STABLE reference for useSyncExternalStore. */
   getCmdline = (): CmdlineState => this.cmdline;
@@ -553,6 +601,27 @@ class UiConsole {
   /** Enter (§13): submits the CURRENT FIELD TEXT. */
   submitCommand = (): Promise<ConsoleSnapshot> => this.submitText(this.cmdline.value);
 
+  /** Merges the loaded store list into the in-session cycle (cmdline.ts
+   *  mergeHistory: chronological, consecutive duplicates collapsed across
+   *  the seam). The recall cursor rewinds to the empty draft past the
+   *  MERGED newest entry (a seeded entry is not a field position); the
+   *  field text is untouched. */
+  private seedHistory = (loaded: readonly string[]): void => {
+    const history = mergeHistory(loaded, this.cmdline.history);
+    this.setCmdline({ ...this.cmdline, history, historyIndex: history.length });
+  };
+
+  /** One fire-and-forget store push (§13.2); a failed write keeps only the
+   *  session list. A synchronous boundary failure is caught too (jsdom /
+   *  missing bindings). */
+  private pushHistory = (entry: string): void => {
+    try {
+      void historyCommands().historyPush(entry).catch(() => undefined);
+    } catch {
+      // Persistence is best-effort; the session history stays.
+    }
+  };
+
   /** §13 execute: one submitted text goes through the whole atomic flow —
    *  validate against the §13.1 registry FIRST, then dispatch the single
    *  wire action (every registry command is one backend call, so no partial
@@ -565,6 +634,15 @@ class UiConsole {
 
   private submitText = (text: string): Promise<ConsoleSnapshot> => {
     const history = appendHistory(this.cmdline.history, text);
+    if (history.length > this.cmdline.history.length) {
+      // §13.2 (bead 7rf.2): the entered command joins the persistent history
+      // too — the same trimmed entry the session stored, valid or not (ALL
+      // entered commands go to the history; validate-then-execute changes
+      // the wire call, not the storage rule). No-ops and consecutive
+      // duplicates arrive here never (appendHistory skipped them), so an
+      // entry is never pushed twice.
+      this.pushHistory(history[history.length - 1] ?? "");
+    }
     this.setCmdline({ ...this.cmdline, value: "", historyIndex: history.length, history });
     const result = resolveCommand(text, this.state.file?.load.lineCount ?? 0);
     if (result.ok) {

@@ -1,5 +1,6 @@
 // bead 7rf.1 states: §13 command line (registry flow, error channel,
-// history recall). Each state loads through the headless console against
+// history recall); 30 extends the set for bead 7rf.2 (the persistent
+// history's recall). Each state loads through the headless console against
 // the base stub and drives the commands via window.__headless (text RPC);
 // the field's rendered text comes from the console slice.
 import { STUB } from "./base.mjs";
@@ -73,6 +74,42 @@ export default [
         () =>
           window.__headless.cmdline().value === ":h message 31" &&
           window.__headless.cmdline().history.length === 2,
+      );
+      await page.waitForTimeout(200);
+      await WAIT_FONTS(page);
+    },
+  },
+  {
+    // The §13.2 persistent history (bead 7rf.2): the history STORE (~
+    // .logviewer/history.json equivalent) is seeded through an init script
+    // (installed before the app boots, so the console constructor's single
+    // history_get reads it), and ↑ recalls the store's newest entry. No
+    // session submissions happen here — the loaded list alone backs the
+    // cycle; the recalled field text renders as in state 29 (the table
+    // band differs: nothing was executed in this state).
+    name: "30-cmdline-history-persistent",
+    async setup(page) {
+      const url = page.url();
+      await page.addInitScript(`
+        window.__ipcStub = {
+          async historyGet() { return [":f message 12", ":h message 31"]; },
+          async historyPush() { return null; },
+        };
+      `);
+      await page.goto(url);
+      await page.waitForFunction(
+        () => typeof window.__headless === "object" && window.__headless !== null,
+      );
+      await page.evaluate(STUB); // the visibility model (the store was already read at boot)
+      await page.evaluate(() => window.__headless.load("/tmp/synthetic.log"));
+      await page.waitForFunction(() => window.__headless.state().visibility !== null);
+      await page.waitForFunction(() => window.__headless.cmdline().history.length === 2);
+      await page.evaluate(() => window.__headless.activateCmdline());
+      await page.evaluate(() => window.__headless.recallCommandHistory(-1));
+      await page.waitForFunction(
+        () =>
+          window.__headless.cmdline().value === ":h message 31" &&
+          window.__headless.commandHistory().length === 2,
       );
       await page.waitForTimeout(200);
       await WAIT_FONTS(page);

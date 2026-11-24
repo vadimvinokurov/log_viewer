@@ -10,6 +10,7 @@
 use serde::Serialize;
 
 use logviewer_core::format::Format;
+use logviewer_core::settings::Store;
 use logviewer_core::highlights::{HighlightEngine, Rule};
 use logviewer_core::matching::Matcher;
 use logviewer_core::parser::Level;
@@ -600,6 +601,49 @@ pub fn new_highlight_state() -> HighlightState {
   std::sync::Mutex::new(HighlightShellState::new())
 }
 
+/// Shared settings + history store (§13.2, §15). The DEFAULT constructor
+/// opens `~/.logviewer`; tests use a temp dir through `new_settings_state_at`
+/// (the real home dir must be untouched by tests).
+pub type SettingsState = std::sync::Mutex<Store>;
+
+pub fn new_settings_state() -> SettingsState {
+  let home = std::env::var("HOME")
+    .map(std::path::PathBuf::from)
+    .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+  std::sync::Mutex::new(Store::open(&home.join(".logviewer")))
+}
+
+/// Test-facing constructor over an explicit directory.
+#[cfg(test)]
+pub fn new_settings_state_at(dir: &std::path::Path) -> SettingsState {
+  std::sync::Mutex::new(Store::open(dir))
+}
+
+/// The persisted command history, oldest first (§13.2). Empty when the
+/// store has no entries yet; disk errors already degrade to defaults in the
+/// core store, so this command never fails.
+#[tauri::command]
+#[specta::specta]
+pub async fn history_get(
+  state: tauri::State<'_, SettingsState>,
+) -> Result<Vec<String>, String> {
+  let guard = state.lock().map_err(|_| lock_err())?;
+  Ok(guard.history().to_vec())
+}
+
+/// Push one command to the persistent history (§13.2: empty commands are
+/// ignored, consecutive duplicates collapse, the list is capped by
+/// `history_size`). The command may fail to write; the app never aborts.
+#[tauri::command]
+#[specta::specta]
+pub async fn history_push(
+  cmd: String,
+  state: tauri::State<'_, SettingsState>,
+) -> Result<(), String> {
+  let mut guard = state.lock().map_err(|_| lock_err())?;
+  guard.push_history(cmd).map_err(|_| "history write failed".to_owned())
+}
+
 /// Shell metadata for one core `Highlight`, parallel to the engine's rule
 /// list (same order, same length) — mirrors CriterionMeta.
 struct HighlightMeta {
@@ -1124,7 +1168,26 @@ mod tests {
     assert!(guard.as_ref().is_none());
   }
 
-  // ---------------------------------------------------------- visibility
+  // ---------------------------------------------------------- settings: history
+
+#[test]
+fn history_roundtrip_and_persistence() {
+  let dir = std::env::temp_dir().join("lv_ipc_history_persist");
+  let _ = std::fs::remove_dir_all(&dir);
+  {
+    let store = new_settings_state_at(&dir);
+    let mut guard = store.lock().unwrap();
+    assert!(guard.history().is_empty());
+    guard.push_history(":f started".into()).unwrap();
+    guard.push_history(":f started".into()).unwrap(); // duplicate in place: no-op
+    guard.push_history("".into()).unwrap(); // empty: ignored
+  }
+  // Reopen through the same constructor: the store must persist.
+  let store = new_settings_state_at(&dir);
+  let guard = store.lock().unwrap();
+  assert_eq!(guard.history(), &[":f started".to_string()]);
+}
+// ---------------------------------------------------------- visibility
   // bridge tests (docs/notes/visibility-bridge.md). They drive the inner
   // state functions directly: tauri::State cannot be built outside an app.
 

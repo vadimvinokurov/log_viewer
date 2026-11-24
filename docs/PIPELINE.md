@@ -94,6 +94,11 @@ Claim tasks in the main session before spawning agents.
     (':'-activated focused field), `27-cmdline-filter-executed`, `28-cmdline-error`
     (Unknown command in the status area) and `29-cmdline-history` (↑-recalled entry)
     with fresh goldens.
+  - Addition 2026-11-24 (bead 7rf.2, §13.2 persistent history): new state
+    `30-cmdline-history-persistent` (↑ recalls the STORE's newest entry; the
+    history file is seeded through an `addInitScript` stub before the app boots) with a
+    fresh golden — the recalled field text renders as in state 29 (the table band
+    differs: nothing was executed in this state).
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

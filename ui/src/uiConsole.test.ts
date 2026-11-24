@@ -1752,9 +1752,17 @@ describe("console command line (bead 7rf.1, §13/§13.1)", () => {
     addPinCalls(): { mode: string; pattern: string }[];
     addHighlightCalls(): { mode: string; pattern: string }[];
     clearCalls(): string[];
+    /** The persistent history file's contents (bead 7rf.2): read by
+     *  history_get, written by history_push (append + cap/dedupe server-side
+     *  semantics already tested in the store's own tests). Mutating the
+     *  returned array pre-seeds the store. */
+    historyStore(): string[];
+    historyGetCalls(): number;
+    historyGet(): Promise<string[]>;
+    historyPush(cmd: string): Promise<null>;
   }
 
-  function cmdStub(): CmdStub {
+  function cmdStub(options: { failHistoryGet?: boolean; failHistoryPush?: boolean } = {}): CmdStub {
     const lines: Record<string, { mode: string; pattern: string }[]> = {
       filters: [], pins: [], highlights: [],
     };
@@ -1763,11 +1771,15 @@ describe("console command line (bead 7rf.1, §13/§13.1)", () => {
     };
     const cleared: string[] = [];
     const counters: Record<string, number> = { filters: 0, pins: 0, highlights: 0 };
+    const history: string[] = [];
+    let getCalls = 0;
     return {
       addFilterCalls: () => added.filters,
       addPinCalls: () => added.pins,
       addHighlightCalls: () => added.highlights,
       clearCalls: () => cleared,
+      historyStore: () => history,
+      historyGetCalls: () => getCalls,
       pickFile: async () => null,
       loadFile: async () => ({
         format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
@@ -1803,6 +1815,20 @@ describe("console command line (bead 7rf.1, §13/§13.1)", () => {
       clearHighlights: async () => { cleared.push("clearHighlights"); lines.highlights.length = 0; return null; },
       setLevelEnabled: async () => null,
       setCategoryEnabled: async () => null,
+      historyGet: async () => {
+        getCalls += 1;
+        if (options.failHistoryGet) {
+          throw new Error("history read failed");
+        }
+        return [...history];
+      },
+      historyPush: async (cmd: string) => {
+        if (options.failHistoryPush) {
+          throw new Error("history write failed");
+        }
+        history.push(cmd);
+        return null;
+      },
       searchVisible: async () => ({ total: 0, positions: [] }),
       visibilitySnapshot: async () => ({
         visible_count: 12,
@@ -1958,6 +1984,173 @@ describe("console command line (bead 7rf.1, §13/§13.1)", () => {
     expect(cmd.focusTick).toBe(before + 1);
     // Activation is not a history event.
     expect(cmd.history).toEqual([":f a"]);
+  });
+});
+
+describe("persistent command history (bead 7rf.2, §13.2)", () => {
+  /** RAW stub mirroring the history commands (bead 7rf.2) over a minimal
+   *  visibility model: history_get reads the persisted file's contents,
+   *  history_push appends to it; line_count 12 so the :f/:h commands execute
+   *  for real. Call failures are opt-in (best-effort catch paths). */
+  interface HistStub extends RawIpc {
+    /** The persistent file's contents — mutate to pre-seed the store. */
+    historyStore(): string[];
+    historyGetCalls(): number;
+    historyGet(): Promise<string[]>;
+    historyPush(cmd: string): Promise<null>;
+  }
+
+  function histStub(
+    options: { failHistoryGet?: boolean; failHistoryPush?: boolean } = {},
+  ): HistStub {
+    const filters: { mode: string; pattern: string; enabled: boolean }[] = [];
+    const added: { mode: string; pattern: string }[] = [];
+    const history: string[] = [];
+    let getCalls = 0;
+    return {
+      pickFile: async () => null,
+      loadFile: async () => ({
+        format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+      }),
+      getRows: async () => [],
+      addFilter: async (mode: string, pattern: string) => {
+        added.push({ mode, pattern });
+        filters.push({ mode, pattern, enabled: true });
+        return null;
+      },
+      setFilterEnabled: async () => null,
+      removeFilter: async () => null,
+      addPin: async () => null,
+      setPinEnabled: async () => null,
+      removePin: async () => null,
+      clearPins: async () => null,
+      clearFilters: async () => null,
+      addHighlight: async () => null,
+      setHighlightEnabled: async () => null,
+      setHighlightColor: async () => null,
+      removeHighlight: async () => null,
+      clearHighlights: async () => null,
+      setLevelEnabled: async () => null,
+      setCategoryEnabled: async () => null,
+      historyGet: async () => {
+        getCalls += 1;
+        if (options.failHistoryGet) {
+          throw new Error("history read failed");
+        }
+        return [...history];
+      },
+      historyPush: async (cmd: string) => {
+        if (options.failHistoryPush) {
+          throw new Error("history write failed");
+        }
+        history.push(cmd);
+        return null;
+      },
+      searchVisible: async () => ({ total: 0, positions: [] }),
+      visibilitySnapshot: async () => ({
+        visible_count: 12,
+        levels: ["critical", "error", "warning", "msg", "debug", "trace"].map((level) => ({
+          level, enabled: true, count: 2,
+        })),
+        filters: filters.map((f, id) => ({ ...f, id })),
+        pins: [],
+        highlights: [],
+        categories_enabled: ["app/db"],
+      }),
+      historyStore: () => history,
+      historyGetCalls: () => getCalls,
+    };
+  }
+
+  async function loadedHistory(
+    stub: HistStub = histStub(),
+  ): Promise<{ console_: Console; stub: HistStub }> {
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    return { console_, stub };
+  }
+
+  it("a successful submit pushes the session's trimmed entry to the store", async () => {
+    const { console_, stub } = await loadedHistory();
+    console_.setCommandText("  :f a  ");
+    await console_.submitCommand();
+    expect(stub.historyStore()).toEqual([":f a"]);
+    console_.setCommandText(":f b");
+    await console_.submitCommand();
+    expect(stub.historyStore()).toEqual([":f a", ":f b"]);
+    // The session list and the store stay in step (the same trimmed text,
+    // verbatim with its ':' as entered).
+    expect(console_.getCmdline().history).toEqual([":f a", ":f b"]);
+  });
+
+  it("a consecutive duplicate and a no-op submission are never pushed", async () => {
+    const { console_, stub } = await loadedHistory();
+    await console_.executeCommand(":f b");
+    await console_.executeCommand(":f b"); // consecutive duplicate in both lists
+    await console_.executeCommand("   "); // a whitespace-only submission: nothing stored
+    expect(stub.historyStore()).toEqual([":f b"]);
+    expect(console_.getCmdline().history).toEqual([":f b"]);
+    // ALL entered commands go to history (§13.2) — an invalid one too;
+    // validate-then-execute changes the wire call, not the storage rule.
+    await console_.executeCommand(":unknown 1");
+    expect(stub.historyStore()).toEqual([":f b", ":unknown 1"]);
+    expect(console_.getCmdline().history).toEqual([":f b", ":unknown 1"]);
+    // A bare ':' submission follows the current storage rule too (a
+    // non-empty trimmed text): stored once, pushed once.
+    await console_.executeCommand(":");
+    expect(stub.historyStore()).toEqual([":f b", ":unknown 1", ":"]);
+  });
+
+  it("loaded history seeds the recall cycle of a fresh console instance (reload)", async () => {
+    const stub = histStub();
+    stub.historyStore().push("f old", ":h message 31"); // the pre-existing ~/.logviewer store
+    const { console_ } = await loadedHistory(stub);
+    expect(stub.historyGetCalls()).toBeGreaterThanOrEqual(1);
+    expect(console_.getCmdline().history).toEqual(["f old", ":h message 31"]);
+    // The recall cursor stands at the empty draft past the seeded newest.
+    expect(console_.getCommandHistoryIndex()).toBe(2);
+    console_.recallCommandHistory(-1);
+    expect(console_.getCmdline().value).toBe(":h message 31");
+    console_.recallCommandHistory(-1);
+    expect(console_.getCmdline().value).toBe("f old");
+    console_.recallCommandHistory(-1); // clamped at the oldest
+    expect(console_.getCmdline().value).toBe("f old");
+    console_.recallCommandHistory(1);
+    console_.recallCommandHistory(1);
+    expect(console_.getCmdline().value).toBe(""); // empty draft after the newest
+  });
+
+  it("a failed read keeps the session list; a failed write keeps it too (best-effort)", async () => {
+    const readerStub = histStub({ failHistoryGet: true });
+    readerStub.historyStore().push("f old");
+    const { console_: reader } = await loadedHistory(readerStub);
+    // The read failure leaves the in-session list untouched.
+    expect(reader.getCmdline().history).toEqual([]);
+    expect(reader.getCommandHistoryIndex()).toBe(0);
+
+    const { console_: writer, stub } = await loadedHistory(
+      histStub({ failHistoryPush: true }),
+    );
+    await writer.executeCommand(":f a");
+    expect(writer.getCmdline().history).toEqual([":f a"]); // the session keeps it
+    expect(stub.historyStore()).toEqual([]); // the store write failed silently
+    writer.recallCommandHistory(-1);
+    expect(writer.getCmdline().value).toBe(":f a");
+  });
+
+  it("the store is read once per instance; a resubmitted recall is NOT pushed again", async () => {
+    const { console_, stub } = await loadedHistory();
+    const reads = stub.historyGetCalls();
+    await console_.executeCommand(":f a");
+    expect(stub.historyStore()).toEqual([":f a"]);
+    // ↑ brings ":f a" back into the field; Enter resubmits it — the
+    // consecutive duplicate is pushed neither into the session nor the store.
+    console_.recallCommandHistory(-1);
+    expect(console_.getCmdline().value).toBe(":f a");
+    await console_.submitCommand();
+    expect(stub.historyGetCalls()).toBe(reads); // recall never re-reads
+    expect(stub.historyStore()).toEqual([":f a"]);
+    expect(console_.getCmdline().history).toEqual([":f a"]);
   });
 });
 

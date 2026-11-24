@@ -53,6 +53,18 @@ export const commands = {
 	/**  Drop every filter at once (§13: the rmf command). */
 	clearFilters: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_filters", undefined, options),
 	/**
+	 *  The persisted command history, oldest first (§13.2). Empty when the
+	 *  store has no entries yet; disk errors already degrade to defaults in the
+	 *  core store, so this command never fails.
+	 */
+	historyGet: (options?: InvokeOptions) => __TAURI_INVOKE<string[]>("history_get", undefined, options),
+	/**
+	 *  Push one command to the persistent history (§13.2: empty commands are
+	 *  ignored, consecutive duplicates collapse, the list is capped by
+	 *  `history_size`). The command may fail to write; the app never aborts.
+	 */
+	historyPush: (cmd: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("history_push", { cmd }, options),
+	/**
 	 *  Toggle a level by its lowercase long name ("critical".."trace", same
 	 *  spellings as the snapshot's level lists).
 	 */

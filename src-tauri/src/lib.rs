@@ -27,6 +27,8 @@ fn build_bindings() -> tauri_specta::Builder<tauri::Wry> {
     ipc::remove_pin,
     ipc::clear_pins,
     ipc::clear_filters,
+    ipc::history_get,
+    ipc::history_push,
     ipc::set_level_enabled,
     ipc::set_category_enabled,
     ipc::visibility_snapshot,
@@ -69,6 +71,7 @@ pub fn run() {
     .manage(ipc::new_file_state())
     .manage(ipc::new_visibility_state())
     .manage(ipc::new_highlight_state())
+    .manage(ipc::new_settings_state())
     .invoke_handler(bindings.invoke_handler())
     .setup(|app| {
       if cfg!(debug_assertions) {

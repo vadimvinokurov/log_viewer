@@ -174,6 +174,31 @@ export function appendHistory(
   return [...history, trimmed];
 }
 
+/** Unions the persistent history (the loaded store list, oldest first) with
+ *  the session's own entries (§13.2, bead 7rf.2): chronological order, both
+ *  sides trimmed and skipped-if-empty, consecutive duplicates collapsed
+ *  across the seam. A session entry repeating an OLDER store entry is a
+ *  non-consecutive duplicate and stays (plain chronology). */
+export function mergeHistory(
+  loaded: readonly string[],
+  session: readonly string[],
+): string[] {
+  const merged: string[] = [];
+  const append = (raw: string): void => {
+    const trimmed = raw.trim();
+    if (trimmed !== "" && merged[merged.length - 1] !== trimmed) {
+      merged.push(trimmed);
+    }
+  };
+  for (const entry of loaded) {
+    append(entry);
+  }
+  for (const entry of session) {
+    append(entry);
+  }
+  return merged;
+}
+
 /** One ↑/↓ step over the history (§13.2): up = older, down = newer; past
  *  the newest entry the field falls back to an empty string. dir −1 = up. */
 export function recallHistory(

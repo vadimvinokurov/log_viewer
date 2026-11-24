@@ -91,6 +91,10 @@ export function installHeadlessConsole(): () => void {
     activateCmdline: () => console_.activateCmdline(),
     /** State of the §13 field incl. the in-session history. */
     cmdline: () => console_.getCmdline(),
+    /** §13.2 (bead 7rf.2): the current cycle list — the seeded persistent
+     *  history plus the session's submissions (chronological, oldest
+     *  first). A snapshot convenience mirror of cmdline().history. */
+    commandHistory: () => console_.getCmdline().history.slice(),
     /** Installs an IPC stub for headless visual runs. */
     stubIpc: (stub: unknown) => {
       (window as unknown as Record<string, unknown>).__ipcStub = stub;

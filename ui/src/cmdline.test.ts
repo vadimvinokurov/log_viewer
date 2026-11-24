@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendHistory,
   initialCmdlineState,
+  mergeHistory,
   parseCommand,
   recallHistory,
   resolveCommand,
@@ -232,5 +233,34 @@ describe("in-session history helpers (§13.2, session part)", () => {
     expect(initialCmdlineState()).toEqual({ value: "", history: [], historyIndex: 0, focusTick: 0 });
     expect(recallHistory(initialCmdlineState().history, initialCmdlineState().historyIndex, -1))
       .toEqual({ index: 0, text: "" });
+  });
+});
+
+describe("persistent history merge (§13.2, bead 7rf.2)", () => {
+  it("mergeHistory seeds the loaded list (oldest first) ahead of the session entries", () => {
+    expect(mergeHistory(["f old", "f newer"], ["f live"])).toEqual([
+      "f old", "f newer", "f live",
+    ]);
+    // An empty current session keeps the loaded entries verbatim.
+    expect(mergeHistory(["f old"], [])).toEqual(["f old"]);
+    // An empty store keeps the session entries (the constructor's read may
+    // simply have found nothing yet).
+    expect(mergeHistory([], [":f a", "f b"])).toEqual([":f a", "f b"]);
+  });
+
+  it("mergeHistory collapses consecutive duplicates across the seam", () => {
+    // The store's last entry equals the session's first (the session
+    // submitted the same command the store already holds).
+    expect(mergeHistory(["f a", "f b"], ["f b", "f c"])).toEqual(["f a", "f b", "f c"]);
+  });
+
+  it("mergeHistory skips empty entries and trims both sides", () => {
+    expect(mergeHistory(["  f a  ", ""], ["   ", "f b"])).toEqual(["f a", "f b"]);
+  });
+
+  it("mergeHistory keeps a non-consecutive duplicate (chronological order)", () => {
+    // §13.2 only forbids CONSECUTIVE duplicates; a session re-entry of an
+    // older store entry is plain chronology.
+    expect(mergeHistory(["f a", "f b"], ["f a"])).toEqual(["f a", "f b", "f a"]);
   });
 });
