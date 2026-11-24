@@ -23,6 +23,12 @@ jobs:
           node-version: 22
       - name: install ui deps
         run: npm ci --prefix ui
+      # The gate compiles the Tauri shell crate (`cargo test --workspace`),
+      # which links GTK/webkit — dev libraries the ubuntu runner lacks.
+      - name: tauri linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - name: rust tests (core + shell incl. binding regen)
         run: cargo test --workspace
       - name: ui build + typecheck
