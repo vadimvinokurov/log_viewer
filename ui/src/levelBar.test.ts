@@ -158,12 +158,13 @@ describe("LevelBar component (§11)", () => {
     const warning = buttons(container)[2];
     const msg = buttons(container)[3];
     expect(warning.getAttribute("aria-pressed")).toBe("false");
-    expect(warning.style.opacity).toBe("0.45");
+    // .lv.off matches the design doc: opacity .38 (UI_DESIGN §s4 .lv.off).
+    expect(warning.style.opacity).toBe("0.38");
     const warningCount = warning.querySelector("[data-level-count]") as HTMLElement | null;
     expect(warningCount?.style.textDecorationLine).toBe("line-through");
     // Enabled level: no dimming, no strikethrough.
     expect(msg.getAttribute("aria-pressed")).toBe("true");
-    expect(msg.style.opacity).not.toBe("0.45");
+    expect(msg.style.opacity).not.toBe("0.38");
     const msgCount = msg.querySelector("[data-level-count]") as HTMLElement | null;
     expect(msgCount?.style.textDecorationLine).not.toBe("line-through");
   });

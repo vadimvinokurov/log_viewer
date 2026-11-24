@@ -84,3 +84,45 @@ describe("open/load pipeline (n4y.2, §2)", () => {
     expect(s.loadingFile).toBe("/next.txt");
   });
 });
+
+describe("row selection state (§4, qt7.2)", () => {
+  const base = { format: "plain", lineCount: 20, categories: [], levels: [], loadMs: 5 };
+
+  it("starts with an empty selection", () => {
+    expect(initialAppState().selection).toEqual({ selected: [], anchor: null });
+  });
+
+  it("click selects one row and sets the anchor", () => {
+    const s = appReducer(loadedState(), { kind: "selection-click", index: 4 });
+    expect(s.selection).toEqual({ selected: [4], anchor: 4 });
+  });
+
+  it("toggle adds and removes a row, replacing the anchor each time", () => {
+    const s0 = appReducer(loadedState(), { kind: "selection-toggle", index: 3 });
+    const s1 = appReducer(s0, { kind: "selection-toggle", index: 7 });
+    expect(s1.selection.selected).toEqual([3, 7]);
+    expect(s1.selection.anchor).toBe(7);
+    const s2 = appReducer(s1, { kind: "selection-toggle", index: 3 });
+    expect(s2.selection.selected).toEqual([7]);
+    expect(s2.selection.anchor).toBe(3);
+  });
+
+  it("range extends from the anchor and keeps the anchor", () => {
+    const s0 = appReducer(loadedState(), { kind: "selection-click", index: 3 });
+    const s1 = appReducer(s0, { kind: "selection-range", index: 7 });
+    expect(s1.selection.selected).toEqual([3, 4, 5, 6, 7]);
+    expect(s1.selection.anchor).toBe(3);
+  });
+
+  it("load-success resets the selection: indexes are per file", () => {
+    const s0 = appReducer(loadedState(), { kind: "selection-click", index: 4 });
+    const s1 = appReducer(s0, { kind: "load-request", path: "/next.txt" });
+    expect(s1.selection).toEqual({ selected: [], anchor: null });
+    const s2 = appReducer(s1, {
+      kind: "load-success",
+      load: { ...base, lineCount: 100 },
+      fileName: "next.txt",
+    });
+    expect(s2.selection).toEqual({ selected: [], anchor: null });
+  });
+});

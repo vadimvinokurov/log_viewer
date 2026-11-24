@@ -1,6 +1,7 @@
 import { levelsShowcase } from "./showcase/levels";
 import { filtersShowcase } from "./showcase/filters";
 import { emptyShowcase } from "./showcase/empty";
+import { menuShowcase } from "./showcase/menu";
 
 /**
  * Dev-only component gallery (rendered for ?show=<name>): the visual harness
@@ -12,6 +13,7 @@ const REGISTRY: Record<string, Record<string, React.ReactNode>> = {
   levels: levelsShowcase,
   filters: filtersShowcase,
   empty: emptyShowcase,
+  menu: menuShowcase,
 };
 
 export default function DevShowcase({ name }: { name: string }) {

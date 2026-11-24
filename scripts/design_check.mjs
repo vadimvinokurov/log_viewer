@@ -30,6 +30,10 @@ const PAIRS = [
     design: "section#s3 .empty",
     actual: { url: "?show=empty", selector: '[data-variant="default"]' },
   },
+  {
+    design: "section#s3 .cm",
+    actual: { url: "?show=menu", selector: '[data-variant="default"]' },
+  },
 ];
 
 const MIME = {

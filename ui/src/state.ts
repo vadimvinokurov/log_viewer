@@ -7,6 +7,8 @@
 
 /// The load result as received over IPC (mirrors bindings `LoadResult`
 /// structurally; tests run in plain vitest without generated types).
+import { EMPTY_SELECTION, range, select, toggle, type SelectionState } from "./selection";
+
 export interface LoadInfo {
   format: string;
   lineCount: number;
@@ -40,13 +42,18 @@ export interface AppState {
   error: string | null;
   /** Directory used by the last successful Open (§2, §15 last_open_dir). */
   lastDir: string;
+  /** Selected rows, 0-based, with the shift-click anchor (§4). */
+  selection: SelectionState;
 }
 
 export type AppEvent =
   | { kind: "load-request"; path: string }
   | { kind: "load-success"; load: LoadInfo; fileName: string }
   | { kind: "load-error"; message: string }
-  | { kind: "remember-dialog-dir"; dir: string };
+  | { kind: "remember-dialog-dir"; dir: string }
+  | { kind: "selection-click"; index: number }
+  | { kind: "selection-toggle"; index: number }
+  | { kind: "selection-range"; index: number };
 
 export function initialAppState(): AppState {
   return {
@@ -55,6 +62,7 @@ export function initialAppState(): AppState {
     loadingFile: null,
     error: null,
     lastDir: "",
+    selection: EMPTY_SELECTION,
   };
 }
 
@@ -68,6 +76,8 @@ export function appReducer(state: AppState, event: AppEvent): AppState {
         screen: state.file === null ? "empty-loading" : "loaded",
         loadingFile: event.path,
         error: null,
+        // Row indexes are per file: the selection does not survive a load.
+        selection: initialAppState().selection,
       };
     case "load-success":
       return {
@@ -87,5 +97,12 @@ export function appReducer(state: AppState, event: AppEvent): AppState {
       };
     case "remember-dialog-dir":
       return { ...state, lastDir: event.dir };
+    // §4 row-selection transitions; the pure transitions live in selection.ts.
+    case "selection-click":
+      return { ...state, selection: select(state.selection, event.index) };
+    case "selection-toggle":
+      return { ...state, selection: toggle(state.selection, event.index) };
+    case "selection-range":
+      return { ...state, selection: range(state.selection, event.index) };
   }
 }

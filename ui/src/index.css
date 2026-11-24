@@ -11,6 +11,7 @@
   --muted: #5a6a7a;
   --dim: #8795a4;
   --accent: #0078d7;
+  --accent-tint: rgba(0, 120, 215, .1);
   --pin: #e8c34a;
   --critical: #a01423;
   --error: #c02f2f;
@@ -32,6 +33,7 @@
     --muted: #9babbc;
     --dim: #6d7e8f;
     --accent: #4da3e8;
+    --accent-tint: rgba(77, 163, 232, .14);
     --critical: #ff7b72;
     --error: #f26d6d;
     --warning: #d9b13b;
@@ -242,6 +244,15 @@ body {
 
 .row:hover {
   background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface));
+}
+
+/* Selected row: the accent tint (design §s2 "row 12 is selected (accent
+   tint)"); it wins over zebra and hover so the tint is unmistakable. */
+.row.selected,
+.row.selected:hover,
+.row.zebra.selected,
+.row.zebra.selected:hover {
+  background: var(--accent-tint);
 }
 
 /* Absolutely positioned rows do not grow the scroll area themselves; the

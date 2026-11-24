@@ -11,10 +11,17 @@ export interface ConsoleSnapshot {
   error: string | null;
   loadingFile: string | null;
   file: { name: string; format: string; lineCount: number } | null;
+  selection: { selected: number[]; anchor: number | null };
 }
+
+/** Copy column selection: raw file lines or the Message column (§4). */
+export type CopyMode = "raw" | "message";
 
 interface TableHandle {
   scrollToRow(lineNo: number): void;
+  /** Builds the copy text for the selection (loading uncached rows),
+   * writes it to the clipboard and returns it for assertions. */
+  copy(mode: CopyMode): Promise<string>;
 }
 
 class UiConsole {
@@ -37,6 +44,10 @@ class UiConsole {
       error: this.state.error,
       loadingFile: this.state.loadingFile,
       file: f ? { name: f.name, format: f.load.format, lineCount: f.load.lineCount } : null,
+      selection: {
+        selected: [...this.state.selection.selected],
+        anchor: this.state.selection.anchor,
+      },
     };
   };
 
@@ -56,6 +67,29 @@ class UiConsole {
       return this.state.file?.load.lineCount ?? null;
     }
     return null;
+  };
+
+  /** §4 row-selection transitions (the reducer holds the transitions). */
+  selectRow = (
+    index: number,
+    kind: "click" | "toggle" | "range",
+  ): ConsoleSnapshot => {
+    this.dispatch(
+      kind === "click"
+        ? { kind: "selection-click", index }
+        : kind === "toggle"
+          ? { kind: "selection-toggle", index }
+          : { kind: "selection-range", index },
+    );
+    return this.getSnapshot();
+  };
+
+  /** Copy the current selection; resolves to the text that was written. */
+  copy = (mode: CopyMode): Promise<string> => {
+    if (!this.table) {
+      return Promise.resolve("");
+    }
+    return this.table.copy(mode);
   };
 
   /** load(path): resolves with the resulting snapshot (success or error). */

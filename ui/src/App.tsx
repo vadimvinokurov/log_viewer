@@ -78,6 +78,10 @@ export default function App() {
           <LogTable
             ref={(h) => console_.setTableHandle(h)}
             rowCount={state.file.load.lineCount}
+            selection={state.selection}
+            onRowClick={(i, kind) => {
+              console_.selectRow(i, kind);
+            }}
           />
         ) : (
           <div className="empty-state">

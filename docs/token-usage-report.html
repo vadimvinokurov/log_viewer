@@ -1,0 +1,113 @@
+<meta charset="utf-8">
+<title>Token Usage Report — 2026-11-24</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 400 14px/1.55 system-ui, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 16px; }
+  h1 { font-size: 20px; } h2 { font-size: 15px; margin-top: 28px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { border-bottom: 1px solid #8884; padding: 5px 10px; text-align: left; font-size: 13px; }
+  th { text-transform: uppercase; font-size: 11px; letter-spacing: .06em; color: #888; }
+  td.n { text-align: right; }
+  .est { color: #888; font-style: italic; }
+  ul { margin: 6px 0; padding-left: 22px; } li { margin: 4px 0; }
+  code { background: #8882; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .warn { border-left: 3px solid #c02f2f; padding: 8px 14px; background: #c02f2f14; margin: 12px 0; }
+</style>
+
+<h1>Token Usage Report — session of 2026-11-24</h1>
+<p>Scope: the whole rewrite session (scaffold → core engine → UI shell → table →
+levels/filters → live driver → design oracle). Agent figures below are exact values
+from the subagent usage reports. Main-session figures are <span class="est">estimates</span>:
+the harness exposes no exact counter for the coordinator session, so they are bounded
+inferences from context-window behaviour, not measured values.</p>
+
+<div class="warn"><strong>Status note:</strong> this session ended by hitting the provider
+usage limit (HTTP 429) while two agents (<code>qt7.2</code> selection/context menu,
+<code>rhl.2</code> categories tab) were mid-run; their work stopped early and stays
+unfininshed in the working tree. The report below is the requested pre-continuation
+analysis.</div>
+
+<h2>1. Where the tokens went</h2>
+<table>
+  <tr><th>Worker (bead)</th><th>Purpose</th><th>Tokens</th><th class="n">Share of agents</th></tr>
+  <tr><td>visibility engine (dsq.1)</td><td>§7 engine + 17 tests</td><td class="n">79,181</td><td class="n">15%</td></tr>
+  <tr><td>level bar (7fr.1)</td><td>§11 UI + logic + goldens</td><td class="n">84,754</td><td class="n">16%</td></tr>
+  <tr><td>filters tab (dsq.2)</td><td>§10.1 UI + pair in oracle</td><td class="n">73,506</td><td class="n">14%</td></tr>
+  <tr><td>parser (ktd.2)</td><td>§3 rows + 31 tests + fixtures</td><td class="n">59,713</td><td class="n">11%</td></tr>
+  <tr><td>settings store (vk9.1)</td><td>§15 JSON subset, hand-rolled</td><td class="n">56,344</td><td class="n">11%</td></tr>
+  <tr><td>highlights (exx.1)</td><td>§9 spans + 15 tests</td><td class="n">45,977</td><td class="n">9%</td></tr>
+  <tr><td>categories core (rhl.1)</td><td>§10 trie + 8 tests</td><td class="n">44,169</td><td class="n">8%</td></tr>
+  <tr><td>matching (sfl.1)</td><td>§5 modes + fancy-regex</td><td class="n">43,568</td><td class="n">8%</td></tr>
+  <tr><td>simple query (sfl.2)</td><td>§6 grammar + 21 tests</td><td class="n">41,026</td><td class="n">8%</td></tr>
+  <tr><td>qt7.2 + rhl.2 (partial, 429)</td><td>started, killed by limit</td><td class="n">&lt; 20k*</td><td class="n">—</td></tr>
+  <tr><td><strong>Subagents total</strong></td><td></td><td class="n"><strong>≈ 528,000</strong></td><td class="n">100%</td></tr>
+</table>
+<p class="est">* partial spend, not itemized. Main session estimate: roughly two thirds
+of the subagent total (≈ 300–400k) — the coordinator pays the full conversation replay
+every turn: system prompt + skills + rules + docs + 5 screenshots read as images + all
+tool outputs of every previous turn.</p>
+
+<h2>2. The four real appetite drivers</h2>
+<ul>
+  <li><strong>Coordinator-context replay</strong> (largest). Every turn re-pays the whole
+  visible conversation. Long turns, many screenshots (I read ~10 window/page PNGs, several
+  at full window size), and 100-line file reads after every edit grew a tail that is paid again
+  each time.</li>
+  <li><strong>Duplicated context in agent prompts.</strong> Each agent prompt restated spec
+  semantics inline (the §-sections I had already decoded) <em>and</em> pointed agents at
+  4–6 files to "read first". Correctness yes, but the same semantics were paid 9+ times
+  across agents.</li>
+  <li><strong>Degenerate tool loops</strong> (the worst per-idea waste). The
+  <code>driver.rs</code> escaping fight: 5–6 python-heredoc attempts with mangled
+  quoting, each round costing a full read+edit cycle, before rewriting the tail of the
+  file wholesale — which worked on the first try.</li>
+  <li><strong>Process churn</strong>: four consecutive e2e-fixture dead-ends and three
+  dev-server relaunch cycles (tauri-driver dead ends, dialog automation dead ends),
+  plus full <code>cargo test --workspace</code> + clippy runs repeated between
+  micro-steps where a scoped run would answer.</li>
+</ul>
+
+<h2>3. Proposals to cut the appetite</h2>
+<ul>
+  <li><strong>End turns at checkpoints; keep turns short.</strong> The coordinator replay
+  is quadratic in turn count: closing the turn after committing a milestone (and letting
+  the next turn start fresh on a compaction summary) materially lowers replay cost.
+  Commit-per-milestone also makes 429 interruptions harmless.</li>
+  <li><strong>Single shared agent brief instead of inline spec re-decoding.</strong> Commit
+  a <code>docs/notes/agent-brief.md</code> once (the per-layer rules, file-partition
+  conventions, style, TDD/gates, the case-insensitive-import trap) and let agent prompts
+  point at it + the one bead id: prompts drop from ~1k tokens to ~30 lines.</li>
+  <li><strong>Never debug by shell-escaping into files.</strong> Rule for me: a second
+  failed sed/heredoc edit → stop and rewrite the whole file with the Write tool. This
+  alone would have saved tens of thousands of tokens in the driver work.</li>
+  <li><strong>Numbers instead of screenshots.</strong> Non-visual checks (element present,
+  sizes, counts) go through <code>evaluate</code> text results; Read-on-PNG only for visual
+  acceptance, and at element scope instead of the full window (a full-window shot at
+  2800×1800 is one of the most expensive single reads in the session).</li>
+  <li><strong>Scoped gates between steps, full gates once at integration.</strong>
+  <code>cargo test -p &lt;crate&gt; --lib &lt;module&gt;</code> answers for a module;
+  the full workspace suite runs once before a commit, not after every micro-edit.</li>
+  <li><strong>Cap and checkpoint agents.</strong> Visibility-engine work (79k) grew
+  because one task carried engine + counters + tests; splitting the two QA surfaces
+  keeps agents in the 40–60k band. If agents near their budget, they checkpoint
+  (commit + notes) instead of pushing through.</li>
+  <li><strong>Two live-automation lessons already banked</strong> — the design oracle and
+  the driver server replace manual window screenshots permanently, so the screenshot
+  share should fall naturally in future epics.</li>
+</ul>
+
+<h2>4. Open state (resumption point)</h2>
+<ul>
+  <li>Open beads: <code>qt7.2</code> (selection/context menu, agent files may be partial in
+  the tree — <code>git status</code> first), <code>rhl.2</code> (categories tab), plus
+  <code>qt7.3</code> viewport anchor, <code>exx.2</code> highlights tab, <code>dsq.3</code>
+  visibility bridge, <code>7no.1</code> bench, <code>cmd-line</code> chain.</li>
+  <li>All committed work is safe (last commit: <code>0484929</code> design oracle);
+  gates were green at that point.</li>
+  <li>Resumption order: <code>git status</code> → salvage/redo the two interrupted agents
+  from their notes → integration of selection into the table → quality gates → commit.</li>
+</ul>
+
+<p style="color:#888;font-size:12px">Generated as part of the work log; numbers for
+subagents are from their final usage reports; coordinator figures are estimates by
+construction (no exact counter available).</p>
