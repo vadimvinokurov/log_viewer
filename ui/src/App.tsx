@@ -13,6 +13,7 @@ import { buildTree } from "./categories";
 import { SidePanel, usePanelHotkey } from "./SidePanel.tsx";
 import { CategoriesTab } from "./CategoriesTab.tsx";
 import { FiltersTab } from "./FiltersTab.tsx";
+import { PinnedTab } from "./PinnedTab.tsx";
 import { SearchPanel } from "./SearchPanel.tsx";
 import { EmptyState } from "./EmptyState";
 import DevShowcase from "./devShowcase";
@@ -160,6 +161,9 @@ export default function App() {
               fileEpoch={state.fileEpoch}
               visibilityEpoch={state.visibilityEpoch}
               selection={state.selection}
+              // §12: the snapshot's pin list drives the context menu's §4
+              // Pin/Unpin presence (evaluation lives in pins.ts).
+              pins={state.visibility?.pins ?? []}
               onRowClick={(i, kind) => {
                 console_.selectRow(i, kind);
               }}
@@ -213,6 +217,13 @@ export default function App() {
                   items={state.visibility?.filters ?? []}
                   onToggle={(id, on) => void console_.toggleFilter(id, on)}
                   onRemove={(id) => void console_.removeFilter(id)}
+                />
+              ),
+              pinned: (
+                <PinnedTab
+                  items={state.visibility?.pins ?? []}
+                  onToggle={(id, on) => void console_.setPinEnabled(id, on)}
+                  onRemove={(id) => void console_.removePin(id)}
                 />
               ),
             }}

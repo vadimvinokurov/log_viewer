@@ -12,6 +12,7 @@ const baseProps = (): ContextMenuProps => ({
   onCopy: vi.fn(),
   onCopyMessage: vi.fn(),
   onPin: vi.fn(),
+  canPin: true,
   onUnpin: vi.fn(),
   canUnpin: false,
   onHighlight: vi.fn(),
@@ -96,6 +97,15 @@ describe("ContextMenu (§4 items, UI_DESIGN study frame)", () => {
     expect(item(container, "remove-highlight")?.className).toContain("lvc-cm-dim");
     expect(item(container, "pin")?.className).not.toContain("lvc-cm-dim");
     expect(item(container, "highlight")?.className).not.toContain("lvc-cm-dim");
+  });
+
+  it("dims Pin when every selected row is already pinned (§4 presence)", () => {
+    const props = { ...baseProps(), canPin: false };
+    const { container } = render(createElement(ContextMenu, props));
+    const pin = item(container, "pin") as HTMLElement;
+    expect(pin.className).toContain("lvc-cm-dim");
+    fireEvent.click(pin);
+    expect(props.onPin).not.toHaveBeenCalled();
   });
 
   it("does not run a not-applicable command", () => {

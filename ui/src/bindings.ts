@@ -46,6 +46,11 @@ export const commands = {
 	/**  Remove the pin at `id`; out of range is an Err, never a panic. */
 	removePin: (id: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("remove_pin", { id }, options),
 	/**
+	 *  Drop every pin at once (§12: the rmp command lands here; Pinned-tab and
+	 *  cmdline flows call it wholesale).
+	 */
+	clearPins: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_pins", undefined, options),
+	/**
 	 *  Toggle a level by its lowercase long name ("critical".."trace", same
 	 *  spellings as the snapshot's level lists).
 	 */

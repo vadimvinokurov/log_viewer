@@ -69,6 +69,10 @@ function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
       pins.splice(id, 1);
       return null;
     },
+    clearPins: async () => {
+      pins.length = 0;
+      return null;
+    },
     setLevelEnabled: async (level: string, on: boolean) => {
       if (!(level in enabledLevels)) throw new Error(`no such level: ${level}`);
       if (options.failMutation === "setLevel") throw new Error("ipc down");
@@ -140,6 +144,7 @@ function sequenceStub(options: { failMutation?: string } = {}): SequenceStub {
     addPin: async () => null,
     setPinEnabled: async () => null,
     removePin: async () => null,
+    clearPins: async () => null,
     setLevelEnabled: async (level: string, on: boolean) => {
       if (level !== "trace") throw new Error(`no such level: ${level}`);
       if (options.failMutation === "setLevel") throw new Error("ipc down");
@@ -401,6 +406,7 @@ function categoryStub() {
     addPin: async () => null,
     setPinEnabled: async () => null,
     removePin: async () => null,
+    clearPins: async () => null,
     setLevelEnabled: async () => null,
     setCategoryEnabled: async (path, on) => {
       calls.push((on ? "+" : "-") + path);
@@ -611,6 +617,7 @@ function searchStub(): SearchStub {
     addPin: async () => null,
     setPinEnabled: async () => null,
     removePin: async () => null,
+    clearPins: async () => null,
     setLevelEnabled: async (level: string, on: boolean) => {
       if (level !== "msg") throw new Error(`no such level: ${level}`);
       msgOn.value = on;
@@ -962,6 +969,7 @@ function deferredSearchStub(): DeferredSearchStub {
     addPin: async () => null,
     setPinEnabled: async () => null,
     removePin: async () => null,
+    clearPins: async () => null,
     setLevelEnabled: async (level: string, on: boolean) => {
       if (level !== "msg") throw new Error(`no such level: ${level}`);
       msgOn.value = on;
@@ -1154,6 +1162,7 @@ function categoryBurstStub(): BurstStub {
     addPin: async () => null,
     setPinEnabled: async () => null,
     removePin: async () => null,
+    clearPins: async () => null,
     setLevelEnabled: async () => null,
     setCategoryEnabled: async (path: string, on: boolean) => {
       if (path !== "a" && path !== "b") throw new Error("no such category");
@@ -1236,5 +1245,173 @@ describe("search mid-burst scan guard (live round 3)", () => {
     expect(stub.searchInvokes).toEqual([10, 0, 10]);
     expect(console_.getSnapshot().search.total).toBe(10);
     expect(console_.getSnapshot().error).toBeNull();
+  });
+});
+
+describe("pin selection actions (q1f.1, §12)", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+  });
+
+  /** Sequence + pins stub with STABLE pin ids (backend contract): index i of
+   *  the all-visible 100-line sequence resolves to line i+1 by a 1-row probe. */
+  function pinSeqStub(): RawIpc & {
+    calls: { fn: string; args: unknown[] }[];
+    snapshotCalls(): number;
+  } {
+    const LINE_COUNT = 100;
+    const pins: { id: number; mode: string; pattern: string; enabled: boolean }[] = [];
+    let nextId = 0;
+    const calls: { fn: string; args: unknown[] }[] = [];
+    let snapshots = 0;
+    const row = (n: number): RowDto => ({
+      line_no: n,
+      time_display: "10:00:00.000",
+      category: "app/db",
+      level: "msg",
+      message: "line " + n,
+      raw: "raw " + n,
+    });
+    return {
+      calls,
+      snapshotCalls: () => snapshots,
+      pickFile: async () => null,
+      loadFile: async () => ({
+        format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
+      }),
+      getRows: async (offset: number, limit: number): Promise<RowDto[]> => {
+        const rows: RowDto[] = [];
+        for (let i = offset; rows.length < limit && i < LINE_COUNT; i++) {
+          rows.push(row(i + 1));
+        }
+        return rows;
+      },
+      addFilter: async () => null,
+      setFilterEnabled: async () => null,
+      removeFilter: async () => null,
+      addPin: async (mode: string, pattern: string) => {
+        calls.push({ fn: "addPin", args: [mode, pattern] });
+        pins.push({ id: nextId++, mode, pattern, enabled: true });
+        return null;
+      },
+      setPinEnabled: async (id: number, on: boolean) => {
+        calls.push({ fn: "setPinEnabled", args: [id, on] });
+        const pin = pins.find((p) => p.id === id);
+        if (!pin) throw new Error("no such pin");
+        pin.enabled = on;
+        return null;
+      },
+      removePin: async (id: number) => {
+        calls.push({ fn: "removePin", args: [id] });
+        const at = pins.findIndex((p) => p.id === id);
+        if (at === -1) throw new Error("no such pin");
+        pins.splice(at, 1);
+        return null;
+      },
+      clearPins: async () => {
+        calls.push({ fn: "clearPins", args: [] });
+        pins.length = 0;
+        return null;
+      },
+      setLevelEnabled: async () => null,
+      setCategoryEnabled: async () => null,
+      searchVisible: async () => ({ total: 0, positions: [] }),
+      visibilitySnapshot: async () => {
+        snapshots++;
+        return {
+          visible_count: LINE_COUNT,
+          levels: [],
+          filters: [],
+          pins: pins.map((p) => ({ ...p })),
+          categories_enabled: ["app/db"],
+        };
+      },
+    };
+  }
+
+  it("pinSelected batches one add_pin per selected line into ONE refetch", async () => {
+    const stub = pinSeqStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    expect(stub.snapshotCalls()).toBe(1);
+    console_.selectRow(2, "click"); // line 3
+    console_.selectRow(4, "toggle"); // line 5
+    const snap = await console_.pinSelected();
+    expect(stub.calls).toEqual([
+      { fn: "addPin", args: ["lineno", "3"] },
+      { fn: "addPin", args: ["lineno", "5"] },
+    ]);
+    expect(stub.snapshotCalls()).toBe(2); // one refetch for the whole batch
+    expect(snap.visibility?.pins).toEqual([
+      { id: 0, mode: "lineno", pattern: "3", enabled: true },
+      { id: 1, mode: "lineno", pattern: "5", enabled: true },
+    ]);
+  });
+
+  it("pinSelected with an empty selection is a no-op without IPC", async () => {
+    const stub = pinSeqStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    const snap = await console_.pinSelected();
+    expect(stub.calls).toEqual([]);
+    expect(stub.snapshotCalls()).toBe(1);
+    expect(snap).toEqual(console_.getSnapshot());
+  });
+
+  it("unpinSelected removes ONLY the exact-row pins covering the given lines; broad and disabled pins stay", async () => {
+    const stub = pinSeqStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    await console_.addPin("lineno", "3"); // id 0: exact, covers line 3
+    await console_.addPin("lineno", "7"); // id 1: exact, disabled -> inert
+    await console_.addPin("plain", "raw"); // id 2: broad -> the menu never removes it
+    await console_.setPinEnabled(1, false);
+    expect(stub.snapshotCalls()).toBe(5);
+    const snap = await console_.unpinSelected([3, 7]);
+    expect(stub.calls.slice(4)).toEqual([{ fn: "removePin", args: [0] }]);
+    expect(stub.snapshotCalls()).toBe(6);
+    expect(snap.visibility?.pins).toEqual([
+      { id: 1, mode: "lineno", pattern: "7", enabled: false },
+      { id: 2, mode: "plain", pattern: "raw", enabled: true },
+    ]);
+  });
+
+  it("unpinSelected() without lines resolves the selection's line numbers by probe", async () => {
+    const stub = pinSeqStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    await console_.addPin("lineno", "3"); // id 0
+    await console_.addPin("lineno", "9"); // id 1
+    console_.selectRow(2, "click"); // line 3
+    const snap = await console_.unpinSelected();
+    expect(stub.calls.slice(2)).toEqual([{ fn: "removePin", args: [0] }]);
+    expect(snap.visibility?.pins.map((p) => p.pattern)).toEqual(["9"]);
+  });
+
+  it("unpinSelected with no covering exact pin is a no-op without IPC", async () => {
+    const stub = pinSeqStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    await console_.addPin("lineno", "9");
+    const snap = await console_.unpinSelected([3, 7]);
+    expect(stub.calls).toEqual([{ fn: "addPin", args: ["lineno", "9"] }]);
+    expect(stub.snapshotCalls()).toBe(2);
+    expect(snap).toEqual(console_.getSnapshot());
+  });
+
+  it("clearAllPins calls clear_pins once with a single refetch and empties the snapshot", async () => {
+    const stub = pinSeqStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    await console_.addPin("lineno", "3");
+    await console_.addPin("plain", "raw");
+    const snap = await console_.clearAllPins();
+    expect(stub.calls).toEqual([
+      { fn: "addPin", args: ["lineno", "3"] },
+      { fn: "addPin", args: ["plain", "raw"] },
+      { fn: "clearPins", args: [] },
+    ]);
+    expect(stub.snapshotCalls()).toBe(4);
+    expect(snap.visibility?.pins).toEqual([]);
   });
 });

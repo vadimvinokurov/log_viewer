@@ -21,11 +21,34 @@ export const STUB = `(function () {
     message: messageOf(n),
     raw: "raw " + n,
   });
-  // The stub approximates filter semantics with a plain substring check on
-  // the message; mode-specific matching is backend logic (§7).
-  const passesFilters = (n) =>
-    filters.every((f) => !f.enabled || messageOf(n).includes(f.pattern));
-  const visible = (n) => levelEnabled[levelOf(n)] && passesFilters(n);
+  // The stub approximates filter semantics per mode: plain/simple as a
+  // case-insensitive substring on the message, regex as an anchored JS
+  // regex (a broken pattern matches nothing, the backend contract); exact
+  // matching is backend logic (§7).
+  const filterMatches = (f, n) => {
+    if (!f.enabled) return true;
+    const m = messageOf(n);
+    if (f.mode === "regex") {
+      try { return new RegExp(f.pattern, "i").test(m); } catch { return false; }
+    }
+    return m.toLowerCase().includes(String(f.pattern).toLowerCase());
+  };
+  const passesFilters = (n) => filters.every((f) => filterMatches(f, n));
+  // §12: pins are rules (p/pr/ps/pn N); pinned rows stay visible overriding
+  // filters/levels/categories (§7). Broad pins match the raw line text;
+  // simple pins are the Rust-side engine - not approximated (q1f1-design).
+  const rawOf = (n) => "raw " + n;
+  const pinCovers = (n) =>
+    pins.some((p) => {
+      if (!p.enabled) return false;
+      if (p.mode === "lineno") return String(p.pattern).trim() === String(n);
+      if (p.mode === "plain") return rawOf(n).includes(p.pattern);
+      if (p.mode === "regex") {
+        try { return new RegExp(p.pattern).test(rawOf(n)); } catch { return false; }
+      }
+      return false;
+    });
+  const visible = (n) => pinCovers(n) || (levelEnabled[levelOf(n)] && passesFilters(n));
   const countVisible = () => {
     let c = 0;
     for (let n = 1; n <= LINE_COUNT; n++) if (visible(n)) c++;
@@ -43,6 +66,7 @@ export const STUB = `(function () {
   window.__ipcStub = {
     async pickFile() { return "/tmp/synthetic.log"; },
     async loadFile() {
+      pins.length = 0; // §2.1: a reload clears ALL pins
       return { format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 3 };
     },
     async getRows(offset, limit) {
@@ -78,6 +102,7 @@ export const STUB = `(function () {
       pins.splice(id, 1);
       return null;
     },
+    async clearPins() { pins.length = 0; return null; },
     async setLevelEnabled(level, on) { levelEnabled[level] = on; return null; },
     async setCategoryEnabled() { return null; },
     // §8 search (2wu.1): over the VISIBLE sequence only. Mode semantics are

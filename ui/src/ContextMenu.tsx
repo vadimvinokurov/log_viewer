@@ -5,6 +5,9 @@ export interface ContextMenuProps {
   onCopy?: () => void;
   onCopyMessage?: () => void;
   onPin?: () => void;
+  /** The selection contains at least one NOT pinned row (§4 presence;
+   *  q1f.1 evaluation lives in pins.ts, passed down by the table). */
+  canPin?: boolean;
   onUnpin?: () => void;
   /** The selection contains pinned rows; Unpin is dim while false. */
   canUnpin?: boolean;
@@ -33,7 +36,7 @@ export function ContextMenu(props: ContextMenuProps) {
   // Highlight entries stay disabled until those epics land).
   const dim = !props.canUnpin || !props.onUnpin;
   const rmDim = !props.canRemoveHighlight || !props.onRemoveHighlight;
-  const pinDim = !props.onPin;
+  const pinDim = !props.canPin || !props.onPin;
   const hlDim = !props.onHighlight;
   return (
     <div

@@ -11,9 +11,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChunkPlanner, type RowDto } from "./table";
 import { missingRanges, messageCopyText, rawCopyText } from "./selection";
 import type { SelectionState } from "./selection";
+import type { PinItem } from "./pins";
+import { pinMenuState } from "./pins";
 import type { ContextMenuProps } from "./ContextMenu";
 import { ContextMenu } from "./ContextMenu";
 import { ipc } from "./ipcClient";
+import { console_ } from "./uiConsole";
 import type { CopyMode } from "./uiConsole";
 import {
   ROW_HEIGHT_PX,
@@ -46,6 +49,9 @@ interface Props {
    *  map reset only; scrollTop stays (the anchor is qt7.3's job, §4). */
   visibilityEpoch: number;
   selection: SelectionState;
+  /** §12 snapshot pin list: drives the context menu's §4 Pin/Unpin
+   *  presence (evaluation lives in the pins.ts pure module). */
+  pins: PinItem[];
   /** Row click: kind comes from the modifiers (§4 click/ctrl/shift). */
   onRowClick(index: number, kind: "click" | "toggle" | "range"): void;
 }
@@ -57,7 +63,7 @@ interface Props {
  * from the design tokens. Selection/context menu/copy land in qt7.2.
  */
 export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
-  { rowCount, fileEpoch, visibilityEpoch, selection, onRowClick },
+  { rowCount, fileEpoch, visibilityEpoch, selection, pins, onRowClick },
   ref,
 ) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -222,13 +228,7 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     if (!indexes.length) {
       return "";
     }
-    const merged = new Map(rows);
-    for (const range of missingRanges(indexes, rowCount, new Set(rows.keys()))) {
-      const chunk = await ipc().getRows(range.start, range.end - range.start);
-      ChunkPlanner.fromChunk(chunk, range.start).forEach((row, idx) =>
-        merged.set(idx, row),
-      );
-    }
+    const merged = await resolveRows(indexes);
     const selectedRows = indexes
       .map((i) => merged.get(i))
       .filter((row): row is RowDto => row !== undefined);
@@ -242,6 +242,23 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     }
     return text;
   };
+
+  /** Visible rows by index for a set of indexes: the cache plus the missing
+   *  ranges fetched in one get_rows call each (shared by copy and the §4
+   *  menu's pin evaluation). */
+  const resolveRows = useCallback(
+    async (indexes: number[]): Promise<Map<number, RowDto>> => {
+      const merged = new Map(rows);
+      for (const range of missingRanges(indexes, rowCount, new Set(rows.keys()))) {
+        const chunk = await ipc().getRows(range.start, range.end - range.start);
+        ChunkPlanner.fromChunk(chunk, range.start).forEach((row, idx) =>
+          merged.set(idx, row),
+        );
+      }
+      return merged;
+    },
+    [rows, rowCount],
+  );
 
   // §4 §8 scroll-to-row: center the given 1-based line in the viewport. The
   // line resolves through the VISIBLE sequence (it shifts under filters),
@@ -396,19 +413,72 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     // §4: the menu is a menu over the selection - empty selection opens it
-    // for nothing, so it opens only on a selection.
+    // for nothing, so it opens only on a selection. The pin evaluation is
+    // reset with the menu: a stale state from a previous open would paint
+    // wrong presence for one frame before the probes resolve.
     if (selection.selected.length) {
+      setMenuPin({ canPin: false, canUnpin: false, lines: [] });
       setMenuPos({ x: e.clientX, y: e.clientY });
     }
   };
 
+  // §4 q1f.1: menu Pin/Unpin presence + targets, evaluated from the rows
+  // cache (missing selected rows load via one get_rows call each, like
+  // copy) against the snapshot's pin list — the pure decision lives in
+  // pins.ts. The evaluation is async (probes), so the menu opens with the
+  // not-yet-evaluated default (Pin light on an unvisited selection, Unpin
+  // dim) and updates when the probes resolve. Menu interactions close it
+  // and selection is fixed while it stands, so [menuPos] is the full input.
+  const [menuPin, setMenuPin] = useState({ canPin: false, canUnpin: false, lines: [] as number[] });
+  useEffect(() => {
+    if (!menuPos || selection.selected.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const indexes = [...selection.selected].sort((a, b) => a - b);
+      const merged = await resolveRows(indexes);
+      if (cancelled) {
+        return;
+      }
+      const selectedRows = indexes
+        .map((i) => merged.get(i))
+        .filter((row): row is RowDto => row !== undefined)
+        .map((row) => ({ line: row.line_no, raw: row.raw }));
+      setMenuPin({
+        ...pinMenuState(pins, selectedRows),
+        lines: selectedRows.map((r) => r.line),
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuPos]);
+
   const menuCommands: ContextMenuProps = {
     x: 0,
     y: 0,
-    // Copy commands; Pin/Unpin and Highlight stay disabled until the pins
-    // and highlights epics land (§4) - their handlers are not wired yet.
+    // Copy commands. §4 Pin/Unpin are live since q1f.1: the presence comes
+    // from the snapshot pin list, the handlers route to the console (one
+    // mutating critical section per command). Highlight stays dim until the
+    // highlights epic lands (§4).
     onCopy: () => void copy("raw"),
     onCopyMessage: () => void copy("message"),
+    canPin: menuPin.canPin,
+    canUnpin: menuPin.canUnpin,
+    onPin: menuPin.canPin
+      ? () => {
+          setMenuPos(null);
+          void console_.pinSelected();
+        }
+      : undefined,
+    onUnpin: menuPin.canUnpin
+      ? () => {
+          setMenuPos(null);
+          void console_.unpinSelected(menuPin.lines);
+        }
+      : undefined,
   };
 
   return (

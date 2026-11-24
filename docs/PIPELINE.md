@@ -77,6 +77,12 @@ Claim tasks in the main session before spawning agents.
     `search-open`, `search-regex`, `search-hidden-scope` (N counts visible
     rows only), `search-cyclic-wrap` (0 -> last -> 0) with fresh goldens;
     no existing golden shifted (all diffs 0.000%).
+  - Addition 2026-11-24 (bead q1f.1, §12 pins UI): new states `20-pins-panel`
+    (Pinned tab: entries + a dimmed disabled one) and `21-pins-survive-filter`
+    (§7 pin override under a narrowing filter, then the §4 context-menu Unpin
+    removes the exact-row pin) with fresh goldens; `14-selection-menu`
+    re-baselined - the Pin command un-dims (live §4 presence evaluation,
+    Unpin stays dim on an unpinned selection).
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

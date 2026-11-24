@@ -32,10 +32,20 @@ export function installHeadlessConsole(): () => void {
     addFilter: (mode: string, pattern: string) => console_.addFilter(mode, pattern),
     toggleFilter: (id: number, on: boolean) => console_.toggleFilter(id, on),
     removeFilter: (id: number) => console_.removeFilter(id),
-    /** §12 pins (panel comes with q1f.1; the RPC is symmetric with filters). */
+    /** §12 pins (q1f.1): the RPC is symmetric with filters; pin/unpin the
+     *  current selection (unpin optionally takes the selection's line
+     *  numbers from the menu's row cache), clear_pins is :rmp. */
     addPin: (mode: string, pattern: string) => console_.addPin(mode, pattern),
     setPinEnabled: (id: number, on: boolean) => console_.setPinEnabled(id, on),
     removePin: (id: number) => console_.removePin(id),
+    pinSelected: () => console_.pinSelected(),
+    unpinSelected: (lines?: unknown) =>
+      console_.unpinSelected(
+        Array.isArray(lines)
+          ? lines.filter((l): l is number => typeof l === "number")
+          : undefined,
+      ),
+    clearAllPins: () => console_.clearAllPins(),
     /** §10 categories (rhl.2): apply the propagateToggle differential and
      *  refetch the snapshot. */
     toggleCategory: (path: string, on: boolean) => console_.toggleCategory(path, on),

@@ -336,6 +336,20 @@ pub(crate) fn remove_pin_inner(vis: &VisState, id: u32) -> Result<(), String> {
   Ok(())
 }
 
+/// Drop every pin (§12: the rmp command and the §2.1 reload reset). The
+/// engine stores only compiled matchers, so the shell removes them by
+/// popping the front until both parallel lists are empty.
+pub(crate) fn clear_pins_inner(vis: &VisState) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  while !guard.pin_meta.is_empty() {
+    // Both lists are parallel: remove the same front index from each.
+    guard.vis.remove_pin(0);
+    guard.pin_meta.remove(0);
+  }
+  guard.invalidate();
+  Ok(())
+}
+
 pub(crate) fn set_level_enabled_inner(vis: &VisState, level: &str, on: bool) -> Result<(), String> {
   let level = level_from_name(level)
     .ok_or_else(|| format!("no such level {level:?}: expected critical|error|warning|msg|debug|trace"))?;
@@ -561,6 +575,12 @@ pub(crate) fn load_file_inner(
   // Whitelist repopulation (contract policy 3) before the model swaps.
   {
     let mut vis = vis.lock().map_err(|_| lock_err())?;
+    // §12: a reload clears all pins entirely (filters, levels and disabled
+    // categories persist; pins do not survive a reload).
+    while !vis.pin_meta.is_empty() {
+      vis.vis.remove_pin(0);
+      vis.pin_meta.remove(0);
+    }
     repopulate_categories(&mut vis, &model);
     vis.invalidate();
   }
@@ -646,6 +666,14 @@ pub async fn remove_filter(id: u32, vis: tauri::State<'_, VisState>) -> Result<(
 #[specta::specta]
 pub async fn remove_pin(id: u32, vis: tauri::State<'_, VisState>) -> Result<(), String> {
   remove_pin_inner(&vis, id)
+}
+
+/// Drop every pin at once (§12: the rmp command lands here; Pinned-tab and
+/// cmdline flows call it wholesale).
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_pins(vis: tauri::State<'_, VisState>) -> Result<(), String> {
+  clear_pins_inner(&vis)
 }
 
 /// Toggle a level by its lowercase long name ("critical".."trace", same
@@ -953,6 +981,47 @@ mod tests {
     add_pin_inner(&vis, "lineno", "5").unwrap();
     let rows = get_rows_inner(2, 2, &file, &vis).unwrap();
     assert_eq!(rows.iter().map(|r| r.line_no).collect::<Vec<_>>(), vec![5, 6]);
+  }
+
+  #[test]
+  // §12: clear_pins (the rmp command) drops every pin and invalidates the
+  // visible cache; the surviving filter narrows back on its own.
+  #[test]
+  fn clear_pins_clears_all_and_invalidates() {
+    let (file, vis) = bridge(MIX, "clear_pins");
+    add_filter_inner(&vis, "plain", "novelty").unwrap(); // matches nothing
+    add_pin_inner(&vis, "plain", "failed").unwrap(); // pins line 1
+    add_pin_inner(&vis, "lineno", "3").unwrap(); // pins line 3
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.pins.len(), 2);
+    assert_eq!(snap.visible_count, 2);
+    clear_pins_inner(&vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert!(snap.pins.is_empty());
+    assert_eq!(snap.visible_count, 0); // only the non-matching filter remains
+  }
+
+  // §12 + §2.1: a file reload clears all pins; filters survive. The pinned
+  // rows must actually lose their pin override, not just leave the panel.
+  #[test]
+  fn reload_clears_pins_but_keeps_filters() {
+    let path = std::env::temp_dir().join("lv_ipc_pins_reload.log");
+    std::fs::write(&path, MIX).unwrap();
+    let file = new_file_state();
+    let vis = new_visibility_state();
+    load_file_inner(&path, &file, &vis).expect("file loads");
+    // Hide everything except the pinned row, then pin a row the filter
+    // rejects: it stays visible only through the pin override (§7).
+    add_filter_inner(&vis, "plain", "failed").unwrap();
+    add_pin_inner(&vis, "plain", "retry").unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert_eq!(snap.visible_count, 2); // line 1 (filter) + line 6 (pin)
+    // Reload the same path: pins are gone, the filter persists (§12).
+    load_file_inner(&path, &file, &vis).expect("reload");
+    let snap = visibility_snapshot_inner(&file, &vis).unwrap();
+    assert!(snap.pins.is_empty());
+    assert_eq!(snap.filters.len(), 1);
+    assert_eq!(snap.visible_count, 1);
   }
 
   #[test]

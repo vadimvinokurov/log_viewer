@@ -7,6 +7,7 @@ import { appReducer, expandedForToggleAll, initialAppState, type AppState, type 
 import type { VisibilityState } from "./state";
 import { buildTree, propagateToggle, toggleAll } from "./categories";
 import { ipc } from "./ipcClient";
+import { exactPinIdsCovering } from "./pins";
 import {
   remapSelection,
   resolveLineIndex,
@@ -300,13 +301,66 @@ class UiConsole {
   removeFilter = (id: number): Promise<ConsoleSnapshot> =>
     this.mutateVisibility(() => ipc().removeFilter(id));
 
-  /** §12 pin RPC — symmetric with filters; the pins panel is q1f.1. */
+  /** §12 pin RPC — symmetric with filters; the Pinned tab is q1f.1. */
   addPin = (mode: string, pattern: string): Promise<ConsoleSnapshot> =>
     this.mutateVisibility(() => ipc().addPin(mode, pattern));
   setPinEnabled = (id: number, on: boolean): Promise<ConsoleSnapshot> =>
     this.mutateVisibility(() => ipc().setPinEnabled(id, on));
   removePin = (id: number): Promise<ConsoleSnapshot> =>
     this.mutateVisibility(() => ipc().removePin(id));
+
+  /** The selected indexes' 1-based line numbers against the CURRENT visible
+   *  sequence, ascending (1-row probes; unresolvable indexes drop out). */
+  private resolveSelectionLines = async (): Promise<number[]> => {
+    const lines: number[] = [];
+    for (const index of [...this.state.selection.selected].sort((a, b) => a - b)) {
+      const line = await this.lineAt(index);
+      if (line !== null) {
+        lines.push(line);
+      }
+    }
+    return lines;
+  };
+
+  /** §12 pin selection (q1f.1): one add_pin("lineno", "<line>") per selected
+   *  row, batched inside ONE mutating critical section — a single snapshot
+   *  refetch covers the whole batch (the 2wu.1 lesson). Line resolution runs
+   *  inside the section too: the visible sequence is still pre-mutation.
+   *  An empty selection is a no-op without IPC. */
+  pinSelected = (): Promise<ConsoleSnapshot> => {
+    if (this.state.selection.selected.length === 0) {
+      return Promise.resolve(this.getSnapshot());
+    }
+    return this.mutateVisibility(async () => {
+      for (const line of await this.resolveSelectionLines()) {
+        await ipc().addPin("lineno", String(line));
+      }
+    });
+  };
+
+  /** §12 unpin selection (q1f.1): remove_pin for every EXACT-ROW pin whose
+   *  line number is among the selection's line numbers (from the menu's row
+   *  cache when given, probed otherwise); broad and disabled pins stay.
+   *  Nothing covering -> no-op without IPC (the pure decision lives in
+   *  pins.ts). */
+  unpinSelected = (selectedLines?: number[]): Promise<ConsoleSnapshot> => {
+    return (async () => {
+      const lines = selectedLines ?? (await this.resolveSelectionLines());
+      const ids = exactPinIdsCovering(this.state.visibility?.pins ?? [], lines);
+      if (ids.length === 0) {
+        return this.getSnapshot();
+      }
+      return this.mutateVisibility(async () => {
+        for (const id of ids) {
+          await ipc().removePin(id);
+        }
+      });
+    })();
+  };
+
+  /** §12 :rmp equivalent — clears every pin with one refetch. */
+  clearAllPins = (): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().clearPins());
 
   // ---- §10.1 side panel (bead rhl.2) ----
 

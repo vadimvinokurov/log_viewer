@@ -555,6 +555,54 @@ if (searchRes.opened && searchRes.opened.open) {
   );
 }
 
+// (h) pins (bead q1f.1, §12): a non-matching filter hides everything; a
+// pin keeps its row visible (§7 override); selection unpin removes the
+// exact-row pin through the real backend ids; clear-all empties; a reload
+// clears pins while the filter survives (§2.1).
+const pinRes = await evalJs(port, `
+  const h = window.__headless;
+  // Self-clean against whatever earlier sections left behind.
+  await h.clearAllPins();
+  for (const f of (h.state().visibility ? h.state().visibility.filters : [])) {
+    await h.removeFilter(f.id);
+  }
+  await h.setAllCategories(true);
+  for (const l of (h.state().visibility ? h.state().visibility.levels : [])) {
+    if (!l.enabled) await h.setLevel(l.level, true);
+  }
+  await h.addFilter("plain", "@@never-matching-pin-probe@@");
+  const hiddenVis = h.state().visibility.visibleCount;
+  const add = await h.addPin("lineno", "10");
+  const pinned = add.visibility ? { vis: add.visibility.visibleCount, pins: add.visibility.pins.map((p) => p.mode + ":" + p.pattern) } : null;
+  await h.select(0, "click");
+  const un = await h.unpinSelected();
+  const unPinned = un.visibility ? { vis: un.visibility.visibleCount, pins: un.visibility.pins.length } : null;
+  const a1 = await h.addPin("lineno", "10");
+  const a2 = await h.addPin("plain", "@@pin2@@");
+  const two = a2.visibility ? a2.visibility.pins.length : null;
+  const cleared = await h.clearAllPins();
+  const clearedCount = cleared.visibility ? cleared.visibility.pins.length : null;
+  await h.addPin("lineno", "10");
+  const reloaded = await h.load(${JSON.stringify(target)});
+  const afterReload = reloaded.visibility ? { pins: reloaded.visibility.pins.length, vis: reloaded.visibility.visibleCount,
+    filter: reloaded.visibility.filters.length } : null;
+  for (const f of (h.state().visibility ? h.state().visibility.filters : [])) await h.removeFilter(f.id);
+  await h.clearAllPins();
+  return { hiddenVis, pinned, unPinned, two, clearedCount, afterReload };`);
+check("h0. probe filter hides everything before the pin", pinRes.hiddenVis === 0, `vis=${pinRes.hiddenVis}`);
+check(
+  "h1. lineno pin overrides the filter (visible 1, pins list has it)",
+  pinRes.pinned && pinRes.pinned.vis === 1 && JSON.stringify(pinRes.pinned.pins) === '["lineno:10"]',
+  JSON.stringify(pinRes.pinned),
+);
+check("h2. selection unpin removed the exact-row pin (visible 0, pins empty)", pinRes.unPinned && pinRes.unPinned.pins === 0 && pinRes.unPinned.vis === 0, JSON.stringify(pinRes.unPinned));
+check("h3. clear-all empties the pin list", pinRes.clearedCount === 0 && pinRes.two === 2, `two=${pinRes.two} cleared=${pinRes.clearedCount}`);
+check(
+  "h4. reload clears pins, keeps the filter (SS2.1 + SS12)",
+  pinRes.afterReload && pinRes.afterReload.pins === 0 && pinRes.afterReload.filter === 1,
+  JSON.stringify(pinRes.afterReload),
+);
+
 const failed = checks.filter((c) => !c.ok).length;
 const verdict = failed === 0 ? "OK" : "FAILED (" + failed + "/" + checks.length + ")";
 console.log(

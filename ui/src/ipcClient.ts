@@ -21,6 +21,8 @@ export interface RawIpc {
   addPin(mode: string, pattern: string): Promise<null>;
   setPinEnabled(id: number, on: boolean): Promise<null>;
   removePin(id: number): Promise<null>;
+  /** §12 rmp: removes every pin (the future command-line :rmp). */
+  clearPins(): Promise<null>;
   /** §11 level toggle; level = lowercase long name (backend validates). */
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   /** Categories panel (rhl.2); path = full category path ("app/main/db"). */
@@ -43,6 +45,7 @@ export interface IpcClient {
   addPin(mode: string, pattern: string): Promise<null>;
   setPinEnabled(id: number, on: boolean): Promise<null>;
   removePin(id: number): Promise<null>;
+  clearPins(): Promise<null>;
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   setCategoryEnabled(path: string, on: boolean): Promise<null>;
   /** §8 search over the visible sequence (bead 2wu.1). */
@@ -136,6 +139,9 @@ export const realIpc: RawIpc = {
   async removePin(id: number) {
     return commands.removePin(id);
   },
+  async clearPins() {
+    return commands.clearPins();
+  },
   async setLevelEnabled(level: string, on: boolean) {
     return commands.setLevelEnabled(level, on);
   },
@@ -171,6 +177,7 @@ export function ipc(): IpcClient {
     addPin: (mode: string, pattern: string) => source.addPin(mode, pattern),
     setPinEnabled: (id: number, on: boolean) => source.setPinEnabled(id, on),
     removePin: (id: number) => source.removePin(id),
+    clearPins: () => source.clearPins(),
     setLevelEnabled: (level: string, on: boolean) => source.setLevelEnabled(level, on),
     setCategoryEnabled: (path: string, on: boolean) => source.setCategoryEnabled(path, on),
     async searchVisible(mode: string, pattern: string) {

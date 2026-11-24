@@ -16,8 +16,8 @@ export interface SidePanelProps {
   onTab(tab: PanelTab): void;
   /** Splitter drag; raw pixel width, the reducer clamps (180-480). */
   onWidth(px: number): void;
-  /** Live tab content by tab name; missing tabs render a muted
-   *  placeholder until their epics land (exx.2, q1f.1). */
+  /** Live tab content by tab name; the Highlights placeholder stays until
+   *  its epic lands (exx.2); Pinned is live since q1f.1. */
   content: Partial<Record<PanelTab, ReactNode>>;
 }
 
@@ -91,9 +91,7 @@ export function SidePanel({
         >
           {panel.tab === "highlights"
             ? "Highlights — coming with the highlights epic (exx.2)."
-            : panel.tab === "pinned"
-              ? "Pinned — coming with the pins tab (q1f.1)."
-              : "Pending: this tab has no live content yet."}
+            : "Pending: this tab has no live content yet."}
         </div>
       )}
       <div
