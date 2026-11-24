@@ -35,6 +35,8 @@
    - **Sub-agents absorb process noise; the coordinator keeps decisions.** The split is by tool cost, not task type. Delegate what would cost me more than a handful of tool calls or one gate cycle — module builds with test loops, multi-file analysis, gate/debug cycles, benchmark runs — to a fresh narrow agent: its reads and test output never enter the coordinator conversation that gets replayed every turn, and only the conclusion comes back. Keep inline what is small or session-shaped: 2–3-call edits, judgment calls, integration into shared files (`lib.rs`, `Cargo.toml`, `App.tsx`, generated bindings). Spawn only on a durable contract: bead `[Actions]/[Pseudocode]/[Acceptance]` + `docs/notes/agent-brief.md` + the spec section, prompt = pointers only (if the prompt must explain *why*, that context is not written down yet — write it into the bead/note first). Prefer two small independent agents over one fat one (agents checkpoint via `bd update --notes` at each milestone, never die silently); a context-inheriting fork only when reusing this conversation visibly beats a fresh prompt, never for routine lookups.
    - **Use the banked automation, not window screenshots:** the design oracle (`scripts/design_check.mjs`) and the live driver (`scripts/live_check.mjs`) already answer visual and real-window questions headlessly (rules 4–5); manual screenshots are not part of the loop.
 
+8. **Standing commit authority.** (Owner's feedback, 2026-11-24: «комить сам, когда считаешь нужным».) The agent commits locally on its own judgment — after every milestone with green gates (per rule 7's checkpoint commits), no owner approval needed. Push / Dolt remote sync stays out of scope: local commits only; pushing requires an explicit owner request.
+
 ## Workflow
 
 Three storage roles:
@@ -98,7 +100,7 @@ bd close <id>         # Complete work
 
 The managed Beads block is task-tracking guidance, not permission to override repository, user, or orchestrator instructions.
 
-- **Conservative (default)**: Use `bd` for task tracking. Do not run git commits, git pushes, or Dolt remote sync unless explicitly asked. At handoff, report changed files, validation, and suggested next commands.
+- **Conservative (default)**: Use `bd` for task tracking. Commits are authorized by rule 8 (local, per milestone); git pushes and Dolt remote sync only on explicit request. At handoff, report changed files, validation, and suggested next commands.
 - **Minimal**: Keep tool instruction files as pointers to `bd prime`; use the same conservative git policy unless active instructions say otherwise.
 - **Team-maintainer**: Only when the repository explicitly opts in, agents may close beads, run quality gates, commit, and push as part of session close. A current "do not commit" or "do not push" instruction still wins.
 
