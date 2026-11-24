@@ -1,0 +1,80 @@
+# Tag-driven release (plan 2026-11-25, GitHub Release builds + auto-update):
+# pushing a v*, tag runs the gates, builds unsigned macOS universal +
+# Windows NSIS via tauri-action, and publishes the GitHub Release with the
+# installer artifacts and the signed updater manifest (latest.json). The
+# updater secrets come from repository secrets (Task 6 of the plan).
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install ui deps
+        run: npm ci --prefix ui
+      - name: rust tests (core + shell incl. binding regen)
+        run: cargo test --workspace
+      - name: ui build + typecheck
+        run: npm --prefix ui run build
+      - name: ui unit tests
+        run: npm --prefix ui test
+      - name: ui visual goldens
+        run: npm --prefix ui run e2e
+
+  build:
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS universal: one dmg covering Apple Silicon and Intel.
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+            targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          # Windows: NSIS x64 — the updater-friendly installer for Tauri.
+          - os: windows-latest
+            args: ""
+            targets: ""
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - uses: swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix ui
+      - name: tag must equal the tauri.conf.json version
+        run: |
+          tag="${{ github.ref_name }}"
+          version="v$(jq -r .version src-tauri/tauri.conf.json)"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $tag != config version $version"; exit 1
+          fi
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: logviewer ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
