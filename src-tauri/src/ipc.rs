@@ -468,6 +468,71 @@ pub(crate) fn get_rows_inner(
     .expect("cached visible lines exist in the model"))
 }
 
+// ------------------------------------------------------------- search (§8)
+
+/// Search result for the §8 panel: `positions` are 0-based indexes of the
+/// VISIBLE sequence, ascending; `total` is their count («k of N» uses N).
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub struct SearchMatchDto {
+  pub total: u32,
+  pub positions: Vec<u32>,
+}
+
+/// Search over the shell's cached visible sequence (§8): the core matcher
+/// (case-insensitivity and never-match on invalid patterns live there) runs
+/// against the same lossy raw text the §7 engine filters on. Search modes
+/// are plain|regex|simple only (lineno is a filter mode); an unknown mode is
+/// refused in the dsq.3 style, an empty pattern is «0 of 0», and an unloaded
+/// file has nothing to search.
+pub(crate) fn search_visible_inner(
+  file: &FileState,
+  vis: &VisState,
+  mode: &str,
+  pattern: &str,
+) -> Result<SearchMatchDto, String> {
+  let matcher = match mode {
+    "plain" => Matcher::plain(pattern),
+    "regex" => Matcher::regex(pattern),
+    "simple" => Matcher::simple(pattern),
+    other => {
+      return Err(format!("unknown mode {other:?}: expected plain|regex|simple"));
+    }
+  };
+  // Contract: an empty pattern means «0 of 0», not a match-everything search.
+  if pattern.is_empty() {
+    return Ok(SearchMatchDto {
+      total: 0,
+      positions: Vec::new(),
+    });
+  }
+  // File-then-visibility lock order, as in visibility_snapshot_inner.
+  let file = file.lock().map_err(|_| lock_err())?;
+  let Some(model) = file.as_ref() else {
+    // No file loaded: nothing to search, whatever the visibility state holds.
+    return Ok(SearchMatchDto {
+      total: 0,
+      positions: Vec::new(),
+    });
+  };
+  let mut vis = vis.lock().map_err(|_| lock_err())?;
+  vis.ensure_visible_cache(Some(model));
+  let lines = vis.visible_cache.as_deref().unwrap_or(&[]);
+  let mut positions = Vec::new();
+  for (idx, &line) in lines.iter().enumerate() {
+    let row = model
+      .row(line as usize - 1)
+      .expect("cached visible lines exist in the model");
+    let text = String::from_utf8_lossy(&row.raw);
+    if matcher.matches(&text, row.line_no) {
+      positions.push(idx as u32);
+    }
+  }
+  Ok(SearchMatchDto {
+    total: positions.len() as u32,
+    positions,
+  })
+}
+
 // ---------------------------------------------------------------- commands
 
 /// Load a file in the background and make it the active model (§2).
@@ -923,6 +988,87 @@ mod tests {
     assert!(get_rows_inner(0, 5, &empty_file, &empty_vis)
       .unwrap()
       .is_empty());
+  }
+
+  // ------------------------------------------------------------- search
+  // (§8: search runs over the VISIBLE sequence only; modes plain|regex|simple).
+
+  /// Same build path as `bridge` but a unique temp prefix: concurrent test
+  /// writers to one temp file SIGBUS under the mmap scanner (agent-brief).
+  fn bridge_search(data: &[u8], name: &str) -> (FileState, VisState) {
+    let path = std::env::temp_dir().join(format!("lv_search_{name}.log"));
+    std::fs::write(&path, data).unwrap();
+    let file = new_file_state();
+    let vis = new_visibility_state();
+    load_file_inner(&path, &file, &vis).expect("file loads");
+    (file, vis)
+  }
+
+  #[test]
+  fn search_plain_is_case_insensitive_and_scopes_to_visible_rows() {
+    let (file, vis) = bridge_search(MIX, "plain");
+    // All six lines visible -> 0-based indexes are line-1. Case folding:
+    // the stored text is "database failed", the query is uppercase.
+    let r = search_visible_inner(&file, &vis, "plain", "FAILED").unwrap();
+    assert_eq!(r, SearchMatchDto { total: 1, positions: vec![0] });
+    let r = search_visible_inner(&file, &vis, "plain", "retry").unwrap();
+    assert_eq!(r.positions, vec![5]);
+    // Hiding one level reshapes the visible sequence: without "error"
+    // the visible lines are 2, 4, 5, 6 -> line 6 carries visible index 3.
+    set_level_enabled_inner(&vis, "error", false).unwrap();
+    let r = search_visible_inner(&file, &vis, "plain", "failed").unwrap();
+    assert_eq!(r, SearchMatchDto { total: 0, positions: vec![] });
+    let r = search_visible_inner(&file, &vis, "plain", "disk").unwrap();
+    assert_eq!(r.positions, vec![1]);
+    let r = search_visible_inner(&file, &vis, "plain", "retry").unwrap();
+    assert_eq!(r.positions, vec![3]);
+  }
+
+  #[test]
+  fn search_regex_and_simple_modes_match_the_core_matcher() {
+    let (file, vis) = bridge_search(MIX, "modes");
+    // Regex over the visible sequence: lines 1,2,3,4,6 carry a LOG_ tag,
+    // line 5 does not; positions ascend and skip hidden matches.
+    let r = search_visible_inner(&file, &vis, "regex", "LOG_[A-Z]+").unwrap();
+    assert_eq!(r.positions, vec![0, 1, 2, 4, 5]);
+    assert_eq!(r.total, 5);
+    let r = search_visible_inner(&file, &vis, "regex", "retr(y|ies)").unwrap();
+    assert_eq!(r.positions, vec![5]);
+    // Simple boolean query (§6 semantics through the core matcher).
+    let r = search_visible_inner(&file, &vis, "simple", "\"timeout\" OR \"disk\"").unwrap();
+    assert_eq!(r.positions, vec![2, 3]);
+    // A simple-syntax error matches nothing (core never()).
+    let r = search_visible_inner(&file, &vis, "simple", "\"disk\" AND").unwrap();
+    assert_eq!(r, SearchMatchDto { total: 0, positions: vec![] });
+  }
+
+  #[test]
+  fn search_edge_cases_empty_invalid_unknown_and_no_file() {
+    let (file, vis) = bridge_search(MIX, "edge");
+    let none = SearchMatchDto { total: 0, positions: vec![] };
+    // Invalid regex matches nothing (contract), never errors.
+    let r = search_visible_inner(&file, &vis, "regex", "[").unwrap();
+    assert_eq!(r, none);
+    // Empty pattern is «0 of 0» in every valid mode (contract).
+    assert_eq!(search_visible_inner(&file, &vis, "plain", "").unwrap(), none);
+    assert_eq!(search_visible_inner(&file, &vis, "regex", "").unwrap(), none);
+    assert_eq!(search_visible_inner(&file, &vis, "simple", "").unwrap(), none);
+    // Unknown mode -> Err string (dsq.3 style); lineno is a filter-only mode.
+    assert!(search_visible_inner(&file, &vis, "lineno", "3").unwrap_err().contains("unknown mode"));
+    assert!(search_visible_inner(&file, &vis, "bogus", "x").unwrap_err().contains("unknown mode"));
+    // The erroring calls left state untouched.
+    assert_eq!(visibility_snapshot_inner(&file, &vis).unwrap().visible_count, 6);
+    // No file loaded: {0, []} for every valid mode.
+    let empty_file = new_file_state();
+    let empty_vis = new_visibility_state();
+    assert_eq!(
+      search_visible_inner(&empty_file, &empty_vis, "plain", "failed").unwrap(),
+      none
+    );
+    assert_eq!(
+      search_visible_inner(&empty_file, &empty_vis, "regex", ".*").unwrap(),
+      none
+    );
   }
 
   #[test]

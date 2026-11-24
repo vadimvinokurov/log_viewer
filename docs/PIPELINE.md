@@ -76,10 +76,12 @@ Claim tasks in the main session before spawning agents.
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app
-  (`npm run dev` in `ui/`, then `cargo run` in `src-tauri/`) and
-  `node scripts/live_check.mjs <test_logs file>` — it drives
-  `window.__headless` (load, levels, filters, selection, copy) through the
-  real IPC and asserts on counts only, never log contents (rule 1).
+  (`cargo tauri dev` from the root — the build config starts the ui dev
+  server itself — or manually `npm run dev` in `ui/` + `cargo run` in
+  `src-tauri/`) and `node scripts/live_check.mjs <test_logs file>` — it
+  drives `window.__headless` (load, levels, filters, categories, selection,
+  copy, viewport anchor, search) through the real IPC and asserts on counts
+  only, never log contents (rule 1).
 - Decision states (empty / loading / loaded / error) are designed before
   polish; look for existing parts before writing new ones; design notes in
   `design.md`.
