@@ -89,6 +89,15 @@ async function evalJs(port, js) {
 }
 
 const port = await waitForApp(120_000);
+// A crashed earlier run can leave the page's serialized ops queue wedged
+// (its ops never settle) while raw invokes stay fine; a fresh page load
+// guarantees an empty queue before the scenario starts.
+try {
+  await request(port, "/load", { js: "setTimeout(() => window.location.reload(), 30); return true;" });
+  await new Promise((r) => setTimeout(r, 4000));
+} catch {
+  // The reload may race the webview setup; the path-load below carries on.
+}
 const raw = await request(port, "/load", { path: target });
 const parsed = JSON.parse(raw).result;
 const snapshot = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
