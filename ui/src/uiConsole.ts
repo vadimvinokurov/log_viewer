@@ -16,6 +16,14 @@ import {
   type LineAt,
   type ViewportInfo,
 } from "./viewportAnchoring";
+import {
+  initialUpdateState,
+  reduceUpdate,
+  type UpdateSource,
+  type UpdateState,
+} from "./updates";
+import { check as pluginUpdaterCheck } from "@tauri-apps/plugin-updater";
+import { relaunch as pluginRelaunch } from "@tauri-apps/plugin-process";
 
 export interface ConsoleSnapshot {
   screen: AppState["screen"];
@@ -56,6 +64,9 @@ export interface ConsoleSnapshot {
     history: string[];
     historyIndex: number;
   };
+  /** Auto-update lifecycle (plan 2026-11-25): the pure update slice; the
+   *  updater is the ONLY network call (deliberate exception to spec §1). */
+  update: UpdateState;
 }
 
 /** Copy column selection: raw file lines or the Message column (§4). */
@@ -119,6 +130,49 @@ const settingsCommands = (): SettingsCommands => {
     : realSettingsCommands;
 };
 
+// ---- Auto-update (plan 2026-11-25): the raw updater commands seam ----
+
+/** RAW shape of a successful updater probe (the plugin's own fields). */
+interface RawUpdate {
+  version: string;
+  currentVersion: string;
+  body?: string | null;
+}
+
+/** RAW shape of the updater commands (the same binding-direct seam as
+ *  History/Settings — ipcClient stays untouched; unit and headless stubs
+ *  mirror these three methods on window.__ipcStub). */
+interface UpdaterCommands {
+  check(): Promise<RawUpdate | null>;
+  downloadAndInstall(): Promise<void>;
+  relaunch(): Promise<void>;
+}
+
+const realUpdaterCommands: UpdaterCommands = {
+  check: () => pluginUpdaterCheck(),
+  // The Update instance carries the artifact paths internally, so the raw
+  // download re-probes once and installs from that probe.
+  downloadAndInstall: async () => {
+    const update = await pluginUpdaterCheck();
+    await update?.downloadAndInstall();
+  },
+  relaunch: () => pluginRelaunch(),
+};
+
+/** The same resolution rule as historyCommands()/settingsCommands(): a stub
+ *  carrying ALL THREE methods wins, everything else gets the plugin calls. */
+const updaterCommands = (): UpdaterCommands => {
+  const stub = (window as unknown as { __ipcStub?: Partial<UpdaterCommands> })
+    .__ipcStub;
+  const check = typeof stub?.check === "function" ? stub.check : null;
+  const downloadAndInstall =
+    typeof stub?.downloadAndInstall === "function" ? stub.downloadAndInstall : null;
+  const relaunch = typeof stub?.relaunch === "function" ? stub.relaunch : null;
+  return stub !== null && check !== null && downloadAndInstall !== null && relaunch !== null
+    ? { check, downloadAndInstall, relaunch }
+    : realUpdaterCommands;
+};
+
 /** The parent directory of a path ("/tmp/dir/run.log" -> "/tmp/dir"); a
  *  bare file name has no directory ("run.log" -> "", lastDir untouched). */
 const parentDir = (path: string): string => {
@@ -144,6 +198,9 @@ class UiConsole {
    *  state.ts is the load/filter/search domain (the slice rides the same
    *  listener set through getCmdline). */
   private cmdline: CmdlineState = initialCmdlineState();
+  /** Auto-update slice (plan 2026-11-25); outside the reducer for the same
+   *  reason as cmdline — updates.ts owns its pure transitions. */
+  private update: UpdateState = initialUpdateState();
 
   /** §13.2 (bead 7rf.2): the persistent history seeds the in-session
    *  cycle ONCE, at construction — fire-and-forget with catch, a failed
@@ -164,8 +221,12 @@ class UiConsole {
           (settings) => this.seedLastOpenDir(settings.last_open_dir),
           () => undefined,
         );
+      // The automatic startup check (design: §Update UX): a silent probe;
+      // checkForUpdates swallows auto failures itself and rethrows nothing.
+      void this.checkForUpdates("auto").catch(() => undefined);
     } catch {
       // Persistence is best-effort; the session list is the cycle's truth.
+      // The update probe is best-effort the same way.
     }
   }
 
@@ -180,6 +241,76 @@ class UiConsole {
 
   /** The command-line slice as a STABLE reference for useSyncExternalStore. */
   getCmdline = (): CmdlineState => this.cmdline;
+
+  // ---- auto-update lifecycle (plan 2026-11-25) ----
+
+  /** The update slice as a STABLE reference for useSyncExternalStore. */
+  getUpdate = (): UpdateState => this.update;
+
+  /** Replaces the slice immutably and notifies the store's listeners. */
+  private setUpdate = (next: UpdateState): void => {
+    this.update = next;
+    this.listeners.forEach((l) => l());
+  };
+
+  /** One probe cycle. AUTO failures are silenced here (the design's
+   *  resilience constraint): the app keeps working with no visible trace
+   *  when the startup probe hits an offline/404/transport error; MANUAL
+   *  failures surface through the banner (Review Focus 3). */
+  checkForUpdates = async (source: UpdateSource): Promise<ConsoleSnapshot> => {
+    this.setUpdate(reduceUpdate(this.update, { kind: "update-check-start", source }));
+    try {
+      const update = await updaterCommands().check();
+      this.setUpdate(
+        reduceUpdate(
+          this.update,
+          update === null ? { kind: "update-none" } : { kind: "update-available", version: update.version },
+        ),
+      );
+    } catch (error) {
+      if (source === "manual") {
+        this.setUpdate(
+          reduceUpdate(this.update, {
+            kind: "update-failed",
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      } else {
+        this.setUpdate(initialUpdateState());
+      }
+    }
+    return this.getSnapshot();
+  };
+
+  /** Download + install + relaunch (the plugin's flow); only a live
+   *  available-offer starts a download, any other phase is a no-op. */
+  installUpdate = async (): Promise<ConsoleSnapshot> => {
+    if (this.update.phase !== "available") {
+      return this.getSnapshot();
+    }
+    this.setUpdate(reduceUpdate(this.update, { kind: "update-download-start" }));
+    try {
+      await updaterCommands().downloadAndInstall();
+      this.setUpdate(reduceUpdate(this.update, { kind: "update-installed" }));
+      void updaterCommands()
+        .relaunch()
+        .catch(() => undefined);
+    } catch (error) {
+      this.setUpdate(
+        reduceUpdate(this.update, {
+          kind: "update-failed",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+    return this.getSnapshot();
+  };
+
+  /** The banner's × / failure dismiss: the slice resets to idle. */
+  dismissUpdate = (): ConsoleSnapshot => {
+    this.setUpdate(reduceUpdate(this.update, { kind: "update-dismiss" }));
+    return this.getSnapshot();
+  };
 
   /** The recall cursor of the field (0..history.length; length = the empty
    *  draft) — a snapshot convenience asserted by the tests. */
@@ -235,6 +366,7 @@ class UiConsole {
         history: [...this.cmdline.history],
         historyIndex: this.cmdline.historyIndex,
       },
+      update: this.update,
     };
   }
 
@@ -729,6 +861,11 @@ class UiConsole {
         this.dispatch({ kind: "load-error", message: "" });
       }
       const command = result.command;
+      if (command.kind === "system") {
+        return command.action === "check-updates"
+          ? this.checkForUpdates("manual")
+          : Promise.resolve(this.getSnapshot());
+      }
       if (command.kind === "clear") {
         return command.area === "filters"
           ? this.clearAllFilters()

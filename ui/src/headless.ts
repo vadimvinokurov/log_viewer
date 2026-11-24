@@ -89,6 +89,13 @@ export function installHeadlessConsole(): () => void {
       console_.recallCommandHistory(typeof dir === "number" ? dir : 0),
     clearCommand: () => console_.clearCommand(),
     activateCmdline: () => console_.activateCmdline(),
+    /** Auto-update (plan 2026-11-25): the manual/auto check probe, the
+     *  install+relaunch flow and the banner dismiss. Non-string source
+     *  coerces to "manual" (untyped JS boundary). */
+    checkUpdates: (source?: unknown) =>
+      console_.checkForUpdates(source === "auto" ? "auto" : "manual"),
+    installUpdate: () => console_.installUpdate(),
+    dismissUpdate: () => console_.dismissUpdate(),
     /** State of the §13 field incl. the in-session history. */
     cmdline: () => console_.getCmdline(),
     /** §13.2 (bead 7rf.2): the current cycle list — the seeded persistent

@@ -66,7 +66,10 @@ describe("reduceUpdate", () => {
     expect(s).toMatchObject({ phase: "failed", error: "404", source: "auto" });
   });
 
-  it("recheck while busy is a no-op", () => {
+  it("recheck from idle/failed/uptodate restarts; busy phases are locked", () => {
+    // startup race (ledger ruling): a MANUAL check must never be locked out
+    // by the in-flight AUTO startup probe — both probe the same endpoint, so
+    // a re-start from `checking` is a clean re-arm (last result wins).
     const available = reduceUpdate(startState("manual"), {
       kind: "update-available",
       version: "0.2.0",
@@ -78,10 +81,17 @@ describe("reduceUpdate", () => {
     expect(
       reduceUpdate(downloading, { kind: "update-check-start", source: "manual" }),
     ).toEqual(downloading);
-    const checking = startState("manual");
-    expect(
-      reduceUpdate(checking, { kind: "update-check-start", source: "auto" }),
-    ).toEqual(checking);
+    // from checking: a re-arm with the NEW source
+    const rearmed = reduceUpdate(startState("auto"), {
+      kind: "update-check-start",
+      source: "manual",
+    });
+    expect(rearmed).toEqual({
+      phase: "checking",
+      source: "manual",
+      availableVersion: null,
+      error: null,
+    });
   });
 
   it("download-start applies only from available", () => {

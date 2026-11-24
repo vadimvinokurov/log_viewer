@@ -44,9 +44,12 @@ export type UpdateEvent =
   | { kind: "update-dismiss" };
 
 /** Guard rules (pinned by updates.test.ts):
- *  - `update-check-start` applies only from `idle` / `failed` / `uptodate`
- *    (a re-check storm while busy never restarts state) and resets
- *    error/availableVersion;
+ *  - `update-check-start` applies from `idle` / `failed` / `uptodate` and
+ *    ALSO from `checking` (the constructor's auto probe races the first
+ *    user command: a manual check must never be locked out by the startup
+ *    probe — both probe the same endpoint, so a re-arm from `checking` is a
+ *    clean restart with the new source; available/downloading stay locked);
+ *    it resets error/availableVersion;
  *  - `update-available` applies only while `checking`;
  *  - `update-download-start` only from `available`;
  *  - `update-installed` only from `downloading`;
@@ -56,7 +59,7 @@ export type UpdateEvent =
 export function reduceUpdate(state: UpdateState, event: UpdateEvent): UpdateState {
   switch (event.kind) {
     case "update-check-start": {
-      if (state.phase !== "idle" && state.phase !== "failed" && state.phase !== "uptodate") {
+      if (state.phase !== "idle" && state.phase !== "failed" && state.phase !== "uptodate" && state.phase !== "checking") {
         return state;
       }
       return { phase: "checking", source: event.source, availableVersion: null, error: null };

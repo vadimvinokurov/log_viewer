@@ -21,7 +21,11 @@ export type CommandArea = "filters" | "highlights" | "pins";
  *  construction — every §13.1 command is exactly one backend call). */
 export type CliCommand =
   | { kind: "add"; area: CommandArea; mode: FilterMode; pattern: string }
-  | { kind: "clear"; area: CommandArea };
+  | { kind: "clear"; area: CommandArea }
+  // Non-§13.1 extension (owner decision, design doc 2026-11-25): the manual
+  // update check entry point — a no-argument command wired to the console's
+  // checkForUpdates("manual"), zero extra chrome.
+  | { kind: "system"; action: "check-updates" };
 
 export interface ParsedInput {
   /** §13.1 command name, verbatim ("f", "fn", "rmf", ...). */
@@ -83,6 +87,12 @@ const CLEAR_COMMANDS: ReadonlyMap<string, CommandArea> = new Map([
   ["rmp", "pins"],
 ]);
 
+/** The one system command (owner decision, design doc 2026-11-25): the
+ *  manual update check. Takes no arguments, like the wholesale clears. */
+const SYSTEM_COMMANDS: ReadonlyMap<string, "check-updates"> = new Map([
+  ["check-updates", "check-updates"],
+]);
+
 /** Splits a submitted text into a command word and its argument. null = the
  *  text is not a command at all: empty, whitespace-only, or the bare
  *  activation ':'. */
@@ -138,6 +148,13 @@ export function resolveCommand(text: string, lineCount: number): CommandResult {
       return { ok: false, error: noArgsError(name) };
     }
     return { ok: true, command: { kind: "clear", area: clearArea } };
+  }
+  const system = SYSTEM_COMMANDS.get(name);
+  if (system) {
+    if (arg !== "") {
+      return { ok: false, error: noArgsError(name) };
+    }
+    return { ok: true, command: { kind: "system", action: system } };
   }
   return { ok: false, error: ERROR_UNKNOWN };
 }

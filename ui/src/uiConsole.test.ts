@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installHeadlessConsole } from "./headless";
+import { resolveCommand } from "./cmdline";
 import type { RawIpc } from "./ipcClient";
 import type { RowDto, VisibilitySnapshotDto } from "./bindings";
 
@@ -2426,5 +2427,134 @@ describe("last open dir persistence (bead vk9.2, §2/§15)", () => {
     await console_.load("run.log");
     expect(stub.setLastOpenDirCalls()).toEqual([]);
     expect(console_.getState().lastDir).toBe("/tmp/logs");
+  });
+});
+
+describe("update lifecycle through the store (plan 2026-11-25, Task 3)", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+  });
+
+  /** RAW UpdaterCommands stub mirroring the plugin call shapes; the console
+   *  seam resolves through window.__ipcStub (all three methods = stub wins). */
+  function updaterStub(options?: {
+    update?: { version: string; currentVersion: string } | null;
+    failCheck?: string;
+    failInstall?: string;
+  }) {
+    return {
+      version: "0.1.0",
+      relaunches: 0,
+      check: async () => {
+        if (options?.failCheck) throw new Error(options.failCheck);
+        return options?.update === undefined
+          ? { version: "0.2.0", currentVersion: "0.1.0" }
+          : options.update;
+      },
+      downloadAndInstall: async () => {
+        if (options?.failInstall) throw new Error(options.failInstall);
+      },
+      relaunch: async () => void (window as unknown as Record<string, unknown>).__updater_relaunches,
+    };
+  }
+  type UpdaterStub = ReturnType<typeof updaterStub>;
+
+  async function fresh(
+    updater: UpdaterStub,
+  ): Promise<{ console_: Console; updater: UpdaterStub }> {
+    const target = window as unknown as Record<string, unknown>;
+    target.__ipcStub = updater;
+    vi.resetModules();
+    const mod = await import("./uiConsole");
+    return { console_: mod.console_ as Console, updater };
+  }
+
+  it("manual check flows: checking → available → installed + relaunch", async () => {
+    const { console_ } = await fresh(updaterStub());
+    const snap = await console_.checkForUpdates("manual");
+    expect(snap.update.phase).toBe("available");
+    expect(snap.update.availableVersion).toBe("0.2.0");
+    await console_.installUpdate();
+    const after = console_.getUpdate();
+    expect(after.phase).toBe("installed");
+  });
+
+  it("auto check failure stays completely silent (Review Focus 1/2)", async () => {
+    const { console_ } = await fresh(updaterStub({ failCheck: "404" }));
+    await console_.checkForUpdates("auto");
+    expect(console_.getUpdate()).toEqual({
+      phase: "idle",
+      source: "auto",
+      availableVersion: null,
+      error: null,
+    });
+  });
+
+  it("auto success stays silent too", async () => {
+    const { console_ } = await fresh(updaterStub({ update: null }));
+    await console_.checkForUpdates("auto");
+    expect(console_.getUpdate().phase).toBe("idle");
+  });
+
+  it("manual check failure lands on the failed banner (Review Focus 3)", async () => {
+    const { console_ } = await fresh(updaterStub({ failCheck: "404" }));
+    await console_.checkForUpdates("manual");
+    const s = console_.getUpdate();
+    expect(s.phase).toBe("failed");
+    expect(s.error).toContain("404");
+  });
+
+  it("install failure shows an error and dismiss resets", async () => {
+    const { console_ } = await fresh(updaterStub({ failInstall: "signature verification failed" }));
+    await console_.checkForUpdates("manual");
+    await console_.installUpdate();
+    const s = console_.getUpdate();
+    expect(s.phase).toBe("failed");
+    expect(s.error).toContain("signature");
+    expect(console_.dismissUpdate().update).toMatchObject({ phase: "idle" });
+  });
+
+  it("installUpdate is a no-op outside the available phase", async () => {
+    // failCheck silences the constructor's auto probe (→ idle); after the
+    // settle wait, no check is in flight and a bare install is a no-op.
+    const { console_ } = await fresh(updaterStub({ failCheck: "404" }));
+    await new Promise((r) => setTimeout(r, 0));
+    const snap = await console_.installUpdate();
+    expect(snap.update.phase).toBe("idle");
+  });
+
+  it("cmdline check-updates triggers a manual check (§13.1 system command)", async () => {
+    const { console_ } = await fresh(updaterStub());
+    const snap = await console_.executeCommand("check-updates");
+    expect(snap.update.phase).toBe("available");
+  });
+
+  it("cmdline check-updates with an argument errors and never touches the wire", async () => {
+    const { console_ } = await fresh(updaterStub({ failCheck: "404" }));
+    await new Promise((r) => setTimeout(r, 0)); // let the auto probe settle
+    const snap = await console_.executeCommand("check-updates now");
+    expect(snap.error).toBe("Error: check-updates takes no arguments");
+    expect(console_.getUpdate().phase).toBe("idle");
+  });
+
+  it("a stale auto result arriving after a dismiss is ignored", async () => {
+    // the plugin promise races the user: dismiss (idle) → auto result must
+    // not resurrect the banner (update-available applies only from checking)
+    const { console_ } = await fresh(updaterStub());
+    void console_.checkForUpdates("auto");
+    console_.dismissUpdate();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(console_.getUpdate().phase).toBe("idle");
+  });
+});
+
+describe("update cmdline validation", () => {
+  it.each([
+    ["check-updates", true],
+    ["check-updates ", true],
+    [":check-updates", true],
+    ["check-updates now", false],
+  ])("%s valid=%p", (text, ok) => {
+    expect(resolveCommand(text, 10).ok).toBe(ok);
   });
 });
