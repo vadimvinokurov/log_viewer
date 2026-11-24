@@ -9,3 +9,11 @@ memmap2 = "0.9"
 memchr = "2"
 regex = "1"
 fancy-regex = "0.14"
+
+[dev-dependencies]
+# Benchmarks over the real corpus (docs/BENCHMARKS.md).
+criterion = "0.5"
+
+[[bench]]
+name = "corpus"
+harness = false
