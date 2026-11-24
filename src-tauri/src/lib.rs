@@ -26,6 +26,7 @@ fn build_bindings() -> tauri_specta::Builder<tauri::Wry> {
     ipc::remove_filter,
     ipc::remove_pin,
     ipc::clear_pins,
+    ipc::clear_filters,
     ipc::set_level_enabled,
     ipc::set_category_enabled,
     ipc::visibility_snapshot,

@@ -88,6 +88,12 @@ Claim tasks in the main session before spawning agents.
     no spans), `24-highlights-color-picked` (user override hex + byte-offset match) and
     `25-highlights-lineno` (:hn whole-message row) with fresh goldens; no existing golden
     shifted (all diffs 0.000%).
+  - Addition 2026-11-24 (bead 7rf.1, §13 command line): the flat `:type command...`
+    input joined the footer of every state, so ALL 26 existing goldens were re-baselined
+    (footer band only; table/panel content unchanged); new states `26-cmdline-visible`
+    (':'-activated focused field), `27-cmdline-filter-executed`, `28-cmdline-error`
+    (Unknown command in the status area) and `29-cmdline-history` (↑-recalled entry)
+    with fresh goldens.
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

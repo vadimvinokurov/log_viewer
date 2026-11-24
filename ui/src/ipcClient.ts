@@ -24,6 +24,8 @@ export interface RawIpc {
   removePin(id: number): Promise<null>;
   /** §12 rmp: removes every pin (the future command-line :rmp). */
   clearPins(): Promise<null>;
+  /** §13 rmf: removes every filter (the command-line :rmf). */
+  clearFilters(): Promise<null>;
   /** §11 level toggle; level = lowercase long name (backend validates). */
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   /** Categories panel (rhl.2); path = full category path ("app/main/db"). */
@@ -60,6 +62,7 @@ export interface IpcClient {
   setPinEnabled(id: number, on: boolean): Promise<null>;
   removePin(id: number): Promise<null>;
   clearPins(): Promise<null>;
+  clearFilters(): Promise<null>;
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   setCategoryEnabled(path: string, on: boolean): Promise<null>;
   /** §9 highlight RPC (exx.2); symmetric with the filters. */
@@ -280,6 +283,9 @@ export const realIpc: RawIpc = {
   async clearPins() {
     return commands.clearPins();
   },
+  async clearFilters() {
+    return commands.clearFilters();
+  },
   async setLevelEnabled(level: string, on: boolean) {
     return commands.setLevelEnabled(level, on);
   },
@@ -333,6 +339,7 @@ export function ipc(): IpcClient {
     setPinEnabled: (id: number, on: boolean) => source.setPinEnabled(id, on),
     removePin: (id: number) => source.removePin(id),
     clearPins: () => source.clearPins(),
+    clearFilters: () => source.clearFilters(),
     setLevelEnabled: (level: string, on: boolean) => source.setLevelEnabled(level, on),
     setCategoryEnabled: (path: string, on: boolean) => source.setCategoryEnabled(path, on),
     addHighlight: (mode: string, pattern: string) => source.addHighlight(mode, pattern),

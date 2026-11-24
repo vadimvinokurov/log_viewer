@@ -16,6 +16,7 @@ import { FiltersTab } from "./FiltersTab.tsx";
 import { PinnedTab } from "./PinnedTab.tsx";
 import { HighlightsTab } from "./HighlightsTab.tsx";
 import { SearchPanel } from "./SearchPanel.tsx";
+import { CmdLine } from "./CmdLine.tsx";
 import { EmptyState } from "./EmptyState";
 import DevShowcase from "./devShowcase";
 
@@ -32,6 +33,8 @@ function lastPathSegment(path: string): string {
 export default function App() {
   const show = new URLSearchParams(window.location.search).get("show");
   const state = useSyncExternalStore(console_.subscribe, console_.getState);
+  // §13 command line slice (bead 7rf.1): one store, a second read surface.
+  const command = useSyncExternalStore(console_.subscribe, console_.getCmdline);
   const busy = state.loadingFile !== null;
 
   useEffect(() => installHeadlessConsole(), []);
@@ -50,6 +53,24 @@ export default function App() {
   // navigation. Esc closes; Ctrl/Cmd+F opens with a file loaded only.
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
+      // §13/: over the table pre-fills the field with ':' and focuses it
+      // (§14 hotkey list). A ':' typed inside any text input (the cmdline
+      // field itself, the panel searches) types normally.
+      if (e.key === ":" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const source = e.target;
+        if (
+          !(
+            source instanceof HTMLInputElement ||
+            source instanceof HTMLTextAreaElement ||
+            source instanceof HTMLSelectElement ||
+            (source instanceof HTMLElement && source.isContentEditable)
+          )
+        ) {
+          e.preventDefault();
+          console_.activateCmdline();
+          return;
+        }
+      }
       const current = console_.getState();
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         if (current.file !== null && current.search.open === false) {
@@ -250,6 +271,15 @@ export default function App() {
         <button className="bar-btn" onClick={reload} disabled={busy || !state.file}>
           Reload
         </button>
+        {/* §11.1/§13: the flat command input sits between Reload and the
+            status area (see CmdLine.tsx for the keyboard rules). */}
+        <CmdLine
+          command={command}
+          onText={(text) => console_.setCommandText(text)}
+          onSubmit={() => void console_.submitCommand()}
+          onClear={() => console_.clearCommand()}
+          onRecall={(dir) => console_.recallCommandHistory(dir)}
+        />
         {busy && <span className="status">{status}</span>}
         {state.file && !busy && (
           <span className="status">

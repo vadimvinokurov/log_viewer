@@ -8,6 +8,7 @@ import type { VisibilityState } from "./state";
 import { buildTree, propagateToggle, toggleAll } from "./categories";
 import { ipc } from "./ipcClient";
 import { exactPinIdsCovering } from "./pins";
+import { appendHistory, initialCmdlineState, recallHistory, resolveCommand, type CmdlineState } from "./cmdline";
 import {
   remapSelection,
   resolveLineIndex,
@@ -43,6 +44,14 @@ export interface ConsoleSnapshot {
     /** The current match's visible row index; null when there are none. */
     currentVisibleIndex: number | null;
   };
+  /** §13 command line (bead 7rf.1): the field text, the in-session history
+   *  (chronological) and the recall cursor (historyIndex = history.length is
+   *  the empty draft past the newest entry). */
+  command: {
+    value: string;
+    history: string[];
+    historyIndex: number;
+  };
 }
 
 /** Copy column selection: raw file lines or the Message column (§4). */
@@ -62,6 +71,23 @@ class UiConsole {
   private state: AppState = initialAppState();
   private listeners = new Set<() => void>();
   private table: TableHandle | null = null;
+  /** §13 command line slice (bead 7rf.1); kept OUTSIDE the reducer because
+   *  state.ts is the load/filter/search domain (the slice rides the same
+   *  listener set through getCmdline). */
+  private cmdline: CmdlineState = initialCmdlineState();
+
+  /** The command-line slice as a STABLE reference for useSyncExternalStore. */
+  getCmdline = (): CmdlineState => this.cmdline;
+
+  /** The recall cursor of the field (0..history.length; length = the empty
+   *  draft) — a snapshot convenience asserted by the tests. */
+  getCommandHistoryIndex = (): number => this.cmdline.historyIndex;
+
+  /** Replaces the slice immutably and notifies the store's listeners. */
+  private setCmdline = (next: CmdlineState): void => {
+    this.cmdline = next;
+    this.listeners.forEach((l) => l());
+  };
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -101,6 +127,11 @@ class UiConsole {
         expanded: [...this.state.panel.expanded],
       },
       search: this.searchSnapshot(),
+      command: {
+        value: this.cmdline.value,
+        history: [...this.cmdline.history],
+        historyIndex: this.cmdline.historyIndex,
+      },
     };
   }
 
@@ -479,6 +510,94 @@ class UiConsole {
   /** §9 rmh wholesale removal (the cmdline epic wires the :rmh command). */
   clearAllHighlights = (): Promise<ConsoleSnapshot> =>
     this.mutateHighlights(() => ipc().clearHighlights());
+
+  // ---- §13 command line (bead 7rf.1) ----
+
+  /** §13 :rmf — clears every filter with one refetch (rmh/rmp live above).
+   *  The wholesale clears have exactly one function each (§13.1). */
+  clearAllFilters = (): Promise<ConsoleSnapshot> =>
+    this.mutateVisibility(() => ipc().clearFilters());
+
+  /** Typing dispatches immediately and rewinds the recall cursor to the
+   *  empty-draft end (a typed text is not a history position). A non-string
+   *  argument (the untyped JS mirror boundary) coerces to "". */
+  setCommandText = (text: string): void => {
+    const value = typeof text === "string" ? text : "";
+    this.setCmdline({ ...this.cmdline, value, historyIndex: this.cmdline.history.length });
+  };
+
+  /** ':'-activation over the table (§13): the field gains the text ':' and
+   *  the component focuses it with the caret after it (focusTick). */
+  activateCmdline = (): void => {
+    this.setCmdline({
+      ...this.cmdline,
+      value: ":",
+      focusTick: this.cmdline.focusTick + 1,
+      historyIndex: this.cmdline.history.length,
+    });
+  };
+
+  /** Esc (§13): the field clears, the recall cursor resets; the component
+   *  returns the focus to the table by blurring the input. */
+  clearCommand = (): void => {
+    this.setCmdline({ ...this.cmdline, value: "", historyIndex: this.cmdline.history.length });
+  };
+
+  /** ↑/↓ (§13.2 session part): over the in-session history, up = older,
+   *  down = newer; past the newest entry the field falls back to "". */
+  recallCommandHistory = (dir: number): void => {
+    const step = recallHistory(this.cmdline.history, this.cmdline.historyIndex, dir >= 0 ? 1 : -1);
+    this.setCmdline({ ...this.cmdline, value: step.text, historyIndex: step.index });
+  };
+
+  /** Enter (§13): submits the CURRENT FIELD TEXT. */
+  submitCommand = (): Promise<ConsoleSnapshot> => this.submitText(this.cmdline.value);
+
+  /** §13 execute: one submitted text goes through the whole atomic flow —
+   *  validate against the §13.1 registry FIRST, then dispatch the single
+   *  wire action (every registry command is one backend call, so no partial
+   *  execution is possible); failures surface through the existing error
+   *  channel (the footer status area, §13.1) and NOTHING is sent. §13.2
+   *  session part: every entered command joins the history (empty ones do
+   *  not; consecutive duplicates collapse), and the field clears on submit.
+   *  A bare/empty submission is a no-op (§13 boundary rule; see cmdline.ts). */
+  executeCommand = (text: string): Promise<ConsoleSnapshot> => this.submitText(text);
+
+  private submitText = (text: string): Promise<ConsoleSnapshot> => {
+    const history = appendHistory(this.cmdline.history, text);
+    this.setCmdline({ ...this.cmdline, value: "", historyIndex: history.length, history });
+    const result = resolveCommand(text, this.state.file?.load.lineCount ?? 0);
+    if (result.ok) {
+      // §13.1 (live round): the footer message is the LAST command's — a
+      // successful command clears a previous failure. The clear rides the
+      // load-error channel (the only error slot; "" is falsy, the footer
+      // hides it) and NEVER fires while a load is in flight: the event
+      // would drop the load's loading marker. When the command fails on
+      // the wire below, the real error lands over it.
+      if (this.state.loadingFile === null && this.state.error !== null && this.state.error !== "") {
+        this.dispatch({ kind: "load-error", message: "" });
+      }
+      const command = result.command;
+      if (command.kind === "clear") {
+        return command.area === "filters"
+          ? this.clearAllFilters()
+          : command.area === "highlights"
+            ? this.clearAllHighlights()
+            : this.clearAllPins();
+      }
+      return command.area === "filters"
+        ? this.addFilter(command.mode, command.pattern)
+        : command.area === "highlights"
+          ? this.addHighlight(command.mode, command.pattern)
+          : this.addPin(command.mode, command.pattern);
+    }
+    if (result.error !== null) {
+      // §13.1: the message is shown to the user and the command is NOT
+      // executed (not even partially) — nothing reached the wire above.
+      this.dispatch({ kind: "load-error", message: result.error });
+    }
+    return Promise.resolve(this.getSnapshot());
+  };
 
   // ---- §10.1 side panel (bead rhl.2) ----
 

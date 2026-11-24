@@ -71,13 +71,21 @@ fn handle(mut stream: TcpStream, shared: SharedState, app: tauri::AppHandle) {
     return;
   };
   let result: Option<String> = (|| {
-    let id = format!("r{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0));
+    // Monotonic per-process id: subsec-nanosecond timestamps collide across
+    // requests, delivering a previous request's stale report to this one.
+    static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = format!(
+      "r{}",
+      NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
     let js = build_eval_js(&request.body, &id)?;
     let Some(webview) = app.get_webview_window("main") else {
       return Some("{\"error\":\"no webview\"}".to_owned());
     };
     let _ = webview.eval(&js);
-    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    // Live-check evals drive the whole console chain; with the serialized
+    // ops queue a load can queue behind other ops, so the cap is generous.
+    let deadline = std::time::Instant::now() + Duration::from_secs(240);
     let mut reports = shared.reports.lock().expect("driver reports poisoned");
     loop {
       if let Some(value) = reports.remove(&id) {

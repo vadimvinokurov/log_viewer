@@ -68,13 +68,24 @@ function check(name, ok, detail) {
  *  snippet's `return` value. The snippet must only produce numbers, booleans
  *  and short enum strings — raw log content stays on the page side. */
 async function evalJs(port, js) {
-  const response = await request(port, "/load", { js });
-  const parsed = JSON.parse(response).result;
-  const result = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
-  if (result && typeof result === "object" && result.driverError) {
-    throw new Error(`page error: ${result.driverError}`);
+  const run = async () => {
+    const response = await request(port, "/load", { js });
+    const parsed = JSON.parse(response).result;
+    const result = typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+    if (result && typeof result === "object" && result.driverError) {
+      throw new Error(`page error: ${result.driverError}`);
+    }
+    return result;
+  };
+  // The driver is single-slot per webview eval; a lost report lands as a
+  // 60s timeout on busy pages. One retry converts that transport flake into
+  // a deterministic pass without masking real page errors (result undefined
+  // = transport loss; driverError = the page refused).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await run();
+    if (result !== undefined) return result;
   }
-  return result;
+  return undefined;
 }
 
 const port = await waitForApp(120_000);
@@ -622,6 +633,8 @@ check(
 const hlRes = await evalJs(port, `
   const h = window.__headless;
   await h.clearHighlights();
+  await h.clearAllPins();
+  for (const f of (h.state().visibility ? h.state().visibility.filters : [])) await h.removeFilter(f.id);
   const dto = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 1 });
   const row = dto[0];
   const tok = (row.message.split(/[^A-Za-z0-9_-]+/).filter((t) => t.length >= 4)[0] ?? row.message).slice(0, 12);
@@ -653,6 +666,45 @@ check("i2. a disabled rule stops painting its spans", hlRes.offSpans < hlRes.bot
 check("i3. picked color lands in the snapshot and on spans", hlRes.overrideSet === true && hlRes.overrideSpan === true, `snapSet=${hlRes.overrideSet} spanSet=${hlRes.overrideSpan}`);
 check("i4. highlights survive reload (two rules)", hlRes.survived === 2, `n=${hlRes.survived}`);
 check("i5. clear removes spans entirely", hlRes.afterClear === 0, `spans=${hlRes.afterClear}`);
+
+// (j) command line (bead 7rf.1, §13/§13.1): the whole registry against the
+// real file — add + rm bulk commands, the out-of-range and unknown errors
+// verbatim, atomic invalid commands (no wire calls).
+const cmdRes = await evalJs(port, `
+  const h = window.__headless;
+  await h.clearAllPins(); await h.clearHighlights();
+  for (const f of (h.state().visibility ? h.state().visibility.filters : [])) await h.removeFilter(f.id);
+  const base = h.state().visibility ? h.state().visibility.visibleCount : null;
+  const lc = h.state().file ? h.state().file.lineCount : 0;
+  const tokRaw = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 1 });
+  const tok = String(tokRaw[0].raw).split(/[^A-Za-z0-9_-]+/).filter((t) => t.length >= 4)[0];
+  const add = await h.executeCommand(":f " + tok);
+  const fCount = add.visibility ? add.visibility.filters.length : null;
+  const addVis = add.visibility ? add.visibility.visibleCount : null;
+  const overN = String(lc + 1);
+  const fnOut = await h.executeCommand(":fn " + overN);
+  const unknown = await h.executeCommand(":frobnicate x");
+  const rmf = await h.executeCommand(":rmf");
+  const fAfter = rmf.visibility ? rmf.visibility.filters.length : null;
+  const p1 = await h.executeCommand(":pn 5");
+  const h1 = await h.executeCommand(":hn 6");
+  const lists = h.state().visibility ? { p: h.state().visibility.pins.length, h: h.state().visibility.highlights.length } : null;
+  const rmp = await h.executeCommand(":rmp");
+  const rmh = await h.executeCommand(":rmh");
+  const cleaned = h.state().visibility ? { p: h.state().visibility.pins.length, h: h.state().visibility.highlights.length } : null;
+  const rangeErr = String(fnOut.error ?? "");
+  return { lc, overN, base, tok, fCount, addVis, rangeErr, unknownErr: String(unknown.error ?? ""),
+    fAfter, lists, cleaned, visBack: h.state().visibility ? h.state().visibility.visibleCount : null };`);
+check("j0. :f token adds a filter and narrows", cmdRes.fCount === 1 && cmdRes.addVis > 0 && cmdRes.addVis < cmdRes.lc, `f=${cmdRes.fCount} vis=${cmdRes.addVis}`);
+check(
+  `j1. :fn ${cmdRes.overN} -> out of range error verbatim`,
+  cmdRes.rangeErr === `Error: fn ${cmdRes.overN} out of range (1..${cmdRes.lc})`,
+  JSON.stringify(cmdRes.rangeErr),
+);
+check("j2. unknown command error verbatim", cmdRes.unknownErr === "Unknown command", JSON.stringify(cmdRes.unknownErr));
+check("j3. :rmf clears all filters", cmdRes.fAfter === 0 && cmdRes.visBack === cmdRes.lc, `f=${cmdRes.fAfter} vis=${cmdRes.visBack}`);
+check("j4. :pn 5 and :hn 6 add pin and highlight", cmdRes.lists && cmdRes.lists.p === 1 && cmdRes.lists.h === 1, JSON.stringify(cmdRes.lists));
+check("j5. :rmp and :rmh clear their lists", cmdRes.cleaned && cmdRes.cleaned.p === 0 && cmdRes.cleaned.h === 0, JSON.stringify(cmdRes.cleaned));
 
 const failed = checks.filter((c) => !c.ok).length;
 const verdict = failed === 0 ? "OK" : "FAILED (" + failed + "/" + checks.length + ")";

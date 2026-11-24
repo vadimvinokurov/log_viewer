@@ -77,6 +77,20 @@ export function installHeadlessConsole(): () => void {
     setSearchMode: (mode?: unknown) => console_.setSearchMode(typeof mode === "string" ? mode : ""),
     setSearchQuery: (query?: unknown) => console_.setSearchQuery(typeof query === "string" ? query : ""),
     nextMatch: (dir?: unknown) => console_.nextMatch(typeof dir === "number" ? dir : 0),
+    /** §13 command line (bead 7rf.1): executeCommand runs the registry flow
+     *  (validate-then-dispatch; errors surface through the error channel),
+     *  the rest mirrors the field — typing, ↑/↓ recall, Esc clear and the
+     *  ':'-activation. Non-string arguments coerce (untyped JS boundary). */
+    executeCommand: (text?: unknown) =>
+      console_.executeCommand(typeof text === "string" ? text : ""),
+    setCommandText: (text?: unknown) =>
+      console_.setCommandText(typeof text === "string" ? text : ""),
+    recallCommandHistory: (dir?: unknown) =>
+      console_.recallCommandHistory(typeof dir === "number" ? dir : 0),
+    clearCommand: () => console_.clearCommand(),
+    activateCmdline: () => console_.activateCmdline(),
+    /** State of the §13 field incl. the in-session history. */
+    cmdline: () => console_.getCmdline(),
     /** Installs an IPC stub for headless visual runs. */
     stubIpc: (stub: unknown) => {
       (window as unknown as Record<string, unknown>).__ipcStub = stub;

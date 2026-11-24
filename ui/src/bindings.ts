@@ -50,6 +50,8 @@ export const commands = {
 	 *  cmdline flows call it wholesale).
 	 */
 	clearPins: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_pins", undefined, options),
+	/**  Drop every filter at once (§13: the rmf command). */
+	clearFilters: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_filters", undefined, options),
 	/**
 	 *  Toggle a level by its lowercase long name ("critical".."trace", same
 	 *  spellings as the snapshot's level lists).

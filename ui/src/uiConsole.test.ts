@@ -93,6 +93,10 @@ function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
       pins.length = 0;
       return null;
     },
+    clearFilters: async () => {
+      filters.length = 0;
+      return null;
+    },
     addHighlight: async (mode: string, pattern: string) => {
       if (options.failMutation === "addHighlight") throw new Error("no such mode");
       highlights.push({
@@ -197,6 +201,7 @@ function sequenceStub(options: { failMutation?: string } = {}): SequenceStub {
     setPinEnabled: async () => null,
     removePin: async () => null,
     clearPins: async () => null,
+    clearFilters: async () => null,
     setLevelEnabled: async (level: string, on: boolean) => {
       if (level !== "trace") throw new Error(`no such level: ${level}`);
       if (options.failMutation === "setLevel") throw new Error("ipc down");
@@ -461,6 +466,7 @@ function categoryStub() {
     setPinEnabled: async () => null,
     removePin: async () => null,
     clearPins: async () => null,
+    clearFilters: async () => null,
     setLevelEnabled: async () => null,
     setCategoryEnabled: async (path, on) => {
       calls.push((on ? "+" : "-") + path);
@@ -675,6 +681,7 @@ function searchStub(): SearchStub {
     setPinEnabled: async () => null,
     removePin: async () => null,
     clearPins: async () => null,
+    clearFilters: async () => null,
     setLevelEnabled: async (level: string, on: boolean) => {
       if (level !== "msg") throw new Error(`no such level: ${level}`);
       msgOn.value = on;
@@ -1029,6 +1036,7 @@ function deferredSearchStub(): DeferredSearchStub {
     setPinEnabled: async () => null,
     removePin: async () => null,
     clearPins: async () => null,
+    clearFilters: async () => null,
     setLevelEnabled: async (level: string, on: boolean) => {
       if (level !== "msg") throw new Error(`no such level: ${level}`);
       msgOn.value = on;
@@ -1224,6 +1232,7 @@ function categoryBurstStub(): BurstStub {
     setPinEnabled: async () => null,
     removePin: async () => null,
     clearPins: async () => null,
+    clearFilters: async () => null,
     setLevelEnabled: async () => null,
     setCategoryEnabled: async (path: string, on: boolean) => {
       if (path !== "a" && path !== "b") throw new Error("no such category");
@@ -1375,6 +1384,10 @@ describe("pin selection actions (q1f.1, §12)", () => {
       clearPins: async () => {
         calls.push({ fn: "clearPins", args: [] });
         pins.length = 0;
+        return null;
+      },
+      clearFilters: async () => {
+        calls.push({ fn: "clearFilters", args: [] });
         return null;
       },
       setLevelEnabled: async () => null,
@@ -1641,6 +1654,7 @@ function loadStub(options: {
     },
     setCategoryEnabled: async () => null,
     clearPins: async () => null,
+    clearFilters: async () => null,
     addHighlight: async () => null,
     setHighlightEnabled: async () => null,
     setHighlightColor: async () => null,
@@ -1726,5 +1740,315 @@ describe("load/visibility snapshot guarantee (live round 4)", () => {
     const second = await console_.load("/tmp/log.txt");
     expect(second.visibility?.visibleCount).toBe(42);
     expect(stub.servedCounts).toEqual([42, 42]);
+  });
+});
+
+describe("console command line (bead 7rf.1, §13/§13.1)", () => {
+  /** RAW stub with an in-memory filter/pin/highlight model and a call log:
+   *  line_count 12 (fn/hn/pn range 1..12); every wire call is recorded so
+   *  the tests can assert that an invalid command makes ZERO calls. */
+  interface CmdStub extends RawIpc {
+    addFilterCalls(): { mode: string; pattern: string }[];
+    addPinCalls(): { mode: string; pattern: string }[];
+    addHighlightCalls(): { mode: string; pattern: string }[];
+    clearCalls(): string[];
+  }
+
+  function cmdStub(): CmdStub {
+    const lines: Record<string, { mode: string; pattern: string }[]> = {
+      filters: [], pins: [], highlights: [],
+    };
+    const added: Record<string, { mode: string; pattern: string }[]> = {
+      filters: [], pins: [], highlights: [],
+    };
+    const cleared: string[] = [];
+    const counters: Record<string, number> = { filters: 0, pins: 0, highlights: 0 };
+    return {
+      addFilterCalls: () => added.filters,
+      addPinCalls: () => added.pins,
+      addHighlightCalls: () => added.highlights,
+      clearCalls: () => cleared,
+      pickFile: async () => null,
+      loadFile: async () => ({
+        format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+      }),
+      getRows: async () => [],
+      addFilter: async (mode: string, pattern: string) => {
+        counters.filters += 1;
+        added.filters.push({ mode, pattern });
+        lines.filters.push({ mode, pattern });
+        return null;
+      },
+      setFilterEnabled: async () => null,
+      removeFilter: async () => null,
+      addPin: async (mode: string, pattern: string) => {
+        counters.pins += 1;
+        added.pins.push({ mode, pattern });
+        lines.pins.push({ mode, pattern });
+        return null;
+      },
+      setPinEnabled: async () => null,
+      removePin: async () => null,
+      clearPins: async () => { cleared.push("clearPins"); lines.pins.length = 0; return null; },
+      clearFilters: async () => { cleared.push("clearFilters"); lines.filters.length = 0; return null; },
+      addHighlight: async (mode: string, pattern: string) => {
+        counters.highlights += 1;
+        added.highlights.push({ mode, pattern });
+        lines.highlights.push({ mode, pattern });
+        return null;
+      },
+      setHighlightEnabled: async () => null,
+      setHighlightColor: async () => null,
+      removeHighlight: async () => null,
+      clearHighlights: async () => { cleared.push("clearHighlights"); lines.highlights.length = 0; return null; },
+      setLevelEnabled: async () => null,
+      setCategoryEnabled: async () => null,
+      searchVisible: async () => ({ total: 0, positions: [] }),
+      visibilitySnapshot: async () => ({
+        visible_count: 12,
+        levels: ["critical", "error", "warning", "msg", "debug", "trace"].map((level) => ({
+          level, enabled: true, count: 2,
+        })),
+        filters: lines.filters.map((f, id) => ({ ...f, id, enabled: true })),
+        pins: lines.pins.map((p, id) => ({ ...p, id, enabled: true })),
+        highlights: lines.highlights.map((h, id) => ({
+          ...h, id, enabled: true, color_index: 0, override_color: null,
+        })),
+        categories_enabled: ["app/db"],
+      }),
+    };
+  }
+
+  async function loaded(): Promise<{ console_: Console; stub: CmdStub }> {
+    const stub = cmdStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    return { console_, stub };
+  }
+
+  it("adds pattern filters through the registry: :f / :fr / :fs", async () => {
+    const { console_, stub } = await loaded();
+    await console_.executeCommand(":f timeout");
+    await console_.executeCommand("fr ^retry.*"); // the ':' is optional in the field
+    await console_.executeCommand(":fs (\"auth\" OR \"login\")");
+    expect(stub.addFilterCalls()).toEqual([
+      { mode: "plain", pattern: "timeout" },
+      { mode: "regex", pattern: "^retry.*" },
+      { mode: "simple", pattern: "(\"auth\" OR \"login\")" },
+    ]);
+    const snap = console_.getSnapshot();
+    expect(snap.error).toBeNull();
+    expect(snap.visibility?.filters.map((f) => f.mode)).toEqual(["plain", "regex", "simple"]);
+  });
+
+  it("adds lineno filters, highlights and pins: :fn / :hn / :pn", async () => {
+    const { console_, stub } = await loaded();
+    await console_.executeCommand(":fn 12");
+    await console_.executeCommand(":hn 7");
+    await console_.executeCommand(":pn 3");
+    expect(stub.addFilterCalls()).toEqual([{ mode: "lineno", pattern: "12" }]);
+    expect(stub.addHighlightCalls()).toEqual([{ mode: "lineno", pattern: "7" }]);
+    expect(stub.addPinCalls()).toEqual([{ mode: "lineno", pattern: "3" }]);
+  });
+
+  it("rmf/rmh/rmp clear wholesale with exactly one wire call each", async () => {
+    const { console_, stub } = await loaded();
+    await console_.executeCommand(":f timeout");
+    await console_.executeCommand(":h timeout");
+    await console_.executeCommand(":p cfg");
+    await console_.executeCommand(":rmf");
+    await console_.executeCommand(":rmh");
+    await console_.executeCommand("rmp");
+    expect(stub.clearCalls()).toEqual(["clearFilters", "clearHighlights", "clearPins"]);
+    const snap = console_.getSnapshot();
+    expect(snap.visibility?.filters).toEqual([]);
+    expect(snap.visibility?.highlights).toEqual([]);
+    expect(snap.visibility?.pins).toEqual([]);
+  });
+
+  it("an unknown command surfaces the verbatim error and makes NO wire call", async () => {
+    const { console_, stub } = await loaded();
+    const snap = await console_.executeCommand(":unknown value");
+    expect(snap.error).toBe("Unknown command");
+    expect(stub.addFilterCalls()).toEqual([]);
+    expect(stub.addPinCalls()).toEqual([]);
+    expect(stub.addHighlightCalls()).toEqual([]);
+    expect(stub.clearCalls()).toEqual([]);
+  });
+
+  it("a missing argument and a range break surface an error with no partial execution", async () => {
+    const { console_, stub } = await loaded();
+    let snap = await console_.executeCommand(":f");
+    expect(snap.error).toBe("Error: f requires a pattern");
+    snap = await console_.executeCommand(":fn 13");
+    expect(snap.error).toBe("Error: fn 13 out of range (1..12)");
+    snap = await console_.executeCommand(":rmf oops");
+    expect(snap.error).toBe("Error: rmf takes no arguments");
+    expect(stub.addFilterCalls()).toEqual([]);
+    expect(stub.clearCalls()).toEqual([]);
+    // The failed commands kept the state intact.
+    expect(snap.visibility?.filters).toEqual([]);
+  });
+
+  it("a back-end failure on a VALID command surfaces through the existing error channel", async () => {
+    const { console_ } = await loaded();
+    const target = window as unknown as Record<string, unknown>;
+    const stub = target.__ipcStub as RawIpc;
+    stub.addFilter = async () => { throw new Error("no such mode"); };
+    const snap = await console_.executeCommand(":fr [bad");
+    expect(snap.error).toContain("no such mode");
+  });
+
+  it("an empty submission is a no-op: no error, no wire call, nothing stored", async () => {
+    const { console_, stub } = await loaded();
+    const snap = await console_.executeCommand("   ");
+    expect(snap.error).toBeNull();
+    expect(stub.addFilterCalls()).toEqual([]);
+    expect(console_.getCmdline().history).toEqual([]);
+  });
+
+  it("submissions clear the field and enter the in-session history with dedupe", async () => {
+    const { console_ } = await loaded();
+    console_.setCommandText(":f a");
+    await console_.submitCommand();
+    expect(console_.getCmdline().value).toBe("");
+    console_.setCommandText("f b");
+    await console_.submitCommand();
+    console_.setCommandText("f b");
+    await console_.submitCommand(); // consecutive duplicate
+    expect(console_.getCmdline().history).toEqual([":f a", "f b"]);
+    expect(console_.getCommandHistoryIndex()).toBe(2);
+  });
+
+  it("failed, invalid and unknown commands enter the history too (they were entered)", async () => {
+    const { console_ } = await loaded();
+    await console_.executeCommand(":f");
+    await console_.executeCommand(":unknown 1");
+    expect(console_.getCmdline().history).toEqual([":f", ":unknown 1"]);
+  });
+
+  it("recallHistory walks the history through the snapshot: up = older, down = newer, past the end = empty", async () => {
+    const { console_ } = await loaded();
+    await console_.executeCommand(":f a");
+    await console_.executeCommand(":f b");
+    expect(console_.getSnapshot().command.history).toEqual([":f a", ":f b"]);
+    console_.recallCommandHistory(-1);
+    expect(console_.getCmdline().value).toBe(":f b");
+    console_.recallCommandHistory(-1);
+    expect(console_.getCmdline().value).toBe(":f a");
+    console_.recallCommandHistory(-1); // clamped at the oldest
+    expect(console_.getCmdline().value).toBe(":f a");
+    console_.recallCommandHistory(1);
+    console_.recallCommandHistory(1);
+    expect(console_.getSnapshot().command.value).toBe("");
+    expect(console_.getSnapshot().command.historyIndex).toBe(2);
+  });
+
+  it("typing after a recall rewinds the cursor; the ':' activation pre-fills ':' and bumps focusTick", async () => {
+    const { console_ } = await loaded();
+    await console_.executeCommand(":f a");
+    console_.recallCommandHistory(-1);
+    console_.setCommandText(":f b");
+    expect(console_.getCmdline().value).toBe(":f b");
+    expect(console_.getCommandHistoryIndex()).toBe(1);
+    const before = console_.getCmdline().focusTick;
+    console_.activateCmdline();
+    const cmd = console_.getCmdline();
+    expect(cmd.value).toBe(":");
+    expect(cmd.focusTick).toBe(before + 1);
+    // Activation is not a history event.
+    expect(cmd.history).toEqual([":f a"]);
+  });
+});
+
+describe("console command line live-round (bead 7rf.1, §13.1 branches + error lifetime)", () => {
+  /** The same RAW stub shape as the cmdline describe (line_count 12). */
+  function cmdStub(): RawIpc & { addFilterCalls(): { mode: string; pattern: string }[] } {
+    const filters: { mode: string; pattern: string }[] = [];
+    const added: { mode: string; pattern: string }[] = [];
+    return {
+      addFilterCalls: () => added,
+      pickFile: async () => null,
+      loadFile: async () => ({
+        format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+      }),
+      getRows: async () => [],
+      addFilter: async (mode: string, pattern: string) => {
+        added.push({ mode, pattern });
+        filters.push({ mode, pattern });
+        return null;
+      },
+      setFilterEnabled: async () => null,
+      removeFilter: async () => null,
+      addPin: async () => null,
+      setPinEnabled: async () => null,
+      removePin: async () => null,
+      clearPins: async () => null,
+      clearFilters: async () => null,
+      addHighlight: async () => null,
+      setHighlightEnabled: async () => null,
+      setHighlightColor: async () => null,
+      removeHighlight: async () => null,
+      clearHighlights: async () => null,
+      setLevelEnabled: async () => null,
+      setCategoryEnabled: async () => null,
+      searchVisible: async () => ({ total: 0, positions: [] }),
+      visibilitySnapshot: async () => ({
+        visible_count: 12,
+        levels: ["critical", "error", "warning", "msg", "debug", "trace"].map((level) => ({
+          level, enabled: true, count: 2,
+        })),
+        filters: filters.map((f, id) => ({ ...f, id, enabled: true })),
+        pins: [],
+        highlights: [],
+        categories_enabled: ["app/db"],
+      }),
+    };
+  }
+
+  async function loaded(): Promise<{ console_: Console; stub: ReturnType<typeof cmdStub> }> {
+    const stub = cmdStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    return { console_, stub };
+  }
+
+  it("a successful command clears the previous error (the message is the LAST command's)", async () => {
+    const { console_ } = await loaded();
+    const failed = await console_.executeCommand(":unknown value");
+    expect(failed.error).toBe("Unknown command");
+    const ok = await console_.executeCommand(":fn 1");
+    expect(ok.error).toBe(""); // cleared through the load-error channel (falsy in the footer)
+    expect(ok.visibility?.filters).toEqual([
+      { id: 0, mode: "lineno", pattern: "1", enabled: true },
+    ]);
+    // Clearing never fires while a load is in flight (the event would drop
+    // the loading marker): covered by the busy guard in the console.
+  });
+
+  it(":fn 999999 on a 12-line file is the verbatim range error with NO filter added", async () => {
+    const { console_, stub } = await loaded();
+    const snap = await console_.executeCommand(":fn 999999");
+    expect(snap.error).toBe("Error: fn 999999 out of range (1..12)");
+    expect(stub.addFilterCalls()).toEqual([]);
+    expect(snap.visibility?.filters).toEqual([]);
+  });
+
+  it("a non-integer arg is the arg-format error for fn/hn/pn with no wire call", async () => {
+    const { console_, stub } = await loaded();
+    let snap = await console_.executeCommand(":fn abc");
+    expect(snap.error).toBe("Error: fn requires a line number");
+    snap = await console_.executeCommand(":hn 12.5");
+    expect(snap.error).toBe("Error: hn requires a line number");
+    snap = await console_.executeCommand(":pn -3");
+    expect(snap.error).toBe("Error: pn -3 out of range (1..12)"); // -3 is an integer: range branch
+    expect(stub.addFilterCalls()).toEqual([]);
+  });
+
+  it("an integer inside 1..line_count still executes (fn 1 adds the lineno filter)", async () => {
+    const { console_, stub } = await loaded();
+    const snap = await console_.executeCommand(":fn 1");
+    expect(snap.error).toBeNull(); // no error at all on a clean success
+    expect(stub.addFilterCalls()).toEqual([{ mode: "lineno", pattern: "1" }]);
   });
 });

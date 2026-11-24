@@ -241,6 +241,7 @@ describe("mutation pass-through", () => {
       setPinEnabled: (id, on) => rec("setPinEnabled")(id, on),
       removePin: (id) => rec("removePin")(id),
       clearPins: () => rec("clearPins")(),
+      clearFilters: () => rec("clearFilters")(),
       setLevelEnabled: (level, on) => rec("setLevelEnabled")(level, on),
       setCategoryEnabled: (path, on) => rec("setCategoryEnabled")(path, on),
     });
@@ -252,6 +253,7 @@ describe("mutation pass-through", () => {
     await expect(client.setPinEnabled(0, false)).resolves.toBeNull();
     await expect(client.removePin(0)).resolves.toBeNull();
     await expect(client.clearPins()).resolves.toBeNull();
+    await expect(client.clearFilters()).resolves.toBeNull();
     await expect(client.setLevelEnabled("trace", false)).resolves.toBeNull();
     await expect(client.setCategoryEnabled("app/db", false)).resolves.toBeNull();
     expect(calls).toEqual([
@@ -262,6 +264,7 @@ describe("mutation pass-through", () => {
       { fn: "setPinEnabled", args: [0, false] },
       { fn: "removePin", args: [0] },
       { fn: "clearPins", args: [] },
+      { fn: "clearFilters", args: [] },
       { fn: "setLevelEnabled", args: ["trace", false] },
       { fn: "setCategoryEnabled", args: ["app/db", false] },
     ]);
@@ -282,6 +285,7 @@ function emptyRaw(): RawIpc {
     setPinEnabled: async () => null,
     removePin: async () => null,
     clearPins: async () => null,
+    clearFilters: async () => null,
     setLevelEnabled: async () => null,
     setCategoryEnabled: async () => null,
     addHighlight: async () => null,

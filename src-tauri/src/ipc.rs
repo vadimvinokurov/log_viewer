@@ -359,6 +359,19 @@ pub(crate) fn clear_pins_inner(vis: &VisState) -> Result<(), String> {
   Ok(())
 }
 
+/// Drop every filter (§13: the rmf command); the engine stores only
+/// compiled matchers, so the same front-popping clearing applies.
+pub(crate) fn clear_filters_inner(vis: &VisState) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  while !guard.filter_meta.is_empty() {
+    // Both lists are parallel: remove the same front index from each.
+    guard.vis.remove_filter(0);
+    guard.filter_meta.remove(0);
+  }
+  guard.invalidate();
+  Ok(())
+}
+
 pub(crate) fn set_level_enabled_inner(vis: &VisState, level: &str, on: bool) -> Result<(), String> {
   let level = level_from_name(level)
     .ok_or_else(|| format!("no such level {level:?}: expected critical|error|warning|msg|debug|trace"))?;
@@ -931,6 +944,13 @@ pub async fn clear_pins(vis: tauri::State<'_, VisState>) -> Result<(), String> {
   clear_pins_inner(&vis)
 }
 
+/// Drop every filter at once (§13: the rmf command).
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_filters(vis: tauri::State<'_, VisState>) -> Result<(), String> {
+  clear_filters_inner(&vis)
+}
+
 /// Toggle a level by its lowercase long name ("critical".."trace", same
 /// spellings as the snapshot's level lists).
 #[tauri::command]
@@ -1315,6 +1335,26 @@ mod tests {
     let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
     assert!(snap.pins.is_empty());
     assert_eq!(snap.visible_count, 0); // only the non-matching filter remains
+  }
+
+  // §13: clear_filters (the rmf command) drops every filter and invalidates
+  // the visible cache; pins and highlights are untouched.
+  #[test]
+  fn clear_filters_clears_all_and_invalidates() {
+    let (file, vis, _hl) = bridge(MIX, "clear_filters");
+    add_filter_inner(&vis, "plain", "failed").unwrap(); // line 1
+    add_filter_inner(&vis, "plain", "started").unwrap(); // line 2
+    add_pin_inner(&vis, "plain", "novelty").unwrap(); // matches nothing
+    add_highlight_inner(&_hl, "plain", ".").unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
+    assert_eq!(snap.filters.len(), 2);
+    assert_eq!(snap.visible_count, 2); // the pin's matcher matches nothing
+    clear_filters_inner(&vis).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
+    assert!(snap.filters.is_empty());
+    assert_eq!(snap.pins.len(), 1); // pins untouched
+    assert_eq!(snap.highlights.len(), 1); // highlights untouched
+    assert_eq!(snap.visible_count, 6); // no active filters: §7 passes all
   }
 
   // §12 + §2.1: a file reload clears all pins; filters survive. The pinned

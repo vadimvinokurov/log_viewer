@@ -158,6 +158,8 @@ export const STUB = `(function () {
       return null;
     },
     async clearPins() { pins.length = 0; return null; },
+    // §13 rmf (bead 7rf.1): the wholesale clear for the :rmf command.
+    async clearFilters() { filters.length = 0; return null; },
     // §9 highlights (exx.2): the rotation counter continues across removals
     // (core behavior, bead exx2-design); an unknown mode throws like the
     // backend Err; a non-numeric lineno keeps a never-matching rule slot.
