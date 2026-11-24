@@ -1586,3 +1586,145 @@ describe("highlight console actions (exx.2, §9)", () => {
     }
   });
 });
+
+// ---- load/visibility snapshot guarantee (live round 4) ----
+
+/** Stub whose visibilitySnapshot answers from a scripted queue: the first
+ *  call resolves with `firstCount` (immediately, or deferred until
+ *  `releaseFirst`), every later call with `later`. All snapshots report
+ *  every level enabled, no filters/pins and the full category whitelist —
+ *  only `visible_count` varies. */
+interface LoadStub extends RawIpc {
+  servedCounts: number[];
+  setLevelCalls: string[];
+  releaseFirst: (count: number) => void;
+}
+
+function loadStub(options: {
+  firstCount: number;
+  deferFirst?: boolean;
+  laterCount: number;
+}): LoadStub {
+  const servedCounts: number[] = [];
+  const setLevelCalls: string[] = [];
+  let release: ((count: number) => void) | null = null;
+  // A release may arrive before the deferred refetch is issued (the console
+  // serializes its operations on microtasks): park it and apply on issue.
+  let pendingRelease: number | null = null;
+  const fullWhitelist = ["app", "app/db"];
+  const snapshot = (count: number): VisibilitySnapshotDto => ({
+    visible_count: count,
+    levels: ["critical", "error", "warning", "msg", "debug", "trace"].map(
+      (level) => ({ level, enabled: true, count: 1 }),
+    ),
+    filters: [],
+    pins: [],
+    highlights: [],
+    categories_enabled: [...fullWhitelist],
+  });
+  return {
+    pickFile: async () => null,
+    loadFile: async () => ({
+      format: "plain", line_count: 42,
+      categories: [{ path: "app/db", count: 42 }], levels: [], load_ms: 1,
+    }),
+    getRows: async () => [],
+    addFilter: async () => null,
+    setFilterEnabled: async () => null,
+    removeFilter: async () => null,
+    addPin: async () => null,
+    setPinEnabled: async () => null,
+    removePin: async () => null,
+    setLevelEnabled: async (level: string, on: boolean) => {
+      setLevelCalls.push(level + ":" + String(on));
+      return null;
+    },
+    setCategoryEnabled: async () => null,
+    clearPins: async () => null,
+    addHighlight: async () => null,
+    setHighlightEnabled: async () => null,
+    setHighlightColor: async () => null,
+    removeHighlight: async () => null,
+    clearHighlights: async () => null,
+    searchVisible: async () => ({ total: 0, positions: [] }),
+    visibilitySnapshot: async (): Promise<VisibilitySnapshotDto> => {
+      if (servedCounts.length === 0) {
+        servedCounts.push(options.firstCount);
+        if (options.deferFirst) {
+          return new Promise((resolve) => {
+            const settle = (count: number) => {
+              servedCounts[servedCounts.length - 1] = count;
+              resolve(snapshot(count));
+            };
+            release = settle;
+            if (pendingRelease !== null) {
+              const parked = pendingRelease;
+              pendingRelease = null;
+              settle(parked);
+            }
+          });
+        }
+        return snapshot(options.firstCount);
+      }
+      servedCounts.push(options.laterCount);
+      return snapshot(options.laterCount);
+    },
+    servedCounts,
+    setLevelCalls,
+    releaseFirst: (count: number) => {
+      const r = release;
+      if (r === null) {
+        pendingRelease = count;
+        return;
+      }
+      r(count);
+    },
+  };
+}
+
+describe("load/visibility snapshot guarantee (live round 4)", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+  });
+
+  it("stuck-0 shell cache after a load heals: an impossible snapshot (0 visible, nothing disabled) triggers an idempotent rebuild round", async () => {
+    const stub = loadStub({ firstCount: 0, laterCount: 42 });
+    const { console_ } = await freshConsole(stub);
+    const snap = await console_.load("/tmp/log.txt");
+    // The returned snapshot must reflect the post-load backend state, not
+    // the stale cached mid-load one (visibleCount 0 while everything is
+    // enabled is impossible for a 42-row file).
+    expect(snap.error).toBeNull();
+    expect(snap.visibility?.visibleCount).toBe(42);
+    expect(console_.getSnapshot().visibility?.visibleCount).toBe(42);
+    expect(stub.setLevelCalls).toEqual(["critical:true"]);
+  });
+
+  it("a late in-flight refetch over an overlapping load never lands stale; both loads return the fresh state", async () => {
+    const stub = loadStub({ firstCount: 0, deferFirst: true, laterCount: 42 });
+    const { console_ } = await freshConsole(stub);
+    // Overlapping loads (the driver's retried /load requests hit the page
+    // like this): B's snapshot refetch may resolve before A's.
+    const loadA = console_.load("/tmp/first.txt");
+    const loadB = console_.load("/tmp/second.txt");
+    // A's refetch resolves LATE with the stale (0) content…
+    stub.releaseFirst(0);
+    const [snapA, snapB] = await Promise.all([loadA, loadB]);
+    // …but its landing must not regress the state, and neither load's
+    // returned snapshot may precede its own backend state.
+    expect(console_.getSnapshot().visibility?.visibleCount).toBe(42);
+    expect(snapA.visibility?.visibleCount).toBe(42);
+    expect(snapB.visibility?.visibleCount).toBe(42);
+  });
+
+  it("the reload path: a second load returns the fresh visibility too (plausible snapshots land untouched)", async () => {
+    const stub = loadStub({ firstCount: 42, laterCount: 42 });
+    const { console_ } = await freshConsole(stub);
+    const first = await console_.load("/tmp/log.txt");
+    expect(stub.setLevelCalls).toEqual([]); // no heal on a plausible snapshot
+    expect(first.visibility?.visibleCount).toBe(42);
+    const second = await console_.load("/tmp/log.txt");
+    expect(second.visibility?.visibleCount).toBe(42);
+    expect(stub.servedCounts).toEqual([42, 42]);
+  });
+});

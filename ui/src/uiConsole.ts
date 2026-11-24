@@ -188,9 +188,12 @@ class UiConsole {
     return this.table.copy(mode);
   };
 
-  /** load(path): resolves with the resulting snapshot (success or error). */
-  load = (path: string): Promise<ConsoleSnapshot> => {
-    return (async () => {
+  /** load(path): resolves with the resulting snapshot (success or error).
+   *  The visibility refetch is awaited BEFORE the return, inside the
+   *  serialized operation queue (live round 4: the returned/applied
+   *  snapshot must always reflect the post-mutation backend state). */
+  load = (path: string): Promise<ConsoleSnapshot> =>
+    this.enqueueVisibilityOp(async () => {
       this.dispatch({ kind: "load-request", path });
       try {
         const load = await ipc().loadFile(path);
@@ -206,20 +209,87 @@ class UiConsole {
         this.dispatch({ kind: "load-error", message: String(e) });
       }
       return this.getSnapshot();
-    })();
-  };
+    });
 
-  /** Refetches visibility_snapshot and applies it to the reducer. The §8
-   *  freshness recompute (open panel + query) schedules through the
-   *  dispatch hook — the epoch change alone moves the search's inputs. */
-  private refreshVisibility = async (): Promise<void> => {
-    try {
-      const snapshot = await ipc().visibilitySnapshot();
-      this.dispatch({ kind: "visibility", snapshot });
-    } catch (e) {
-      // §2: an error shows a message, the loaded data is not lost.
-      this.dispatch({ kind: "load-error", message: String(e) });
+  /** The snapshot is impossible for the loaded state — the shell's cached
+   *  visible sequence predates the file model (live round 4: a read that
+   *  runs between load_file's whitelist repopulate/invalidate and its
+   *  model swap caches the OLD model against the NEW whitelist and keeps
+   *  serving it until the next mutation): zero visible rows while the
+   *  file has rows and NOTHING is disabled. The engine would then return
+   *  every row, so the cache must be rebuilt. */
+  private snapshotImplausible(snapshot: VisibilityState): boolean {
+    const file = this.state.file;
+    if (file === null || snapshot.visibleCount !== 0 || file.load.lineCount === 0) {
+      return false;
     }
+    if (snapshot.levels.some((l) => !l.enabled)) {
+      return false;
+    }
+    if (snapshot.filters.length > 0 || snapshot.pins.length > 0) {
+      return false;
+    }
+    const enabled = new Set(snapshot.categoriesEnabled);
+    for (const { path } of file.load.categories) {
+      let prefix = path;
+      for (;;) {
+        if (!enabled.has(prefix)) {
+          return false;
+        }
+        const i = prefix.lastIndexOf("/");
+        if (i === -1) {
+          break;
+        }
+        prefix = prefix.slice(0, i);
+      }
+    }
+    return true;
+  }
+
+  /** Refetches visibility_snapshot and applies it to the reducer.
+   *  - Epoch-stable: a fetch that resolves after the state moved (an
+   *    overlapping refetch) predates the newest request and is refetched.
+   *  - Self-healing: an impossible snapshot (see snapshotImplausible)
+   *    triggers one round of an idempotent level re-set — the backend
+   *    invalidates its cached sequence on it — followed by a refetch
+   *    (bounded attempts). */
+  private refreshVisibility = async (): Promise<void> => {
+    for (let attempts = 0; attempts < 6; attempts += 1) {
+      const startEpoch = this.state.visibilityEpoch;
+      let snapshot: VisibilityState;
+      try {
+        snapshot = await ipc().visibilitySnapshot();
+      } catch (e) {
+        // §2: an error shows a message, the loaded data is not lost.
+        this.dispatch({ kind: "load-error", message: String(e) });
+        return;
+      }
+      if (this.state.visibilityEpoch !== startEpoch) {
+        continue;
+      }
+      if (this.snapshotImplausible(snapshot) && attempts < 4) {
+        // The idempotent re-set ("critical" already on) forces the
+        // backend's cache invalidation; the loop then refetches.
+        try {
+          await ipc().setLevelEnabled("critical", true);
+        } catch {
+          break;
+        }
+        continue;
+      }
+      this.dispatch({ kind: "visibility", snapshot });
+      return;
+    }
+    // Bounded attempts exhausted: land the last fetch verbatim (§2 keeps
+    // the data; the next mutation refetches anyway).
+    let snapshot: VisibilityState | null = null;
+    try {
+      snapshot = await ipc().visibilitySnapshot();
+    } catch (e) {
+      this.dispatch({ kind: "load-error", message: String(e) });
+      return;
+    }
+    this.dispatch({ kind: "visibility", snapshot });
   };
 
   /** 1-row probe of the visible sequence (contract dsq.3): get_rows(i, 1)
@@ -256,44 +326,54 @@ class UiConsole {
    *  the change (§4, qt7.3); an empty selection costs zero extra IPC.
    *  The mutating critical section covers the wire calls AND the snapshot
    *  refetch (the search recompute defers while it is up). */
-  private mutateVisibility = async (
-    mutator: () => Promise<unknown>,
-  ): Promise<ConsoleSnapshot> => {
-    const selected = [...this.state.selection.selected].sort((a, b) => a - b);
-    const remap = selected.length
-      ? await this.resolveRemapInput(selected)
-      : null;
-    this.mutating += 1;
-    try {
+  private mutateVisibility = (mutator: () => Promise<unknown>): Promise<ConsoleSnapshot> =>
+    this.enqueueVisibilityOp(async () => {
+      const selected = [...this.state.selection.selected].sort((a, b) => a - b);
+      const remap = selected.length
+        ? await this.resolveRemapInput(selected)
+        : null;
+      this.mutating += 1;
       try {
-        await mutator();
-      } catch (e) {
-        this.dispatch({ kind: "load-error", message: String(e) });
-        return this.getSnapshot();
+        try {
+          await mutator();
+        } catch (e) {
+          this.dispatch({ kind: "load-error", message: String(e) });
+          return this.getSnapshot();
+        }
+        await this.refreshVisibility();
+      } finally {
+        this.mutating -= 1;
       }
-      await this.refreshVisibility();
-    } finally {
-      this.mutating -= 1;
-    }
-    if (remap) {
-      const count = this.state.visibility?.visibleCount ?? 0;
-      const lineAt = this.lineAt;
-      const indexes = await remapSelection(remap.lines, count, lineAt);
-      const anchor =
-        remap.anchorLine === null
-          ? null
-          : await resolveLineIndex(remap.anchorLine, count, lineAt);
-      // Hidden pivot: the anchor clears, the remapped indexes stay.
-      this.dispatch({ kind: "selection-remap", indexes, anchor });
-    }
-    return this.getSnapshot();
+      if (remap) {
+        const count = this.state.visibility?.visibleCount ?? 0;
+        const lineAt = this.lineAt;
+        const indexes = await remapSelection(remap.lines, count, lineAt);
+        const anchor =
+          remap.anchorLine === null
+            ? null
+            : await resolveLineIndex(remap.anchorLine, count, lineAt);
+        // Hidden pivot: the anchor clears, the remapped indexes stay.
+        this.dispatch({ kind: "selection-remap", indexes, anchor });
+      }
+      return this.getSnapshot();
+    });
+
+  /** File and visibility mutations run strictly one at a time (loads
+   *  included): two overlapping console loads — the driver's retried
+   *  /load requests hit the page like this — must not interleave their
+   *  wire calls and snapshot refetches (live round 4). */
+  private visibilityOps: Promise<unknown> = Promise.resolve();
+
+  private enqueueVisibilityOp = <T>(op: () => Promise<T>): Promise<T> => {
+    const run = this.visibilityOps.then(() => op(), () => op());
+    this.visibilityOps = run.catch(() => undefined);
+    return run;
   };
 
   /** §11 level toggle; level = lowercase long name, the backend rejects
    *  unknown names (the text RPC is a string boundary, like the backend). */
   setLevel = (level: string, on: boolean): Promise<ConsoleSnapshot> =>
     this.mutateVisibility(() => ipc().setLevelEnabled(level, on));
-
   /** §10.1 filter RPC (mode ∈ plain|regex|simple|lineno, as the backend). */
   addFilter = (mode: string, pattern: string): Promise<ConsoleSnapshot> =>
     this.mutateVisibility(() => ipc().addFilter(mode, pattern));

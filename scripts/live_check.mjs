@@ -443,25 +443,24 @@ if (catRes.ok) {
 
 // (g) search (bead 2wu.1, §8): panel opens, a token query over the visible
 // rows gets 0 < matches < lines at rank 1, cyclic navigation wraps at both
-// ends, modes wire (invalid regex -> 0 of 0), and a hidden level shrinks the
-// match set; Esc closes.
-const searchRes = await evalJs(port, `
+// ends, modes wire (invalid regex -> 0 of 0), and a hidden level shrinks
+// the match set; Esc closes.
+//
+// The section runs as THREE driver requests: on a 1M+ row file every
+// settle costs seconds (measured scan ~1.5 s, plus the 250 ms debounce,
+// plus queued recomputes), and the driver aborts an eval at 60 s
+// (src-tauri/src/driver.rs) — a single long eval crossed it and the run
+// crashed reading the absent result (live round 5). The settle: wait past
+// one scan, then require THREE equal consecutive reads (stale values
+// sampled mid-scan must not pass — live round 3).
+const settleSnippet = `
   const h = window.__headless;
-  const open = await h.openSearch();
-  const opened = open.search ? { open: open.search.open, mode: open.search.mode } : null;
-  const dto = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 1 });
-  const raw0 = dto.length ? String(dto[0].raw) : "";
-  const tokens = raw0.split(/[^A-Za-z0-9_-]+/).filter((t) => t.length >= 4 && t.length <= 16);
-  const lc = h.state().file ? h.state().file.lineCount : 0;
   // setSearchQuery debounces the recompute (250 ms) and returns the
-  // pre-search snapshot. On a 1M+ row file a search_visible scan takes
-  // ~1.5 s (measured) and reads can queue, so a "two equal reads" break
-  // fires on stale values sampled mid-scan (live round 3): wait past one
-  // scan first, then require THREE equal consecutive reads.
+  // pre-search snapshot.
   const afterQuery = async (tok) => {
     await h.setSearchQuery(tok);
-    for (let t = 0; t < 5; t++) {
-      await new Promise((r) => setTimeout(r, 500));
+    for (let t = 0; t < 3; t++) {
+      await new Promise((r) => setTimeout(r, 400));
     }
     let prev = null, stable = 0;
     for (let t = 0; t < 40; t++) {
@@ -476,82 +475,95 @@ const searchRes = await evalJs(port, `
       prev = se.total;
     }
     return h.state().search;
-  };
+  };`;
+const gOpen = await evalJs(port, `
+  ${settleSnippet}
+  const open = await h.openSearch();
+  const opened = open.search ? { open: open.search.open, mode: open.search.mode } : null;
+  const dto = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 1 });
+  const raw0 = dto.length ? String(dto[0].raw) : "";
+  const tokens = raw0.split(/[^A-Za-z0-9_-]+/).filter((t) => t.length >= 4 && t.length <= 16);
+  const lc = h.state().file ? h.state().file.lineCount : 0;
   let found = null, query = null;
   for (const tok of tokens) {
     const se = await afterQuery(tok);
     if (se && se.total > 0 && se.total < lc) { found = se; query = tok; break; }
     await afterQuery("");
   }
-  const q = found;
+  return { opened, lc, query, total: found ? found.total : null };`);
+const gModes = await evalJs(port, `
+  ${settleSnippet}
+  const q = ${JSON.stringify(gOpen.query)};
+  const base = h.state().search;
+  const rank = base ? base.currentRank : null;
+  const totalAt = base ? base.total : null;
   const next1 = await h.nextMatch(1);
   const n1 = next1.search ? next1.search : null;
   const prev = await h.nextMatch(-1);
   const p1 = prev.search ? prev.search : null;
-  const bad = await h.setSearchMode("regex");
+  await h.setSearchMode("regex");
   const invalid = await afterQuery("@@never-matching-live-probe@@");
-  const simple = await h.setSearchMode("simple");
+  await h.setSearchMode("simple");
   // §6 grammar: terms are quoted; a bare word is a stray symbol (sfl.2).
-  const qouted = '"' + query + '"';
-  const simpleTotal = (await afterQuery(qouted)).total;
-  const plain = await h.setSearchMode(null);
-  const plainTotal = (await afterQuery(query)).total;
+  const simpleTotal = (await afterQuery('"' + q + '"')).total;
+  await h.setSearchMode(null);
+  const plainTotal = (await afterQuery(q)).total;
+  return { rank, totalAt, n1rank: n1 ? n1.currentRank : null, n1total: n1 ? n1.total : null,
+    p1rank: p1 ? p1.currentRank : null,
+    invalidTotal: invalid ? invalid.total : null, simpleTotal, plainTotal };`);
+const gHidden = await evalJs(port, `
+  ${settleSnippet}
+  const q = ${JSON.stringify(gOpen.query)};
   const lv0 = (h.state().visibility ? h.state().visibility.levels : []).filter((l) => l.enabled && l.count > 0);
   const hidden = lv0.sort((a, b) => b.count - a.count)[0] ?? null;
-  const scopedFull = found ? found.total : null;
   let scopedHidden = null, directHidden = null, scopedBack = null;
   if (hidden) {
-    // The largest level almost surely holds matches of the query; the strict
-    // ground truth is the direct backend search under the hidden state: the
-    // slice must agree with it (the search is over VISIBLE rows only).
-    const off = await h.setLevel(hidden.level, false);
-    scopedHidden = (await afterQuery(query)).total;
-    const dv = await window.__TAURI_INTERNALS__.invoke("search_visible", { mode: "plain", pattern: query });
+    // The largest level almost surely holds matches of the query; the
+    // strict ground truth is the direct backend search under the hidden
+    // state: the slice must agree with it (the search is over VISIBLE
+    // rows only).
+    await h.setLevel(hidden.level, false);
+    scopedHidden = (await afterQuery(q)).total;
+    const dv = await window.__TAURI_INTERNALS__.invoke("search_visible", { mode: "plain", pattern: q });
     directHidden = dv.total;
-    const back = await h.setLevel(hidden.level, true);
-    scopedBack = (await afterQuery(query)).total;
+    await h.setLevel(hidden.level, true);
+    scopedBack = (await afterQuery(q)).total;
   }
   const closed = await h.closeSearch();
-  return { opened, lc, query, total: q ? q.total : null, rank: q ? q.currentRank : null,
-    cur: q ? q.currentVisibleIndex : null,
-    n1rank: n1 ? n1.currentRank : null, n1total: n1 ? n1.total : null,
-    p1rank: p1 ? p1.currentRank : null,
-    invalidTotal: invalid ? invalid.total : null,
-    simpleTotal, plainTotal, hiddenName: hidden ? hidden.level : null,
-    scopedFull, scopedHidden, directHidden, scopedBack,
-    closed: closed.search ? closed.search.open : null };`);
+  return { hiddenName: hidden ? hidden.level : null, scopedHidden, directHidden,
+    scopedBack, closed: closed.search ? closed.search.open : null };`);
 check(
   "g0. Ctrl+F flow: panel opens in plain mode",
-  searchRes.opened && searchRes.opened.open === true,
-  JSON.stringify(searchRes.opened),
+  gOpen.opened && gOpen.opened.open === true,
+  JSON.stringify(gOpen.opened),
 );
-if (searchRes.opened && searchRes.opened.open) {
+if (gOpen.opened && gOpen.opened.open) {
   check(
     "g1. token query matches some rows over the visible set",
-    searchRes.total > 0 && searchRes.total < searchRes.lc,
-    `q=${JSON.stringify(searchRes.query)} total=${searchRes.total}`,
+    gOpen.total > 0 && gOpen.total < gOpen.lc,
+    `q=${JSON.stringify(gOpen.query)} total=${gOpen.total}`,
   );
   check(
     "g2. cyclic next/prev from the starting rule (first match at-or-below the selection)",
-    searchRes.n1rank === (searchRes.rank % searchRes.total) + 1 &&
-      searchRes.p1rank === searchRes.rank && searchRes.n1total === searchRes.total,
-    `rank=${searchRes.rank} n=${searchRes.n1rank} p=${searchRes.p1rank} total=${searchRes.n1total}`,
+    gModes.n1rank === (gModes.rank % gModes.totalAt) + 1 &&
+      gModes.p1rank === gModes.rank && gModes.n1total === gModes.totalAt,
+    `rank=${gModes.rank} n=${gModes.n1rank} p=${gModes.p1rank} total=${gModes.n1total}`,
   );
   check(
     "g3. invalid regex matches nothing (0 of 0), simple + plain agree",
-    searchRes.invalidTotal === 0 && searchRes.simpleTotal === searchRes.total &&
-      searchRes.plainTotal === searchRes.total,
-    `invalid=${searchRes.invalidTotal} simple=${searchRes.simpleTotal} plain=${searchRes.plainTotal}`,
+    gModes.invalidTotal === 0 && gModes.simpleTotal === gOpen.total &&
+      gModes.plainTotal === gOpen.total,
+    `invalid=${gModes.invalidTotal} simple=${gModes.simpleTotal} plain=${gModes.plainTotal}`,
   );
   check(
     "g4. search scoped to visible rows: the slice agrees with the direct search under the hidden level",
-    searchRes.scopedHidden === searchRes.directHidden && searchRes.scopedBack === searchRes.scopedFull,
-    `full=${searchRes.scopedFull} hidden(${searchRes.hiddenName}) slice=${searchRes.scopedHidden} direct=${searchRes.directHidden} back=${searchRes.scopedBack}`,
+    gHidden.scopedHidden === gHidden.directHidden && gHidden.scopedBack === gOpen.total,
+    `full=${gOpen.total} hidden(${gHidden.hiddenName}) slice=${gHidden.scopedHidden} direct=${gHidden.directHidden} back=${gHidden.scopedBack}`,
   );
   check(
     "g5. Esc closes the panel",
-    searchRes.closed === false,
-    `open=${searchRes.closed}`,
+    gHidden.closed === false,
+    `open=${gHidden.closed}`,
   );
 }
 

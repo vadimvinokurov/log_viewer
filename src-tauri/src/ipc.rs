@@ -824,20 +824,22 @@ pub(crate) fn load_file_inner(
   let (model, stats) = logviewer_core::workspace::FileModel::load_path(std::path::Path::new(&path))
     .map_err(|e| format!("cannot open {path}: {e}"))?;
   let result = to_load_result(&model, stats.elapsed.as_millis() as u32);
-  // Whitelist repopulation (contract policy 3) before the model swaps.
-  {
-    let mut vis = vis.lock().map_err(|_| lock_err())?;
-    // §12: a reload clears all pins entirely (filters, levels and disabled
-    // categories persist; pins do not survive a reload).
-    while !vis.pin_meta.is_empty() {
-      vis.vis.remove_pin(0);
-      vis.pin_meta.remove(0);
-    }
-    repopulate_categories(&mut vis, &model);
-    vis.invalidate();
+  // Lock order: file -> vis, exactly like every reader (get_rows / snapshot /
+  // search take file first). Holding BOTH across the repopulate + swap keeps
+  // a concurrent reader from building the visible cache against a mid-load
+  // mixture of old model and new whitelist. The parse above runs before any
+  // lock, so readers never wait on the file scan itself.
+  let mut file = state.lock().map_err(|_| lock_err())?;
+  let mut vis = vis.lock().map_err(|_| lock_err())?;
+  // §12: a reload clears all pins entirely (filters, levels and disabled
+  // categories persist; pins do not survive a reload).
+  while !vis.pin_meta.is_empty() {
+    vis.vis.remove_pin(0);
+    vis.pin_meta.remove(0);
   }
-  let mut guard = state.lock().map_err(|_| lock_err())?;
-  *guard = Some(model);
+  repopulate_categories(&mut vis, &model);
+  *file = Some(model);
+  vis.invalidate();
   Ok(result)
 }
 
