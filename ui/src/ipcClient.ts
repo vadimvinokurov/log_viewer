@@ -4,7 +4,7 @@
 
 import { commands } from "./bindings";
 import type { FilterItem, FilterMode } from "./filtersTab";
-import type { LoadInfo, VisibilityState } from "./state";
+import type { LoadInfo, SearchMatches, VisibilityState } from "./state";
 
 /** Raw IPC contracts, exactly as the backend returns them
  *  (docs/notes/visibility-bridge.md). */
@@ -25,6 +25,9 @@ export interface RawIpc {
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   /** Categories panel (rhl.2); path = full category path ("app/main/db"). */
   setCategoryEnabled(path: string, on: boolean): Promise<null>;
+  /** §8 search (bead 2wu.1): mode ∈ plain|regex|simple; unknown mode → the
+   *  backend rejects; an invalid pattern matches nothing. */
+  searchVisible(mode: string, pattern: string): Promise<import("./bindings").SearchMatchDto>;
   /** The single read command of the visibility bridge (§7). */
   visibilitySnapshot(): Promise<import("./bindings").VisibilitySnapshotDto>;
 }
@@ -42,6 +45,8 @@ export interface IpcClient {
   removePin(id: number): Promise<null>;
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   setCategoryEnabled(path: string, on: boolean): Promise<null>;
+  /** §8 search over the visible sequence (bead 2wu.1). */
+  searchVisible(mode: string, pattern: string): Promise<SearchMatches>;
   visibilitySnapshot(): Promise<VisibilityState>;
 }
 
@@ -90,6 +95,13 @@ function fromSnapshot(raw: {
   };
 }
 
+/** §8 search result (bead 2wu.1): the DTO already carries the UI field
+ *  names (total/positions), so the normalization keeps the shape and takes
+ *  ownership of the copy — the UI type, not the bindings alias, is consumed. */
+function fromSearch(raw: { total: number; positions: number[] }): SearchMatches {
+  return { total: raw.total, positions: [...raw.positions] };
+}
+
 export const realIpc: RawIpc = {
   async pickFile(lastDir: string) {
     const { open } = await import("@tauri-apps/plugin-dialog");
@@ -130,6 +142,9 @@ export const realIpc: RawIpc = {
   async setCategoryEnabled(path: string, on: boolean) {
     return commands.setCategoryEnabled(path, on);
   },
+  async searchVisible(mode: string, pattern: string) {
+    return commands.searchVisible(mode, pattern);
+  },
   async visibilitySnapshot() {
     return commands.visibilitySnapshot();
   },
@@ -158,6 +173,9 @@ export function ipc(): IpcClient {
     removePin: (id: number) => source.removePin(id),
     setLevelEnabled: (level: string, on: boolean) => source.setLevelEnabled(level, on),
     setCategoryEnabled: (path: string, on: boolean) => source.setCategoryEnabled(path, on),
+    async searchVisible(mode: string, pattern: string) {
+      return fromSearch(await source.searchVisible(mode, pattern));
+    },
     async visibilitySnapshot() {
       return fromSnapshot(await source.visibilitySnapshot());
     },

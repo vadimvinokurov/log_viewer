@@ -50,6 +50,16 @@ export function installHeadlessConsole(): () => void {
     setCategorySearch: (query: string) => console_.setCategorySearch(query),
     expandAllCategories: (expand: boolean) => console_.expandAllCategories(expand),
     toggleExpansion: (path: string) => console_.toggleExpansion(path),
+    /** §8 search (bead 2wu.1): open/close (Ctrl+F / Esc), tumblers
+     *  ("regex" | "simple"; anything else = both off = plain), the debounced
+     *  query, and cyclic match stepping (dir -1 | 1). The mirror coerces
+     *  the arguments: this is an untyped JS boundary, a missing argument
+     *  must become the empty query / plain mode, never a null RAW pattern. */
+    openSearch: () => console_.openSearch(),
+    closeSearch: () => console_.closeSearch(),
+    setSearchMode: (mode?: unknown) => console_.setSearchMode(typeof mode === "string" ? mode : ""),
+    setSearchQuery: (query?: unknown) => console_.setSearchQuery(typeof query === "string" ? query : ""),
+    nextMatch: (dir?: unknown) => console_.nextMatch(typeof dir === "number" ? dir : 0),
     /** Installs an IPC stub for headless visual runs. */
     stubIpc: (stub: unknown) => {
       (window as unknown as Record<string, unknown>).__ipcStub = stub;

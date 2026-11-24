@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { ipc, type RawIpc } from "./ipcClient";
+import type { SearchMatches } from "./state";
 
 const STUB_KEY = "__ipcStub";
 type StubTarget = { [STUB_KEY]?: RawIpc };
@@ -69,6 +70,34 @@ describe("visibilitySnapshot normalization", () => {
   });
 });
 
+describe("searchVisible (bead 2wu.1)", () => {
+  it("passes the mode/pattern through and copies the DTO fields", async () => {
+    const calls: { fn: string; args: unknown[] }[] = [];
+    installStub({
+      ...emptyRaw(),
+      searchVisible: async (mode, pattern) => {
+        calls.push({ fn: "searchVisible", args: [mode, pattern] });
+        return { total: 2, positions: [3, 7] };
+      },
+    });
+    const result = await ipc().searchVisible("regex", "^retry");
+    expect(result).toEqual({ total: 2, positions: [3, 7] });
+    expect(calls).toEqual([{ fn: "searchVisible", args: ["regex", "^retry"] }]);
+  });
+
+  it("an empty pattern resolves to the «0 of 0» shape from the backend", async () => {
+    installStub({ ...emptyRaw(), searchVisible: async () => ({ total: 0, positions: [] }) });
+    const result = await ipc().searchVisible("plain", "");
+    expect(result).toEqual({ total: 0, positions: [] });
+  });
+
+  it("the normalized result is owned by the UI type, not the bindings alias", async () => {
+    installStub({ ...emptyRaw(), searchVisible: async () => ({ total: 1, positions: [41] }) });
+    const result: SearchMatches = await ipc().searchVisible("simple", "db");
+    expect(result.positions).toEqual([41]);
+  });
+});
+
 describe("mutation pass-through", () => {
   it("forwards arguments unchanged to the RAW commands and resolves null", async () => {
     const calls: { fn: string; args: unknown[] }[] = [];
@@ -124,6 +153,7 @@ function emptyRaw(): RawIpc {
     removePin: async () => null,
     setLevelEnabled: async () => null,
     setCategoryEnabled: async () => null,
+    searchVisible: async () => ({ total: 0, positions: [] }),
     visibilitySnapshot: async () => ({
       visible_count: 0,
       levels: [],

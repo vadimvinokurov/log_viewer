@@ -3,7 +3,7 @@
 //! through the existing error state. The module singleton is re-imported
 //! fresh per test so the narrative runs stay isolated.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installHeadlessConsole } from "./headless";
 import type { RawIpc } from "./ipcClient";
 import type { RowDto, VisibilitySnapshotDto } from "./bindings";
@@ -76,6 +76,7 @@ function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
       return null;
     },
     setCategoryEnabled: async () => null,
+    searchVisible: async () => ({ total: 0, positions: [] }),
     visibilitySnapshot: async () => snapshot(),
   };
 }
@@ -146,6 +147,7 @@ function sequenceStub(options: { failMutation?: string } = {}): SequenceStub {
       return null;
     },
     setCategoryEnabled: async () => null,
+    searchVisible: async () => ({ total: 0, positions: [] }),
     visibilitySnapshot: async (): Promise<VisibilitySnapshotDto> => ({
       visible_count: Array.from({ length: LINE_COUNT }, (_, i) => i + 1)
         .filter(visible).length,
@@ -405,6 +407,7 @@ function categoryStub() {
       if (on) enabled.add(path); else enabled.delete(path);
       return null;
     },
+    searchVisible: async () => ({ total: 0, positions: [] }),
     visibilitySnapshot: async () => ({
       visible_count: CATEGORIES.filter((c) => c.count > 0 && allowed(c.path))
         .reduce((sum, c) => sum + c.count, 0),
@@ -560,5 +563,678 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     const after = await console_.toggleCategory("app", false);
     expect(after.error).toBe("Error: ipc down");
     expect(after.visibility).toEqual(before);
+  });
+});
+
+// ---- §8 search panel (bead 2wu.1) ----
+
+/** RAW stub over 10 fully visible lines ("line 1".."line 10") with an
+ *  approximate searchVisible (case-insensitive substring for plain/simple,
+ *  anchored-JS regex for regex; an invalid pattern matches nothing — the
+ *  exact mode semantics are backend logic, the stub only needs to be
+ *  deterministic). */
+interface SearchStub extends RawIpc {
+  searchVisibleCalls(): { mode: string; pattern: string }[];
+}
+
+function searchStub(): SearchStub {
+  const LINE_COUNT = 10;
+  const messageOf = (n: number): string => "line " + n;
+  // All lines are level "msg"; the toggle reshapes the visible sequence the
+  // search must stay scoped to (live bug 2 regression).
+  const msgOn = { value: true };
+  const visible = (): boolean => msgOn.value;
+  const calls: { mode: string; pattern: string }[] = [];
+  return {
+    pickFile: async () => null,
+    loadFile: async () => ({
+      format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
+    }),
+    getRows: async (offset: number, limit: number): Promise<RowDto[]> => {
+      const rows: RowDto[] = [];
+      for (let i = offset; i < Math.min(offset + limit, LINE_COUNT); i++) {
+        const n = i + 1;
+        rows.push({
+          line_no: n,
+          time_display: "10:00:00.000",
+          category: "app/db",
+          level: "msg",
+          message: messageOf(n),
+          raw: "raw " + n,
+        });
+      }
+      return rows;
+    },
+    addFilter: async () => null,
+    setFilterEnabled: async () => null,
+    removeFilter: async () => null,
+    addPin: async () => null,
+    setPinEnabled: async () => null,
+    removePin: async () => null,
+    setLevelEnabled: async (level: string, on: boolean) => {
+      if (level !== "msg") throw new Error(`no such level: ${level}`);
+      msgOn.value = on;
+      return null;
+    },
+    setCategoryEnabled: async () => null,
+    searchVisible: async (mode: string, pattern: string) => {
+      calls.push({ mode, pattern });
+      if (typeof pattern !== "string") throw new Error("pattern: not a string");
+      if (pattern === "") return { total: 0, positions: [] };
+      // A case-insensitive substring for plain/simple; an anchored JS regex
+      // for regex (broken pattern matches nothing — backend contract).
+      const hit = (message: string): boolean => {
+        if (mode === "regex") {
+          try {
+            return new RegExp(pattern, "i").test(message);
+          } catch {
+            return false;
+          }
+        }
+        return message.toLowerCase().includes(pattern.toLowerCase());
+      };
+      const positions: number[] = [];
+      let index = 0;
+      for (let n = 1; n <= LINE_COUNT; n++) {
+        if (!visible()) break;
+        if (hit(messageOf(n))) positions.push(index);
+        index++;
+      }
+      return { total: positions.length, positions };
+    },
+    visibilitySnapshot: async (): Promise<VisibilitySnapshotDto> => ({
+      visible_count: msgOn.value ? LINE_COUNT : 0,
+      levels: ["critical", "error", "warning", "msg", "debug", "trace"].map(
+        (level) => ({ level, enabled: level !== "msg" || msgOn.value, count: 1 }),
+      ),
+      filters: [],
+      pins: [],
+      categories_enabled: ["app/db"],
+    }),
+    searchVisibleCalls: () => calls,
+  };
+}
+
+describe("search actions (bead 2wu.1, §8)", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const settle = async () => {
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(0);
+  };
+
+  it("openSearch with no loaded file is a no-op", async () => {
+    const { console_ } = await freshConsole(searchStub());
+    const snap = console_.openSearch();
+    expect(snap.search.open).toBe(false);
+  });
+
+  it("setSearchQuery recomputes after the 250ms debounce and starts at-or-below the selection", async () => {
+    const { console_ } = await freshConsole(searchStub());
+    await console_.load("/tmp/log.txt");
+    console_.selectRow(3, "click"); // visible[3] = line 4
+    console_.openSearch();
+    console_.setSearchQuery("line 1");
+    await settle();
+    // "line 1" matches line 1 (index 0) and line 10 (index 9); at-or-below
+    // the selection (index 3) the first match is index 9.
+    const snap = console_.getSnapshot();
+    expect(snap.search.total).toBe(2);
+    expect(snap.search.currentVisibleIndex).toBe(9);
+    expect(snap.search.currentRank).toBe(2);
+    // §8 action 2: the first match becomes the selection.
+    expect(snap.selection.selected).toEqual([9]);
+  });
+
+  it("an empty selection starts from the first match", async () => {
+    const { console_ } = await freshConsole(searchStub());
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line");
+    await settle();
+    const snap = console_.getSnapshot();
+    expect(snap.search.total).toBe(10);
+    expect(snap.search.currentRank).toBe(1);
+    expect(snap.search.currentVisibleIndex).toBe(0);
+  });
+
+  it("an empty query renders «0 of 0» without an IPC call", async () => {
+    const stub = searchStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("");
+    await settle();
+    const snap = console_.getSnapshot();
+    expect(snap.search).toMatchObject({ total: 0, currentRank: null, currentVisibleIndex: null });
+    expect(stub.searchVisibleCalls().length).toBe(0);
+  });
+
+  it("mode changes map to the RPC mode; plain = both tumblers off", async () => {
+    const stub = searchStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchMode("regex");
+    // Anchored regex: only line 1 matches exactly.
+    console_.setSearchQuery("^line 1$");
+    await settle();
+    expect(stub.searchVisibleCalls()[0]).toEqual({ mode: "regex", pattern: "^line 1$" });
+    expect(console_.getSnapshot().search.total).toBe(1);
+    // A plain (both-off) search treats the same text as a literal substring
+    // and matches nothing; an unknown mode falls back defensively.
+    console_.setSearchMode("bogus");
+    await settle();
+    expect(stub.searchVisibleCalls()[1]).toEqual({ mode: "plain", pattern: "^line 1$" });
+    expect(console_.getSnapshot().search.total).toBe(0);
+  });
+
+  it("typing debounces: bursts issue one recompute, the last query wins", async () => {
+    const stub = searchStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line 1");
+    await vi.advanceTimersByTimeAsync(100);
+    console_.setSearchQuery("line 2");
+    await settle();
+    expect(stub.searchVisibleCalls()).toEqual([{ mode: "plain", pattern: "line 2" }]);
+  });
+
+  it("a stale recompute response after a newer query is discarded", async () => {
+    const stub = searchStub();
+    let resolveSlow: (result: { total: number; positions: number[] }) => void = () => {};
+    stub.searchVisible = async (_mode: string, pattern: string) => {
+      if (pattern === "slow") {
+        return new Promise((resolve) => {
+          resolveSlow = resolve;
+        });
+      }
+      return { total: 0, positions: [] };
+    };
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("slow");
+    await settle();
+    console_.setSearchQuery("fast");
+    await settle();
+    const settled = console_.getSnapshot();
+    resolveSlow({ total: 7, positions: [0, 1, 2, 3, 4, 5, 6] });
+    await settle();
+    const snap = console_.getSnapshot();
+    expect(snap.search.total).toBe(0);
+    expect(snap.selection.selected).toEqual(settled.selection.selected);
+  });
+
+  it("nextMatch cycles cyclically and selects the match row", async () => {
+    const { console_ } = await freshConsole(searchStub());
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line 1"); // matches indexes 0 and 9
+    await settle();
+    let snap = console_.nextMatch(-1);
+    // 0 - 1 wraps to the last match (index 9 = line 10).
+    expect(snap.search.currentVisibleIndex).toBe(9);
+    expect(snap.search.currentRank).toBe(2);
+    expect(snap.selection.selected).toEqual([9]);
+    snap = console_.nextMatch(1);
+    // 9 + 1 wraps back to the first match (index 0 = line 1).
+    expect(snap.search.currentVisibleIndex).toBe(0);
+    expect(snap.search.currentRank).toBe(1);
+    expect(snap.selection.selected).toEqual([0]);
+  });
+
+  it("nextMatch with no matches is a no-op; closed panel never cycles", async () => {
+    const { console_ } = await freshConsole(searchStub());
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("no-such-text");
+    await settle();
+    expect(console_.nextMatch(1).search.total).toBe(0);
+  });
+
+  it("closeSearch closes without losing the query; reopening recomputes", async () => {
+    const stub = searchStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line 3");
+    await settle();
+    expect(stub.searchVisibleCalls()).toHaveLength(1);
+    const closed = console_.closeSearch();
+    expect(closed.search.open).toBe(false);
+    expect(closed.search.query).toBe("line 3");
+    console_.openSearch();
+    await settle();
+    // The reopened panel rescan keeps the same query (stale positions are
+    // refreshed against the current visibility).
+    expect(stub.searchVisibleCalls().map((c) => c.pattern)).toEqual(["line 3", "line 3"]);
+    const snap = console_.getSnapshot();
+    expect(snap.search.open).toBe(true);
+    expect(snap.search.total).toBe(1);
+  });
+
+  it("a failing searchVisible surfaces through the error state", async () => {
+    const stub = searchStub();
+    stub.searchVisible = async () => {
+      throw new Error("bad regex");
+    };
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("x(");
+    await settle();
+    expect(console_.getSnapshot().error).toBe("Error: bad regex");
+  });
+});
+
+describe("search live-check fixes (bead 2wu.1)", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const settle = async () => {
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(0);
+  };
+
+  it("live bug 1: a missing argument at the headless mirror is coerced — the RAW invoke never sees a non-string pattern", async () => {
+    const stub = searchStub();
+    const { console_ } = await freshConsole(stub);
+    const { installHeadlessConsole } = await import("./headless");
+    const uninstall = installHeadlessConsole();
+    try {
+      await console_.load("/tmp/log.txt");
+      console_.openSearch();
+      const mirror = (
+        window as unknown as {
+          __headless: {
+            setSearchQuery: (q?: unknown) => unknown;
+            setSearchMode: (m?: unknown) => unknown;
+          };
+        }
+      ).__headless;
+      mirror.setSearchQuery(); // /eval probe with a missing argument
+      mirror.setSearchMode();
+      await settle();
+      const snap = console_.getSnapshot();
+      // The empty pattern short-circuits locally per contract: no invoke.
+      expect(stub.searchVisibleCalls()).toEqual([]);
+      expect(snap.search.query).toBe("");
+      expect(snap.error).toBeNull();
+    } finally {
+      uninstall();
+    }
+  });
+
+  it("live bug 2: a visibility change while the panel is open recomputes the (now stale) matches", async () => {
+    // The search stub's 10 lines are all level "msg"; toggling it changes
+    // the visible sequence the search must be scoped to.
+    const stub = searchStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line");
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(10);
+    expect(stub.searchVisibleCalls()).toHaveLength(1);
+    // Visibility shrinks under the open panel: the matches must rescan.
+    await console_.setLevel("msg", false);
+    await settle();
+    expect(stub.searchVisibleCalls()).toHaveLength(2);
+    expect(console_.getSnapshot().search.total).toBe(0);
+    // …and grow again.
+    await console_.setLevel("msg", true);
+    await settle();
+    expect(stub.searchVisibleCalls()).toHaveLength(3);
+    expect(console_.getSnapshot().search.total).toBe(10);
+  });
+
+  it("live bug 2: a late result from before a visibility change never lands (swapped resolves)", async () => {
+    const stub = searchStub();
+    const pending: ((r: { total: number; positions: number[] }) => void)[] = [];
+    stub.searchVisible = async () =>
+      new Promise((resolve) => {
+        pending.push(resolve);
+      });
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line");
+    await settle();
+    expect(pending).toHaveLength(1); // refresh #1 in flight (old visibility: 10)
+    await console_.setLevel("msg", false); // visibility event -> schedules refresh #2
+    await settle();
+    expect(pending).toHaveLength(2);
+    // Swapped resolve order: the NEWER call first, the older one late.
+    pending[1]?.({ total: 0, positions: [] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(0);
+    pending[0]?.({ total: 9, positions: [0, 1, 2, 3, 4, 5, 6, 7, 8] });
+    await settle();
+    // The late stale result must NOT overwrite the newer one.
+    expect(console_.getSnapshot().search.total).toBe(0);
+    expect(console_.getSnapshot().selection.selected).toEqual([]);
+  });
+});
+
+// ---- §8 freshness invariant (bead 2wu.1, live round 2) ----
+
+/** Deferred searchVisible whose result total FREEZES AT INVOKE TIME from
+ *  the invoke-time visibility (the backend computes the scan on the
+ *  sequence it sees; with 1M+ rows a scan resolves seconds later). The
+ *  manual resolvers let the tests swap response order. */
+interface DeferredSearchStub extends RawIpc {
+  pending: {
+    pattern: string;
+    total: number;
+    resolve: (result: { total: number; positions: number[] }) => void;
+  }[];
+}
+
+function deferredSearchStub(): DeferredSearchStub {
+  const LINE_COUNT = 10;
+  const msgOn = { value: true };
+  const messageOf = (n: number): string => "line " + n;
+  const pending: DeferredSearchStub["pending"] = [];
+  return {
+    pickFile: async () => null,
+    loadFile: async () => ({
+      format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
+    }),
+    getRows: async () => [],
+    addFilter: async () => null,
+    setFilterEnabled: async () => null,
+    removeFilter: async () => null,
+    addPin: async () => null,
+    setPinEnabled: async () => null,
+    removePin: async () => null,
+    setLevelEnabled: async (level: string, on: boolean) => {
+      if (level !== "msg") throw new Error(`no such level: ${level}`);
+      msgOn.value = on;
+      return null;
+    },
+    setCategoryEnabled: async () => null,
+    searchVisible: async (mode: string, pattern: string) => {
+      void mode;
+      if (typeof pattern !== "string") throw new Error("pattern: not a string");
+      if (pattern === "") return { total: 0, positions: [] };
+      const positions: number[] = [];
+      if (msgOn.value) {
+        for (let n = 1; n <= LINE_COUNT; n++) {
+          if (messageOf(n).toLowerCase().includes(pattern.toLowerCase())) {
+            positions.push(n - 1);
+          }
+        }
+      }
+      const result = { total: positions.length, positions: [...positions] };
+      return new Promise((resolve) => {
+        pending.push({ pattern, total: result.total, resolve });
+      });
+    },
+    visibilitySnapshot: async (): Promise<VisibilitySnapshotDto> => ({
+      visible_count: msgOn.value ? LINE_COUNT : 0,
+      levels: ["critical", "error", "warning", "msg", "debug", "trace"].map(
+        (level) => ({ level, enabled: level !== "msg" || msgOn.value, count: 1 }),
+      ),
+      filters: [],
+      pins: [],
+      categories_enabled: ["app/db"],
+    }),
+    pending,
+  };
+}
+
+describe("search freshness invariant (live round 2): the slice is never one recompute behind", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const settle = async () => {
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(0);
+  };
+
+  it("a dropped post-mutation schedule heals: a stale-epoch result never lands, a fresh one follows", async () => {
+    const stub = deferredSearchStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line");
+    await settle();
+    expect(stub.pending).toHaveLength(1);
+    stub.pending[0]?.resolve({ total: 10, positions: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(10);
+
+    // Visibility mutation #1: the recompute (issued against the SHRUNK
+    // sequence, slow backend) is in flight, unresolved.
+    await console_.setLevel("msg", false);
+    await settle();
+    expect(stub.pending).toHaveLength(2);
+
+    // Visibility mutation #2 — and its post-mutation schedule is LOST
+    // (the live round-2 symptom: timer control outside the console's
+    // reach). Nothing may rely on that schedule to correct the slice.
+    await console_.setLevel("msg", true);
+    vi.clearAllTimers();
+    await settle();
+
+    // The stale recompute (issued pre-mutation-#2, frozen at the shrunken
+    // sequence) resolves late. It must NOT land; the heal reschedules.
+    stub.pending[1]?.resolve({ total: 0, positions: [] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(10);
+    // The healed recompute ran against the CURRENT (restored) sequence.
+    expect(stub.pending).toHaveLength(3);
+    stub.pending[2]?.resolve({ total: 10, positions: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(10);
+  });
+
+  it("interleaving A (query-scheduled then visibility-scheduled): converges to search_visible(current sequence, latest query); late stale never lands", async () => {
+    const stub = deferredSearchStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line");
+    await settle();
+    stub.pending[0]?.resolve({ total: 10, positions: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(10);
+
+    await console_.setLevel("msg", false); // schedules recompute #2 (slow, "line" @ off = 0)
+    await settle();
+    console_.setSearchQuery("1");          // #3: "1" @ off = 0
+    await settle();
+    expect(stub.pending).toHaveLength(3);
+
+    // Swapped resolutions: the NEWER (#3) first, the stale #2 late.
+    stub.pending[2]?.resolve({ total: 0, positions: [] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(0);
+    stub.pending[1]?.resolve({ total: 0, positions: [] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(0);
+    expect(console_.getSnapshot().search.query).toBe("1");
+
+    // …and the reversed order: #2's stale-epoch result is discarded, #3
+    // lands the same converged value.
+    await console_.setLevel("msg", true); // restore, one more recompute
+    await settle();
+    expect(stub.pending).toHaveLength(4);
+    stub.pending[3]?.resolve({ total: 2, positions: [0, 9] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(2);
+  });
+
+  it("interleaving B (visibility-scheduled with an in-flight query recompute): both resolve orders converge", async () => {
+    const stub = deferredSearchStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line");
+    await settle();
+    expect(stub.pending).toHaveLength(1); // #1 in flight (issued @ on: 10)
+    await console_.setLevel("msg", false); // #2 scheduled + issued (@ off: 0)
+    await settle();
+    expect(stub.pending).toHaveLength(2);
+
+    // The pre-mutation #1 resolves after the post-mutation #2's token bump:
+    // discarded without landing; the slice ends at the current sequence.
+    stub.pending[1]?.resolve({ total: 0, positions: [] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(0);
+    stub.pending[0]?.resolve({ total: 10, positions: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(0);
+
+    // Reverse order: #1's stale-epoch result discarded (also by token — #2
+    // already owns the slice), #2 lands 0. Same convergence.
+    await console_.setLevel("msg", true); // #3 scheduled + issued (@ on: 10)
+    await settle();
+    expect(stub.pending).toHaveLength(3);
+    stub.pending[0]?.resolve({ total: 10, positions: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] });
+    await settle();
+    // (already consumed by its earlier resolve — a second resolve is a
+    // no-op on the settled promise; the assertion below covers the slice.)
+    expect(console_.getSnapshot().search.total).toBe(0);
+    stub.pending[2]?.resolve({ total: 10, positions: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] });
+    await settle();
+    expect(console_.getSnapshot().search.total).toBe(10);
+  });
+});
+
+// ---- §8 mid-burst scan guard (bead 2wu.1, live round 3) ----
+
+/** Slow-wire category stub over 10 rows ("a" = lines 1-5, "b" = lines 6-10);
+ *  each set_category_enabled applies after 200 ms (a real wire call is
+ *  milliseconds, but a 1M-row file's search scan holds the shell lock for
+ *  seconds and can land between two burst wire calls). searchVisible
+ *  computes from the applied state AT INVOKE TIME and records the count —
+ *  a mid-burst scan shows up as a partial count (5) in the log. */
+interface BurstStub extends RawIpc {
+  searchInvokes: number[];
+}
+
+function categoryBurstStub(): BurstStub {
+  const applied: { a: boolean; b: boolean } = { a: true, b: true };
+  const categoryOf = (n: number): "a" | "b" => (n <= 5 ? "a" : "b");
+  const visible = (n: number): boolean => applied[categoryOf(n)];
+  const searchInvokes: number[] = [];
+  return {
+    pickFile: async () => null,
+    loadFile: async () => ({
+      format: "plain", line_count: 10,
+      categories: [{ path: "a", count: 5 }, { path: "b", count: 5 }],
+      levels: [], load_ms: 1,
+    }),
+    getRows: async () => [],
+    addFilter: async () => null,
+    setFilterEnabled: async () => null,
+    removeFilter: async () => null,
+    addPin: async () => null,
+    setPinEnabled: async () => null,
+    removePin: async () => null,
+    setLevelEnabled: async () => null,
+    setCategoryEnabled: async (path: string, on: boolean) => {
+      if (path !== "a" && path !== "b") throw new Error("no such category");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (on) applied[path as "a" | "b"] = true;
+      else applied[path as "a" | "b"] = false;
+      return null;
+    },
+    searchVisible: async (mode: string, pattern: string) => {
+      void mode;
+      if (typeof pattern !== "string") throw new Error("pattern: not a string");
+      if (pattern === "") return { total: 0, positions: [] };
+      const positions: number[] = [];
+      let index = 0;
+      for (let n = 1; n <= 10; n++) {
+        if (!visible(n)) continue;
+        if (("line " + n).toLowerCase().includes(pattern.toLowerCase())) {
+          positions.push(index);
+        }
+        index++;
+      }
+      searchInvokes.push(positions.length);
+      return { total: positions.length, positions };
+    },
+    visibilitySnapshot: async (): Promise<VisibilitySnapshotDto> => ({
+      visible_count: [applied.a, applied.b].filter(Boolean).length * 5,
+      levels: ["critical", "error", "warning", "msg", "debug", "trace"].map(
+        (level) => ({ level, enabled: true, count: 1 }),
+      ),
+      filters: [],
+      pins: [],
+      categories_enabled: (["a", "b"] as const).filter((c) => applied[c]),
+    }),
+    searchInvokes,
+  };
+}
+
+describe("search mid-burst scan guard (live round 3)", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("the debounced recompute never scans between a burst's wire calls; the final-epoch total lands", async () => {
+    const stub = categoryBurstStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    console_.openSearch();
+    console_.setSearchQuery("line");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(console_.getSnapshot().search.total).toBe(10);
+    expect(stub.searchInvokes).toEqual([10]);
+
+    // Burst 1: hide everything (two 200 ms wire calls) — the slice follows.
+    const hide = console_.setAllCategories(false);
+    await vi.advanceTimersByTimeAsync(500);
+    await hide;
+    await vi.advanceTimersByTimeAsync(300);
+    expect(stub.searchInvokes).toEqual([10, 0]);
+    expect(console_.getSnapshot().search.total).toBe(0);
+
+    // Burst 2: the restore, with a recompute ARMED (a cheap no-op
+    // mutation's snapshot schedules it) right before the burst. Its timer
+    // fires WHILE burst 2's differential is mid-application (the first
+    // wire call has applied, the second has not) — it must NOT scan that
+    // transient state; the mutation's own snapshot re-arms it, and the
+    // final (restored) total lands.
+    const arm = console_.setLevel("msg", true);
+    await arm;
+    const restore = console_.setAllCategories(true);
+    await vi.advanceTimersByTimeAsync(280); // wire call 1 applied at +200, the armed timer at +250
+    await vi.advanceTimersByTimeAsync(300); // wire call 2 applied at +400
+    await restore;
+    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(stub.searchInvokes).toEqual([10, 0, 10]);
+    expect(console_.getSnapshot().search.total).toBe(10);
+    expect(console_.getSnapshot().error).toBeNull();
   });
 });

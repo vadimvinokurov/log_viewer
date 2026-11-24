@@ -13,6 +13,7 @@ import { buildTree } from "./categories";
 import { SidePanel, usePanelHotkey } from "./SidePanel.tsx";
 import { CategoriesTab } from "./CategoriesTab.tsx";
 import { FiltersTab } from "./FiltersTab.tsx";
+import { SearchPanel } from "./SearchPanel.tsx";
 import { EmptyState } from "./EmptyState";
 import DevShowcase from "./devShowcase";
 
@@ -39,6 +40,64 @@ export default function App() {
     console_.togglePanel();
   }, []);
   usePanelHotkey(togglePanel);
+
+  // §8 keydown rules (bead 2wu.1). The panel owns the arrows while open
+  // (also when the focus sits in its input); while closed, plain Up/Down
+  // move the selection over the visible rows, clamped at the edges (spec
+  // interpretation: «обычная навигация»), and text fields keep caret
+  // navigation. Esc closes; Ctrl/Cmd+F opens with a file loaded only.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      const current = console_.getState();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        if (current.file !== null && current.search.open === false) {
+          e.preventDefault();
+          console_.openSearch();
+        }
+        return;
+      }
+      if (current.search.open) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          console_.closeSearch();
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          console_.nextMatch(1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          console_.nextMatch(-1);
+        }
+        return;
+      }
+      if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) {
+        return;
+      }
+      const target = e.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      if (current.file === null || current.selection.selected.length === 0) {
+        return;
+      }
+      const visibleCount = current.visibility?.visibleCount ?? current.file.load.lineCount;
+      // The plain-arrow navigation moves the single selection from the
+      // smallest selected index; it changes the selection only (scrolling
+      // is the viewport anchor's business, §4).
+      const from = Math.min(...current.selection.selected);
+      const to = e.key === "ArrowDown" ? Math.min(from + 1, visibleCount - 1) : Math.max(from - 1, 0);
+      if (to !== from) {
+        e.preventDefault();
+        console_.selectRow(to, "click");
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   const openDialogAndLoad = useCallback(async () => {
     const file = await ipc().pickFile(state.lastDir);
@@ -108,6 +167,21 @@ export default function App() {
           ) : (
             <div className="empty-state">
               <EmptyState />
+            </div>
+          )}
+          {/* §8: the find bar floats top-right of the table while open. */}
+          {state.file && state.search.open && (
+            <div className="findbar-dock">
+              <SearchPanel
+                search={state.search}
+                onQuery={(query) => console_.setSearchQuery(query)}
+                // Clicking an active tumbler returns to plain: the console
+                // maps any non-regex/simple value to the both-off state.
+                onTumbler={(mode) => console_.setSearchMode(mode ?? "plain")}
+                onNext={() => console_.nextMatch(1)}
+                onPrev={() => console_.nextMatch(-1)}
+                onClose={() => console_.closeSearch()}
+              />
             </div>
           )}
         </main>

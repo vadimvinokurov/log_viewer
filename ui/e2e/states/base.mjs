@@ -80,6 +80,33 @@ export const STUB = `(function () {
     },
     async setLevelEnabled(level, on) { levelEnabled[level] = on; return null; },
     async setCategoryEnabled() { return null; },
+    // §8 search (2wu.1): over the VISIBLE sequence only. Mode semantics are
+    // backend logic; the stub approximates with a case-insensitive
+    // substring (plain/simple) or an anchored JS regex, and a broken
+    // pattern matches nothing (backend contract).
+    async searchVisible(mode, pattern) {
+      if (!pattern) return { total: 0, positions: [] };
+      let matcher;
+      if (mode === "regex") {
+        try {
+          const re = new RegExp(pattern, "i");
+          matcher = (m) => re.test(m);
+        } catch {
+          return { total: 0, positions: [] };
+        }
+      } else {
+        const needle = pattern.toLowerCase();
+        matcher = (m) => m.toLowerCase().includes(needle);
+      }
+      const positions = [];
+      let idx = 0;
+      for (let n = 1; n <= LINE_COUNT; n++) {
+        if (!visible(n)) continue;
+        if (matcher(messageOf(n))) positions.push(idx);
+        idx++;
+      }
+      return { total: positions.length, positions };
+    },
     async visibilitySnapshot() {
       return {
         visible_count: countVisible(),

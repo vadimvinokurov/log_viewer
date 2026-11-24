@@ -77,6 +77,8 @@ export interface AppState {
   fileEpoch: number;
   /** §10.1 side panel (rhl.2). */
   panel: PanelState;
+  /** §8 search panel (bead 2wu.1). */
+  search: SearchState;
 }
 
 export type AppEvent =
@@ -95,7 +97,15 @@ export type AppEvent =
   | { kind: "panel-width"; width: number }
   | { kind: "panel-search"; query: string }
   | { kind: "panel-expansion-toggle"; path: string }
-  | { kind: "panel-expanded"; expanded: string[] };
+  | { kind: "panel-expanded"; expanded: string[] }
+  // §8 search panel (bead 2wu.1): pure slice events; the match recomputation
+  // lives in the console (IPC + debounce), never in the reducer.
+  | { kind: "search-open" }
+  | { kind: "search-close" }
+  | { kind: "search-mode"; mode: SearchMode }
+  | { kind: "search-query"; query: string }
+  | { kind: "search-result"; positions: number[]; current: number | null }
+  | { kind: "search-current"; current: number };
 
 /** §10.1 panel tabs, in the designed order (docs/UI_DESIGN.html). */
 export type PanelTab = "categories" | "filters" | "highlights" | "pinned";
@@ -109,6 +119,38 @@ export interface PanelState {
   search: string;
   /** Expanded tree node paths. Tri-state and visibility are never stored. */
   expanded: string[];
+}
+
+// ---- §8 search panel (bead 2wu.1) ----
+
+/**
+ * §8 tumbler state: null = both tumblers off = plain substring; otherwise
+ * exactly one of regex | simple is on (the tumblers are mutually exclusive;
+ * clicking an active tumbler returns to plain, bead 2wu.1 interpretation).
+ * The slice never stores "plain" — the console maps it to the RPC mode
+ * string when it calls searchVisible.
+ */
+export type SearchMode = "regex" | "simple" | null;
+
+/** The §8 search result (normalized in ipcClient): positions are 0-based
+ *  indexes of the VISIBLE sequence, ascending. */
+export interface SearchMatches {
+  total: number;
+  positions: number[];
+}
+
+export interface SearchState {
+  open: boolean;
+  mode: SearchMode;
+  query: string;
+  /** Current matches over the visible sequence; replaced on each recompute. */
+  positions: number[];
+  /** Index into positions of the current match; null when there are none. */
+  current: number | null;
+}
+
+export function initialSearchState(): SearchState {
+  return { open: false, mode: null, query: "", positions: [], current: null };
 }
 
 /** Spec interpretation (bead rhl.2): the panel stands open, 220 px
@@ -175,6 +217,7 @@ export function initialAppState(): AppState {
     visibilityEpoch: 0,
     fileEpoch: 0,
     panel: initialPanelState(),
+    search: initialSearchState(),
   };
 }
 
@@ -254,6 +297,25 @@ export function appReducer(state: AppState, event: AppEvent): AppState {
     }
     case "panel-expanded":
       return { ...state, panel: { ...state.panel, expanded: [...event.expanded].sort() } };
+    // §8 search panel (bead 2wu.1): open/close keep mode, query and the
+    // latest positions (reopening rescans the same query through the
+    // console); a mode switch does not clear the previous matches — the
+    // debounced recompute replaces them.
+    case "search-open":
+      return { ...state, search: { ...state.search, open: true } };
+    case "search-close":
+      return { ...state, search: { ...state.search, open: false } };
+    case "search-mode":
+      return { ...state, search: { ...state.search, mode: event.mode } };
+    case "search-query":
+      return { ...state, search: { ...state.search, query: event.query } };
+    case "search-result":
+      return {
+        ...state,
+        search: { ...state.search, positions: [...event.positions], current: event.current },
+      };
+    case "search-current":
+      return { ...state, search: { ...state.search, current: event.current } };
   }
 }
 

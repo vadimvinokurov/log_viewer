@@ -28,6 +28,7 @@ fn build_bindings() -> tauri_specta::Builder<tauri::Wry> {
     ipc::set_level_enabled,
     ipc::set_category_enabled,
     ipc::visibility_snapshot,
+    ipc::search_visible,
     driver::driver_report
   ])
 }

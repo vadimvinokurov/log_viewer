@@ -396,3 +396,38 @@ function loadedWithCategories(overrides: { categories?: { path: string; count: n
     fileName: "log.txt",
   });
 }
+
+describe("search slice (bead 2wu.1, §8)", () => {
+  it("open/close are pure flags; reopening keeps mode, query and positions", () => {
+    let s = appReducer(initialAppState(), { kind: "search-open" });
+    expect(s.search).toEqual({ open: true, mode: null, query: "", positions: [], current: null });
+    s = appReducer(s, { kind: "search-mode", mode: "regex" });
+    s = appReducer(s, { kind: "search-query", query: "timeout" });
+    s = appReducer(s, { kind: "search-result", positions: [2, 5], current: 0 });
+    s = appReducer(s, { kind: "search-close" });
+    expect(s.search.open).toBe(false);
+    expect(s.search.mode).toBe("regex");
+    expect(s.search.query).toBe("timeout");
+    expect(s.search.positions).toEqual([2, 5]);
+    // §8 Esc-then-Ctrl+F: the panel reopens with the previous query.
+    s = appReducer(s, { kind: "search-open" });
+    expect(s.search.mode).toBe("regex");
+    expect(s.search.query).toBe("timeout");
+  });
+
+  it("search-result replaces positions and the current index", () => {
+    let s = appReducer(initialAppState(), { kind: "search-result", positions: [7], current: 0 });
+    expect(s.search.positions).toEqual([7]);
+    expect(s.search.current).toBe(0);
+    s = appReducer(s, { kind: "search-result", positions: [], current: null });
+    expect(s.search.positions).toEqual([]);
+    expect(s.search.current).toBeNull();
+  });
+
+  it("search-current moves the current match without touching positions", () => {
+    let s = appReducer(initialAppState(), { kind: "search-result", positions: [1, 4, 9], current: 0 });
+    s = appReducer(s, { kind: "search-current", current: 2 });
+    expect(s.search.positions).toEqual([1, 4, 9]);
+    expect(s.search.current).toBe(2);
+  });
+});

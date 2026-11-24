@@ -3,7 +3,7 @@
 //! reducer, no window required. The load action runs through the same IPC
 //! adapter as the button flow (stubbed in headless runs).
 
-import { appReducer, expandedForToggleAll, initialAppState, type AppState, type AppEvent, type PanelTab, PANEL_TABS } from "./state";
+import { appReducer, expandedForToggleAll, initialAppState, type AppState, type AppEvent, type PanelTab, PANEL_TABS, type SearchMode } from "./state";
 import type { VisibilityState } from "./state";
 import { buildTree, propagateToggle, toggleAll } from "./categories";
 import { ipc } from "./ipcClient";
@@ -29,6 +29,18 @@ export interface ConsoleSnapshot {
     width: number;
     search: string;
     expanded: string[];
+  };
+  /** §8 search panel state (bead 2wu.1). */
+  search: {
+    open: boolean;
+    mode: SearchMode;
+    query: string;
+    /** The current match count N (only VISIBLE rows were searched). */
+    total: number;
+    /** 1-based rank of the current match (k of N); null when there are none. */
+    currentRank: number | null;
+    /** The current match's visible row index; null when there are none. */
+    currentVisibleIndex: number | null;
   };
 }
 
@@ -86,12 +98,51 @@ class UiConsole {
         search: this.state.panel.search,
         expanded: [...this.state.panel.expanded],
       },
+      search: this.searchSnapshot(),
+    };
+  }
+
+  /** §8 counter for the snapshot: k of N / «0 of 0», k is 1-based (bead
+   *  2wu.1); N counts only the VISIBLE matches of the current query. */
+  private searchSnapshot(): ConsoleSnapshot["search"] {
+    const s = this.state.search;
+    const total = s.positions.length;
+    const current =
+      s.current !== null && s.current >= 0 && s.current < total
+        ? s.current
+        : null;
+    return {
+      open: s.open,
+      mode: s.mode,
+      query: s.query,
+      total,
+      currentRank: current === null ? null : current + 1,
+      currentVisibleIndex: current === null ? null : s.positions[current] ?? null,
     };
   };
 
   dispatch = (event: AppEvent): void => {
+    // §8 freshness invariant (bead 2wu.1, live round 2): the search slice's
+    // inputs are the visible sequence (epoch), the mode and the query.
+    // EVERY dispatch that moves one of them re-arms the recompute here —
+    // the single enforcement point, so no action path (present or future)
+    // can forget to refresh an open panel's matches.
+    const before = {
+      epoch: this.state.visibilityEpoch,
+      query: this.state.search.query,
+      mode: this.state.search.mode,
+      open: this.state.search.open,
+    };
     this.state = appReducer(this.state, event);
     this.listeners.forEach((l) => l());
+    const moved =
+      before.epoch !== this.state.visibilityEpoch ||
+      before.query !== this.state.search.query ||
+      before.mode !== this.state.search.mode ||
+      before.open !== this.state.search.open;
+    if (moved && this.state.search.open && this.hasSearchQuery()) {
+      this.scheduleSearchRefresh();
+    }
   };
 
   /** Register the table so `scrollToRow` reaches the real component. */
@@ -156,7 +207,9 @@ class UiConsole {
     })();
   };
 
-  /** Refetches visibility_snapshot and applies it to the reducer. */
+  /** Refetches visibility_snapshot and applies it to the reducer. The §8
+   *  freshness recompute (open panel + query) schedules through the
+   *  dispatch hook — the epoch change alone moves the search's inputs. */
   private refreshVisibility = async (): Promise<void> => {
     try {
       const snapshot = await ipc().visibilitySnapshot();
@@ -198,7 +251,9 @@ class UiConsole {
   /** Runs one visibility mutation, then refetches and applies the snapshot;
    *  a failed mutation surfaces through the existing error state. With a
    *  non-empty selection the selection is remapped by line numbers across
-   *  the change (§4, qt7.3); an empty selection costs zero extra IPC. */
+   *  the change (§4, qt7.3); an empty selection costs zero extra IPC.
+   *  The mutating critical section covers the wire calls AND the snapshot
+   *  refetch (the search recompute defers while it is up). */
   private mutateVisibility = async (
     mutator: () => Promise<unknown>,
   ): Promise<ConsoleSnapshot> => {
@@ -206,13 +261,18 @@ class UiConsole {
     const remap = selected.length
       ? await this.resolveRemapInput(selected)
       : null;
+    this.mutating += 1;
     try {
-      await mutator();
-    } catch (e) {
-      this.dispatch({ kind: "load-error", message: String(e) });
-      return this.getSnapshot();
+      try {
+        await mutator();
+      } catch (e) {
+        this.dispatch({ kind: "load-error", message: String(e) });
+        return this.getSnapshot();
+      }
+      await this.refreshVisibility();
+    } finally {
+      this.mutating -= 1;
     }
-    await this.refreshVisibility();
     if (remap) {
       const count = this.state.visibility?.visibleCount ?? 0;
       const lineAt = this.lineAt;
@@ -324,6 +384,208 @@ class UiConsole {
         await ipc().setCategoryEnabled(p, true);
       }
     });
+  };
+
+  // ---- §8 search panel (bead 2wu.1) ----
+
+  /** The slice's query as the RAW invoke must see it — always a string.
+   *  Live-check fix: the headless mirror is a JS boundary where the TS
+   *  parameter types do not hold (a missing argument arrives as
+   *  undefined), and an undefined query reached Tauri as a null `pattern`
+   *  ("invalid args pattern … expected a string"). */
+  private safeQuery = (): string => {
+    const query = this.state.search.query;
+    return typeof query === "string" ? query : "";
+  };
+
+  /** The query is truthy enough to recompute: non-empty string. */
+  private hasSearchQuery = (): boolean => this.safeQuery() !== "";
+
+  /** 250 ms debounce of the searchVisible recompute (bead 2wu.1 design:
+   *  no positions cap, the UI debounces instead). */
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Bumped on every recompute start; a late response with a stale token is
+   *  discarded instead of overwriting the newest matches. */
+  private searchToken = 0;
+
+  private cancelSearchRefresh = (): void => {
+    if (this.searchTimer !== null) {
+      clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+    }
+  };
+
+  private scheduleSearchRefresh = (): void => {
+    this.cancelSearchRefresh();
+    this.searchTimer = setTimeout(() => {
+      this.searchTimer = null;
+      void this.refreshMatches();
+    }, 250);
+  };
+
+  /** Depth of the visibility-mutation critical section (live round 3):
+   *  while a differential mid-applies — the console issues its
+   *  set_category_enabled / setLevel wire calls one by one inside one
+   *  mutateVisibility round with a single snapshot refetch at the end —
+   *  the shell's visible cache is transiently partial between the wire
+   *  calls. A recompute firing in that window scans (and the shell then
+   *  caches for the whole multi-second 1M+ row scan) a mid-burst state
+   *  whose total lands under the still-current epoch. */
+  private mutating = 0;
+
+  /** §8: Ctrl+F opens (a file must be loaded); the tumblers/query survive a
+   *  close, so reopening rescans the same query against the current
+   *  visibility and restarts from the selection downward. */
+  openSearch = (): ConsoleSnapshot => {
+    if (this.state.file === null) {
+      return this.getSnapshot();
+    }
+    this.dispatch({ kind: "search-open" });
+    // The open transition schedules through the dispatch hook (the panel is
+    // open and the query is non-empty at this point).
+    return this.getSnapshot();
+  };
+
+  /** §8: Esc closes; the arrows return to row navigation (App keydown). */
+  closeSearch = (): ConsoleSnapshot => {
+    this.cancelSearchRefresh();
+    this.dispatch({ kind: "search-close" });
+    return this.getSnapshot();
+  };
+
+  /** Tumbler state at the text-RPC boundary: "regex" | "simple" set that
+   *  tumbler, anything else (including "plain") = both off (bead 2wu.1:
+   *  clicking an active tumbler returns to plain; the UI never sends an
+   *  unknown mode, so unknown strings fall back defensively). */
+  setSearchMode = (mode: string): ConsoleSnapshot => {
+    const known: SearchMode = mode === "regex" || mode === "simple" ? mode : null;
+    this.dispatch({ kind: "search-mode", mode: known });
+    return this.getSnapshot();
+  };
+
+  /** Typing dispatches immediately; positions refetch 250 ms after the
+   *  last keystroke (scheduling through the dispatch hook). A missing/
+   *  non-string argument (the headless mirror is an untyped JS boundary)
+   *  coerces to "" — the boundary never stores, and the RAW invoke never
+   *  sees, a non-string pattern. */
+  setSearchQuery = (query: string): ConsoleSnapshot => {
+    const value = typeof query === "string" ? query : "";
+    this.dispatch({ kind: "search-query", query: value });
+    return this.getSnapshot();
+  };
+
+  /** §8 cyclic match navigation: dir +1 = next, -1 = previous; the match's
+   *  row becomes the selection (the ordinary click event, §4) and centers
+   *  in the viewport via the table handle. A no-op without matches. */
+  nextMatch = (dir: number): ConsoleSnapshot => {
+    const s = this.state.search;
+    if (!s.open || s.positions.length === 0 || s.current === null) {
+      return this.getSnapshot();
+    }
+    const direction = dir >= 0 ? 1 : -1;
+    const next = (s.current + direction + s.positions.length) % s.positions.length;
+    this.dispatch({ kind: "search-current", current: next });
+    this.followMatch(next);
+    return this.getSnapshot();
+  };
+
+  /** The starting rule of every recompute (bead 2wu.1): the first match is
+   *  looked up at-or-below the current selection's visible index — the
+   *  smallest selected index; an empty selection starts from the top. */
+  private selectionStartIndex = (): number => {
+    const selected = this.state.selection.selected;
+    return selected.length === 0 ? 0 : Math.min(...selected);
+  };
+
+  /** searchVisible recompute: replaces the slice's matches, derives the
+   *  current match from the starting rule and selects/centers it (§8
+   *  action 2: scroll and highlight the first match). An empty (or
+   *  non-string — coerced) query or a closed panel clears the matches
+   *  («0 of 0») WITHOUT an invoke: the empty pattern short-circuits
+   *  locally per the backend contract. */
+  private refreshMatches = async (): Promise<void> => {
+    const search = this.state.search;
+    if (!search.open || this.state.file === null) {
+      return;
+    }
+    if (this.mutating > 0) {
+      // Mid-differential: the recompute re-arms itself (and the mutation's
+      // end-of-round snapshot dispatch re-arms it anyway); scanning a
+      // partially-applied differential is exactly the live round-3 drift.
+      this.scheduleSearchRefresh();
+      return;
+    }
+    const query = this.safeQuery();
+    if (query === "") {
+      this.dispatch({ kind: "search-result", positions: [], current: null });
+      return;
+    }
+    const token = ++this.searchToken;
+    // The epoch at invoke time: the result belongs to the visible sequence
+    // the backend saw when the scan started (with 1M+ rows it resolves
+    // seconds later).
+    const startEpoch = this.state.visibilityEpoch;
+    let result: { total: number; positions: number[] };
+    try {
+      result = await ipc().searchVisible(search.mode ?? "plain", query);
+    } catch (e) {
+      // §2 error path: a failed recompute surfaces as a message, the
+      // previous matches stay.
+      this.dispatch({ kind: "load-error", message: String(e) });
+      return;
+    }
+    if (token !== this.searchToken) {
+      // A newer recompute owns the slice; it re-reads state at its own
+      // resolution.
+      return;
+    }
+    if (!this.state.search.open) {
+      return;
+    }
+    if (this.state.visibilityEpoch !== startEpoch) {
+      // Live round 2: the visible sequence moved under the scan — the
+      // result belongs to an older sequence and must NOT land. The
+      // correcting recompute reschedules HERE (self-healing: even when the
+      // epoch change's own schedule was lost, nothing lands stale and
+      // nothing stays one recompute behind).
+      this.scheduleSearchRefresh();
+      return;
+    }
+    const start = this.selectionStartIndex();
+    // The current match is the first position at-or-below the start (its
+    // INDEX into positions; positions are ascending). Cyclic read: when no
+    // match sits at-or-below, the search wraps to the first match (§8).
+    const foundIndex = result.positions.findIndex((p) => p >= start);
+    const current =
+      result.positions.length === 0
+        ? null
+        : foundIndex === -1
+          ? 0
+          : foundIndex;
+    this.dispatch({ kind: "search-result", positions: result.positions, current });
+    if (current !== null) {
+      this.followMatch(current);
+    }
+  };
+
+  /** A match becomes the selection (the click event, multi-select untouched)
+   *  and centers via the existing scrollToRow table handle; no table
+   *  (unit/headless runs) skips the scroll silently. */
+  private followMatch = (matchIndex: number): void => {
+    const visibleIndex = this.state.search.positions[matchIndex];
+    if (visibleIndex === undefined) {
+      return;
+    }
+    this.dispatch({ kind: "selection-click", index: visibleIndex });
+    if (!this.table) {
+      return;
+    }
+    void (async () => {
+      const lineNo = await this.lineAt(visibleIndex);
+      if (lineNo !== null && this.table) {
+        this.table.scrollToRow(lineNo);
+      }
+    })();
   };
 }
 

@@ -682,6 +682,20 @@ pub async fn visibility_snapshot(
   visibility_snapshot_inner(&state, &vis)
 }
 
+/// Search the VISIBLE sequence (§8): `mode` is one of plain|regex|simple,
+/// positions are 0-based visible indexes ascending. An unknown mode is an
+/// Err; an empty pattern or an unloaded file return «0 of 0».
+#[tauri::command]
+#[specta::specta]
+pub async fn search_visible(
+  mode: String,
+  pattern: String,
+  state: tauri::State<'_, FileState>,
+  vis: tauri::State<'_, VisState>,
+) -> Result<SearchMatchDto, String> {
+  search_visible_inner(&state, &vis, &mode, &pattern)
+}
+
 // ---------------------------------------------------------------- tests
 
 #[cfg(test)]
@@ -1028,9 +1042,9 @@ mod tests {
   fn search_regex_and_simple_modes_match_the_core_matcher() {
     let (file, vis) = bridge_search(MIX, "modes");
     // Regex over the visible sequence: lines 1,2,3,4,6 carry a LOG_ tag,
-    // line 5 does not; positions ascend and skip hidden matches.
+    // line 5 (standalone) does not; positions ascend and skip the gap.
     let r = search_visible_inner(&file, &vis, "regex", "LOG_[A-Z]+").unwrap();
-    assert_eq!(r.positions, vec![0, 1, 2, 4, 5]);
+    assert_eq!(r.positions, vec![0, 1, 2, 3, 5]);
     assert_eq!(r.total, 5);
     let r = search_visible_inner(&file, &vis, "regex", "retr(y|ies)").unwrap();
     assert_eq!(r.positions, vec![5]);

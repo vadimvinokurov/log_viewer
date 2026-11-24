@@ -82,6 +82,7 @@ body {
   display: flex;
   overflow: hidden;
   min-height: 0;
+  position: relative; /* the §8 find bar docks absolutely on top of the table */
 }
 
 /* Empty state, §2 (design: "Empty state — before any file"): dashed
@@ -508,3 +509,46 @@ body {
   cursor: col-resize;
   z-index: 10;
 }
+
+/* ============ find bar (§8, bead 2wu.1) — classes copied verbatim from
+   docs/UI_DESIGN.html "Find bar — Ctrl+F, floats top-right"; the --on-accent
+   token and the dock placement are added from the same source's Tokens. */
+:root {
+  --on-accent: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --on-accent: #0b1620;
+  }
+}
+
+.findbar-dock {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 30;
+}
+
+.findbar {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 8px 5px 11px; border: 1px solid var(--border-strong); border-radius: 9px;
+  background: var(--surface); box-shadow: 0 5px 18px rgba(0, 0, 0, .16);
+  font: 500 12px/1 system-ui, sans-serif; color: var(--muted);
+}
+.findbar .field {
+  min-width: 150px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--ink);
+  font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace;
+  outline: none;
+}
+.findbar .cnt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.findbar .tg, .findbar .ar {
+  padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px; background: transparent;
+  color: var(--muted); font: 500 11px/1 system-ui, sans-serif; cursor: pointer; white-space: nowrap;
+  user-select: none;
+}
+.findbar .tg.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.findbar .ar { font-size: 12px; }
+.findbar .x { padding: 3px 5px; color: var(--dim); cursor: pointer; }
+.findbar .x:hover, .findbar .ar:hover { color: var(--ink); }

@@ -73,6 +73,10 @@ Claim tasks in the main session before spawning agents.
     New states `panel-categories`, `panel-uncheck` (toggleCategory propagation
     hides the subtree rows) and `panel-tree-search` (matching branches only,
     fully expanded) with fresh goldens.
+  - Addition 2026-11-24 (bead 2wu.1, §8 search panel): new states
+    `search-open`, `search-regex`, `search-hidden-scope` (N counts visible
+    rows only), `search-cyclic-wrap` (0 -> last -> 0) with fresh goldens;
+    no existing golden shifted (all diffs 0.000%).
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

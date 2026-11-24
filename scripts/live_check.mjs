@@ -187,6 +187,12 @@ if (levelRes.present) {
 // source stays on the page side, only counts come back.
 const filterRes = await evalJs(port, `
   const h = window.__headless;
+  // Deselect first: with a non-empty selection every visibility mutation
+  // pays the selection-remap IPC round trips; the probes are contract checks,
+  // not remap checks (e4/e5 cover that on one mutation).
+  if (h.state().selection && h.state().selection.selected.length) {
+    await h.select(h.state().selection.selected[0], "toggle");
+  }
   const s0 = h.state();
   const lc = s0.file ? s0.file.lineCount : 0;
   const base = s0.visibility ? s0.visibility.visibleCount : null;
@@ -206,7 +212,7 @@ const filterRes = await evalJs(port, `
   let found = false, tried = 0, visible = null, enabled = null;
   let toggleVisible = null, filtersEmpty = false, restored = null;
   for (const tok of tokens) {
-    if (tried >= 25) break;
+    if (tried >= 6) break;
     tried++;
     const sn = await h.addFilter("plain", tok);
     const fs = sn.visibility ? sn.visibility.filters : [];
@@ -432,6 +438,120 @@ if (catRes.ok) {
     "f4. category search wires through and clears",
     typeof catRes.searchSet === "string" && catRes.searchSet.length === Math.min(3, catRes.cat.length),
     `search=${JSON.stringify(catRes.searchSet)}`,
+  );
+}
+
+// (g) search (bead 2wu.1, §8): panel opens, a token query over the visible
+// rows gets 0 < matches < lines at rank 1, cyclic navigation wraps at both
+// ends, modes wire (invalid regex -> 0 of 0), and a hidden level shrinks the
+// match set; Esc closes.
+const searchRes = await evalJs(port, `
+  const h = window.__headless;
+  const open = await h.openSearch();
+  const opened = open.search ? { open: open.search.open, mode: open.search.mode } : null;
+  const dto = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 1 });
+  const raw0 = dto.length ? String(dto[0].raw) : "";
+  const tokens = raw0.split(/[^A-Za-z0-9_-]+/).filter((t) => t.length >= 4 && t.length <= 16);
+  const lc = h.state().file ? h.state().file.lineCount : 0;
+  // setSearchQuery debounces the recompute (250 ms) and returns the
+  // pre-search snapshot. On a 1M+ row file a search_visible scan takes
+  // ~1.5 s (measured) and reads can queue, so a "two equal reads" break
+  // fires on stale values sampled mid-scan (live round 3): wait past one
+  // scan first, then require THREE equal consecutive reads.
+  const afterQuery = async (tok) => {
+    await h.setSearchQuery(tok);
+    for (let t = 0; t < 5; t++) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    let prev = null, stable = 0;
+    for (let t = 0; t < 40; t++) {
+      await new Promise((r) => setTimeout(r, 700));
+      const se = h.state().search;
+      if (prev === se.total) {
+        stable += 1;
+        if (stable >= 3) return se;
+      } else {
+        stable = 0;
+      }
+      prev = se.total;
+    }
+    return h.state().search;
+  };
+  let found = null, query = null;
+  for (const tok of tokens) {
+    const se = await afterQuery(tok);
+    if (se && se.total > 0 && se.total < lc) { found = se; query = tok; break; }
+    await afterQuery("");
+  }
+  const q = found;
+  const next1 = await h.nextMatch(1);
+  const n1 = next1.search ? next1.search : null;
+  const prev = await h.nextMatch(-1);
+  const p1 = prev.search ? prev.search : null;
+  const bad = await h.setSearchMode("regex");
+  const invalid = await afterQuery("@@never-matching-live-probe@@");
+  const simple = await h.setSearchMode("simple");
+  // §6 grammar: terms are quoted; a bare word is a stray symbol (sfl.2).
+  const qouted = '"' + query + '"';
+  const simpleTotal = (await afterQuery(qouted)).total;
+  const plain = await h.setSearchMode(null);
+  const plainTotal = (await afterQuery(query)).total;
+  const lv0 = (h.state().visibility ? h.state().visibility.levels : []).filter((l) => l.enabled && l.count > 0);
+  const hidden = lv0.sort((a, b) => b.count - a.count)[0] ?? null;
+  const scopedFull = found ? found.total : null;
+  let scopedHidden = null, directHidden = null, scopedBack = null;
+  if (hidden) {
+    // The largest level almost surely holds matches of the query; the strict
+    // ground truth is the direct backend search under the hidden state: the
+    // slice must agree with it (the search is over VISIBLE rows only).
+    const off = await h.setLevel(hidden.level, false);
+    scopedHidden = (await afterQuery(query)).total;
+    const dv = await window.__TAURI_INTERNALS__.invoke("search_visible", { mode: "plain", pattern: query });
+    directHidden = dv.total;
+    const back = await h.setLevel(hidden.level, true);
+    scopedBack = (await afterQuery(query)).total;
+  }
+  const closed = await h.closeSearch();
+  return { opened, lc, query, total: q ? q.total : null, rank: q ? q.currentRank : null,
+    cur: q ? q.currentVisibleIndex : null,
+    n1rank: n1 ? n1.currentRank : null, n1total: n1 ? n1.total : null,
+    p1rank: p1 ? p1.currentRank : null,
+    invalidTotal: invalid ? invalid.total : null,
+    simpleTotal, plainTotal, hiddenName: hidden ? hidden.level : null,
+    scopedFull, scopedHidden, directHidden, scopedBack,
+    closed: closed.search ? closed.search.open : null };`);
+check(
+  "g0. Ctrl+F flow: panel opens in plain mode",
+  searchRes.opened && searchRes.opened.open === true,
+  JSON.stringify(searchRes.opened),
+);
+if (searchRes.opened && searchRes.opened.open) {
+  check(
+    "g1. token query matches some rows over the visible set",
+    searchRes.total > 0 && searchRes.total < searchRes.lc,
+    `q=${JSON.stringify(searchRes.query)} total=${searchRes.total}`,
+  );
+  check(
+    "g2. cyclic next/prev from the starting rule (first match at-or-below the selection)",
+    searchRes.n1rank === (searchRes.rank % searchRes.total) + 1 &&
+      searchRes.p1rank === searchRes.rank && searchRes.n1total === searchRes.total,
+    `rank=${searchRes.rank} n=${searchRes.n1rank} p=${searchRes.p1rank} total=${searchRes.n1total}`,
+  );
+  check(
+    "g3. invalid regex matches nothing (0 of 0), simple + plain agree",
+    searchRes.invalidTotal === 0 && searchRes.simpleTotal === searchRes.total &&
+      searchRes.plainTotal === searchRes.total,
+    `invalid=${searchRes.invalidTotal} simple=${searchRes.simpleTotal} plain=${searchRes.plainTotal}`,
+  );
+  check(
+    "g4. search scoped to visible rows: the slice agrees with the direct search under the hidden level",
+    searchRes.scopedHidden === searchRes.directHidden && searchRes.scopedBack === searchRes.scopedFull,
+    `full=${searchRes.scopedFull} hidden(${searchRes.hiddenName}) slice=${searchRes.scopedHidden} direct=${searchRes.directHidden} back=${searchRes.scopedBack}`,
+  );
+  check(
+    "g5. Esc closes the panel",
+    searchRes.closed === false,
+    `open=${searchRes.closed}`,
   );
 }
 

@@ -57,6 +57,12 @@ export const commands = {
 	 *  docs/notes/visibility-bridge.md (RAW; normalizes only in ipcClient.ts).
 	 */
 	visibilitySnapshot: (options?: InvokeOptions) => __TAURI_INVOKE<VisibilitySnapshotDto>("visibility_snapshot", undefined, options),
+	/**
+	 *  Search the VISIBLE sequence (§8): `mode` is one of plain|regex|simple,
+	 *  positions are 0-based visible indexes ascending. An unknown mode is an
+	 *  Err; an empty pattern or an unloaded file return «0 of 0».
+	 */
+	searchVisible: (mode: string, pattern: string, options?: InvokeOptions) => __TAURI_INVOKE<SearchMatchDto>("search_visible", { mode, pattern }, options),
 	/**  Tauri command the page invokes with the evaluation result. */
 	driverReport: (id: string, value: string, options?: InvokeOptions) => __TAURI_INVOKE<void>("driver_report", { id, value }, options),
 };
@@ -111,6 +117,15 @@ export type RowDto = {
 	level: string,
 	message: string,
 	raw: string,
+};
+
+/**
+ *  Search result for the §8 panel: `positions` are 0-based indexes of the
+ *  VISIBLE sequence, ascending; `total` is their count («k of N» uses N).
+ */
+export type SearchMatchDto = {
+	total: number,
+	positions: number[],
 };
 
 /**  The single read command's shape (contract, raw snake_case). */
