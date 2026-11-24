@@ -244,6 +244,7 @@ describe("mutation pass-through", () => {
       clearFilters: () => rec("clearFilters")(),
       setLevelEnabled: (level, on) => rec("setLevelEnabled")(level, on),
       setCategoryEnabled: (path, on) => rec("setCategoryEnabled")(path, on),
+      setCategoriesBulk: (disable, enable) => rec("setCategoriesBulk")(disable, enable),
     });
     const client = ipc();
     await expect(client.addFilter("plain", "timeout")).resolves.toBeNull();
@@ -256,6 +257,7 @@ describe("mutation pass-through", () => {
     await expect(client.clearFilters()).resolves.toBeNull();
     await expect(client.setLevelEnabled("trace", false)).resolves.toBeNull();
     await expect(client.setCategoryEnabled("app/db", false)).resolves.toBeNull();
+    await expect(client.setCategoriesBulk(["app/db"], ["app"])).resolves.toBeNull();
     expect(calls).toEqual([
       { fn: "addFilter", args: ["plain", "timeout"] },
       { fn: "setFilterEnabled", args: [1, false] },
@@ -267,6 +269,7 @@ describe("mutation pass-through", () => {
       { fn: "clearFilters", args: [] },
       { fn: "setLevelEnabled", args: ["trace", false] },
       { fn: "setCategoryEnabled", args: ["app/db", false] },
+      { fn: "setCategoriesBulk", args: [["app/db"], ["app"]] },
     ]);
   });
 });
@@ -288,6 +291,7 @@ function emptyRaw(): RawIpc {
     clearFilters: async () => null,
     setLevelEnabled: async () => null,
     setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
     addHighlight: async () => null,
     setHighlightEnabled: async () => null,
     setHighlightColor: async () => null,

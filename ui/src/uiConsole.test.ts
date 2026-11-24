@@ -134,6 +134,7 @@ function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
       return null;
     },
     setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
     searchVisible: async () => ({ total: 0, positions: [] }),
     visibilitySnapshot: async () => snapshot(),
   };
@@ -209,6 +210,7 @@ function sequenceStub(options: { failMutation?: string } = {}): SequenceStub {
       return null;
     },
     setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
     searchVisible: async () => ({ total: 0, positions: [] }),
     visibilitySnapshot: async (): Promise<VisibilitySnapshotDto> => ({
       visible_count: Array.from({ length: LINE_COUNT }, (_, i) => i + 1)
@@ -456,13 +458,18 @@ function categoryStub() {
     }))].sort();
   const enabled = new Set(everyPath(CATEGORIES));
   const calls: string[] = [];
+  /** The bulk differentials, recorded verbatim for the one-call assertion. */
+  const bulkCalls: { disable: string[]; enable: string[] }[] = [];
   const allowed = (cat: string): boolean => {
     if (!enabled.has(cat)) return false;
     let i = cat.indexOf("/");
     while (i !== -1) { if (!enabled.has(cat.slice(0, i))) return false; i = cat.indexOf("/", i + 1); }
     return true;
   };
-  const stub: RawIpc & { setCategoryCalls(): string[] } = {
+  const stub: RawIpc & {
+    setCategoryCalls(): string[];
+    setCategoryBulkCalls(): { disable: string[]; enable: string[] }[];
+  } = {
     ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
@@ -484,6 +491,12 @@ function categoryStub() {
       if (on) enabled.add(path); else enabled.delete(path);
       return null;
     },
+    setCategoriesBulk: async (disable, enable) => {
+      bulkCalls.push({ disable: [...disable], enable: [...enable] });
+      for (const p of disable) enabled.delete(p);
+      for (const p of enable) enabled.add(p);
+      return null;
+    },
     searchVisible: async () => ({ total: 0, positions: [] }),
     visibilitySnapshot: async () => ({
       visible_count: CATEGORIES.filter((c) => c.count > 0 && allowed(c.path))
@@ -495,6 +508,7 @@ function categoryStub() {
       categories_enabled: [...enabled].sort(),
     }),
     setCategoryCalls: () => calls,
+    setCategoryBulkCalls: () => bulkCalls,
   };
   return stub;
 }
@@ -504,8 +518,7 @@ const TREE_PATHS = [
   "app", "app/main", "app/main/api", "app/main/db",
   "db", "db/pool", "uncategorized",
 ];
-const CATEGORY_TOGGLE_ALL_OFF = TREE_PATHS.map((p) => "-" + p);
-const CATEGORY_TOGGLE_ALL_ON = TREE_PATHS.map((p) => "+" + p);
+const CATEGORY_TOGGLE_ALL = TREE_PATHS;
 
 describe("panel console actions (rhl.2, §10.1)", () => {
   beforeEach(() => {
@@ -575,15 +588,18 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     expect(snap.panel.expanded).toEqual(["app", "db", "uncategorized"]);
   });
 
-  it("toggleCategory(off) drives the propagateToggle differential through set_category_enabled and refetches", async () => {
+  it("toggleCategory(off) drives the propagateToggle differential through ONE bulk call and refetches", async () => {
     const stub = categoryStub();
     const { console_ } = await freshConsole(stub);
     await console_.load("/tmp/log.txt");
     const snap = await console_.toggleCategory("app", false);
     // down-propagation removes the node + its subtree paths; ancestors stay.
-    expect(stub.setCategoryCalls()).toEqual([
-      "-app", "-app/main", "-app/main/api", "-app/main/db",
+    // One wire call (disable, enable), not one call per path: a read can
+    // never observe a mid-differential whitelist (bead 3af).
+    expect(stub.setCategoryBulkCalls()).toEqual([
+      { disable: ["app", "app/main", "app/main/api", "app/main/db"], enable: [] },
     ]);
+    expect(stub.setCategoryCalls()).toEqual([]);
     expect(snap.visibility?.categoriesEnabled).toEqual(["db", "db/pool", "uncategorized"]);
     // app/main rows drop out of the visible count (40 + 20 of 100).
     expect(snap.visibility?.visibleCount).toBe(40);
@@ -594,10 +610,10 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     const { console_ } = await freshConsole(stub);
     await console_.load("/tmp/log.txt");
     await console_.toggleCategory("app", false);
-    stub.setCategoryCalls().length = 0;
+    stub.setCategoryBulkCalls().length = 0;
     const snap = await console_.toggleCategory("app", true);
-    expect(stub.setCategoryCalls()).toEqual([
-      "+app", "+app/main", "+app/main/api", "+app/main/db",
+    expect(stub.setCategoryBulkCalls()).toEqual([
+      { disable: [], enable: ["app", "app/main", "app/main/api", "app/main/db"] },
     ]);
     expect(snap.visibility?.visibleCount).toBe(100);
   });
@@ -607,7 +623,9 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     const { console_ } = await freshConsole(stub);
     await console_.load("/tmp/log.txt");
     const snap = await console_.setAllCategories(false);
-    expect(stub.setCategoryCalls()).toEqual(CATEGORY_TOGGLE_ALL_OFF);
+    expect(stub.setCategoryBulkCalls()).toEqual([
+      { disable: CATEGORY_TOGGLE_ALL, enable: [] },
+    ]);
     expect(snap.visibility?.visibleCount).toBe(0);
   });
 
@@ -616,9 +634,11 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     const { console_ } = await freshConsole(stub);
     await console_.load("/tmp/log.txt");
     await console_.setAllCategories(false);
-    stub.setCategoryCalls().length = 0;
+    stub.setCategoryBulkCalls().length = 0;
     const snap = await console_.setAllCategories(true);
-    expect(stub.setCategoryCalls()).toEqual(CATEGORY_TOGGLE_ALL_ON);
+    expect(stub.setCategoryBulkCalls()).toEqual([
+      { disable: [], enable: CATEGORY_TOGGLE_ALL },
+    ]);
     expect(snap.visibility?.visibleCount).toBe(100);
   });
 
@@ -630,9 +650,9 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     expect(snap.visibility ?? null).toBeNull();
   });
 
-  it("a failing set_category_enabled surfaces through the error state and keeps the snapshot", async () => {
+  it("a failing bulk category differential surfaces through the error state and keeps the snapshot", async () => {
     const stub = categoryStub();
-    stub.setCategoryEnabled = async () => {
+    stub.setCategoriesBulk = async () => {
       throw new Error("ipc down");
     };
     const { console_ } = await freshConsole(stub);
@@ -699,6 +719,7 @@ function searchStub(): SearchStub {
       return null;
     },
     setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
     searchVisible: async (mode: string, pattern: string) => {
       calls.push({ mode, pattern });
       if (typeof pattern !== "string") throw new Error("pattern: not a string");
@@ -1054,6 +1075,7 @@ function deferredSearchStub(): DeferredSearchStub {
       return null;
     },
     setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
     searchVisible: async (mode: string, pattern: string) => {
       void mode;
       if (typeof pattern !== "string") throw new Error("pattern: not a string");
@@ -1252,6 +1274,16 @@ function categoryBurstStub(): BurstStub {
       else applied[path as "a" | "b"] = false;
       return null;
     },
+    // The bulk differential applies as ONE (delayed) wire call: a mid-burst
+    // transient whitelist no longer exists (bead 3af); the window the old
+    // armed-recompute probe used to race is the one this stub's 200 ms
+    // delay still models for any OTHER one-by-one wire call.
+    setCategoriesBulk: async (disable: string[], enable: string[]) => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      for (const p of disable) applied[p as "a" | "b"] = false;
+      for (const p of enable) applied[p as "a" | "b"] = true;
+      return null;
+    },
     searchVisible: async (mode: string, pattern: string) => {
       void mode;
       if (typeof pattern !== "string") throw new Error("pattern: not a string");
@@ -1403,6 +1435,7 @@ describe("pin selection actions (q1f.1, §12)", () => {
       },
       setLevelEnabled: async () => null,
       setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
       searchVisible: async () => ({ total: 0, positions: [] }),
       visibilitySnapshot: async () => {
         snapshots++;
@@ -1664,6 +1697,7 @@ function loadStub(options: {
       return null;
     },
     setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
     clearPins: async () => null,
     clearFilters: async () => null,
     addHighlight: async () => null,
@@ -1826,6 +1860,7 @@ describe("console command line (bead 7rf.1, §13/§13.1)", () => {
       clearHighlights: async () => { cleared.push("clearHighlights"); lines.highlights.length = 0; return null; },
       setLevelEnabled: async () => null,
       setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
       historyGet: async () => {
         getCalls += 1;
         if (options.failHistoryGet) {
@@ -2043,6 +2078,7 @@ describe("persistent command history (bead 7rf.2, §13.2)", () => {
       clearHighlights: async () => null,
       setLevelEnabled: async () => null,
       setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
       historyGet: async () => {
         getCalls += 1;
         if (options.failHistoryGet) {
@@ -2196,6 +2232,7 @@ describe("console command line live-round (bead 7rf.1, §13.1 branches + error l
       clearHighlights: async () => null,
       setLevelEnabled: async () => null,
       setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
       searchVisible: async () => ({ total: 0, positions: [] }),
       visibilitySnapshot: async () => ({
         visible_count: 12,
@@ -2303,6 +2340,7 @@ describe("last open dir persistence (bead vk9.2, §2/§15)", () => {
       clearHighlights: async () => null,
       setLevelEnabled: async () => null,
       setCategoryEnabled: async () => null,
+    setCategoriesBulk: async () => null,
       searchVisible: async () => ({ total: 0, positions: [] }),
       visibilitySnapshot: async () => ({
         visible_count: 12,

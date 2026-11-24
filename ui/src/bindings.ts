@@ -83,6 +83,11 @@ export const commands = {
 	/**  Enable or disable a category by its full path ("app/main/db"). */
 	setCategoryEnabled: (path: string, on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_category_enabled", { path, on }, options),
 	/**
+	 *  Apply a whole category differential atomically: every disable, then every
+	 *  enable, under one lock hold with a single cache invalidation.
+	 */
+	setCategoriesBulk: (disable: string[], enable: string[], options?: InvokeOptions) => __TAURI_INVOKE<null>("set_categories_bulk", { disable, enable }, options),
+	/**
 	 *  The single read command of the visibility bridge: shape in
 	 *  docs/notes/visibility-bridge.md (RAW; normalizes only in ipcClient.ts).
 	 */

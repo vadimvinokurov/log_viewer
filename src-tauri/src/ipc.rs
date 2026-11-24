@@ -423,6 +423,29 @@ pub(crate) fn set_category_enabled_inner(vis: &VisState, path: &str, on: bool) -
   Ok(())
 }
 
+/// Bulk category differential (§10): `disable` first, then `enable` — the
+/// same order the console's propagateToggle applies — under ONE lock hold
+/// with a single invalidation at the end. A read command can never observe
+/// a mid-differential whitelist, so it can no longer cache (nor serve) the
+/// transiently partial totals of a category burst (bead 3af).
+pub(crate) fn set_categories_bulk_inner(
+  vis: &VisState,
+  disable: &[String],
+  enable: &[String],
+) -> Result<(), String> {
+  let mut guard = vis.lock().map_err(|_| lock_err())?;
+  for path in disable {
+    guard.vis.set_category_enabled(path, false);
+    guard.disabled_categories.insert(path.clone());
+  }
+  for path in enable {
+    guard.vis.set_category_enabled(path, true);
+    guard.disabled_categories.remove(path);
+  }
+  guard.invalidate();
+  Ok(())
+}
+
 /// Contract policy 3: after a load the whitelist is repopulated as
 /// `model.categories() - disabled_categories` (disabled survive by name,
 /// new categories start enabled); levels, filters and pins persist because
@@ -1070,6 +1093,18 @@ pub async fn set_category_enabled(
   set_category_enabled_inner(&vis, &path, on)
 }
 
+/// Apply a whole category differential atomically: every disable, then every
+/// enable, under one lock hold with a single cache invalidation.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_categories_bulk(
+  disable: Vec<String>,
+  enable: Vec<String>,
+  vis: tauri::State<'_, VisState>,
+) -> Result<(), String> {
+  set_categories_bulk_inner(&vis, &disable, &enable)
+}
+
 /// The single read command of the visibility bridge: shape in
 /// docs/notes/visibility-bridge.md (RAW; normalizes only in ipcClient.ts).
 #[tauri::command]
@@ -1422,6 +1457,44 @@ fn history_roundtrip_and_persistence() {
     assert_eq!(snap.visible_count, 2); // netline + batch line
     let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
     assert_eq!(rows.iter().map(|r| r.line_no).collect::<Vec<_>>(), vec![1, 2]);
+  }
+
+  /// The bulk category command applies a whole differential under ONE lock
+  /// hold with a single invalidation, so a read command can never observe
+  /// (nor cache) a mid-differential whitelist: its end state equals a
+  /// sequential application of the same differential.
+  #[test]
+  fn categories_bulk_applies_differential_as_one_atomic_step() {
+    let (file, vis, _hl) = bridge(MIX, "bulk_categories");
+    // Disable both subcategories AND re-enable "app" in the same call; the
+    // end state must match a sequential disable/disable/enable round.
+    set_categories_bulk_inner(
+      &vis,
+      &["app/main".to_owned(), "app/net".to_owned()],
+      &["app".to_owned()],
+    )
+    .unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
+    // Only line 4 (app) and line 5 (uncategorized) remain visible.
+    assert_eq!(snap.visible_count, 2);
+    assert!(!snap.categories_enabled.contains(&"app/main".to_owned()));
+    assert!(!snap.categories_enabled.contains(&"app/net".to_owned()));
+    assert!(snap.categories_enabled.contains(&"app".to_owned()));
+
+    // A re-enable through bulk surfaces the hidden lines again.
+    set_categories_bulk_inner(&vis, &[], &["app/main".to_owned(), "app/net".to_owned()]).unwrap();
+    let snap = visibility_snapshot_inner(&file, &vis, &_hl).unwrap();
+    assert_eq!(snap.visible_count, 6);
+    assert_eq!(snap.categories_enabled.len(), 4);
+
+    // Bulk never regresses the cache: a read right after the bulk returns
+    // the final-epoch totals (the counters of the snapshot equal a fresh
+    // recompute, not a pre-invalidation partial state).
+    let rows = get_rows_inner(0, 10, &file, &vis, &_hl).unwrap();
+    assert_eq!(
+      rows.iter().map(|r| r.line_no).collect::<Vec<_>>(),
+      vec![1, 2, 3, 4, 5, 6]
+    );
   }
 
   #[test]

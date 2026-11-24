@@ -30,6 +30,8 @@ export interface RawIpc {
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   /** Categories panel (rhl.2); path = full category path ("app/main/db"). */
   setCategoryEnabled(path: string, on: boolean): Promise<null>;
+  /** Bulk category differential (bead 3af): one wire call, one invalidation. */
+  setCategoriesBulk(disable: string[], enable: string[]): Promise<null>;
   /** §8 search over the visible sequence (bead 2wu.1): mode ∈ plain|regex|simple; unknown mode → the
    *  backend rejects; an invalid pattern matches nothing. */
   searchVisible(mode: string, pattern: string): Promise<import("./bindings").SearchMatchDto>;
@@ -65,6 +67,7 @@ export interface IpcClient {
   clearFilters(): Promise<null>;
   setLevelEnabled(level: string, on: boolean): Promise<null>;
   setCategoryEnabled(path: string, on: boolean): Promise<null>;
+  setCategoriesBulk(disable: string[], enable: string[]): Promise<null>;
   /** §9 highlight RPC (exx.2); symmetric with the filters. */
   addHighlight(mode: string, pattern: string): Promise<null>;
   setHighlightEnabled(id: number, on: boolean): Promise<null>;
@@ -292,6 +295,9 @@ export const realIpc: RawIpc = {
   async setCategoryEnabled(path: string, on: boolean) {
     return commands.setCategoryEnabled(path, on);
   },
+  async setCategoriesBulk(disable: string[], enable: string[]) {
+    return commands.setCategoriesBulk(disable, enable);
+  },
   async addHighlight(mode: string, pattern: string) {
     return commands.addHighlight(mode, pattern);
   },
@@ -342,6 +348,8 @@ export function ipc(): IpcClient {
     clearFilters: () => source.clearFilters(),
     setLevelEnabled: (level: string, on: boolean) => source.setLevelEnabled(level, on),
     setCategoryEnabled: (path: string, on: boolean) => source.setCategoryEnabled(path, on),
+    setCategoriesBulk: (disable: string[], enable: string[]) =>
+      source.setCategoriesBulk(disable, enable),
     addHighlight: (mode: string, pattern: string) => source.addHighlight(mode, pattern),
     setHighlightEnabled: (id: number, on: boolean) => source.setHighlightEnabled(id, on),
     setHighlightColor: (id: number, hex: string | null) => source.setHighlightColor(id, hex),

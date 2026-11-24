@@ -33,6 +33,7 @@ fn build_bindings() -> tauri_specta::Builder<tauri::Wry> {
     ipc::set_last_open_dir,
     ipc::set_level_enabled,
     ipc::set_category_enabled,
+    ipc::set_categories_bulk,
     ipc::visibility_snapshot,
     ipc::search_visible,
     ipc::add_highlight,
@@ -57,6 +58,7 @@ mod tests {
       )
       .expect("failed to export typescript bindings");
   }
+
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

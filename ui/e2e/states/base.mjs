@@ -190,6 +190,7 @@ export const STUB = `(function () {
     async clearHighlights() { highlights.length = 0; return null; },
     async setLevelEnabled(level, on) { levelEnabled[level] = on; return null; },
     async setCategoryEnabled() { return null; },
+    async setCategoriesBulk() { return null; },
     // §8 search (2wu.1): over the VISIBLE sequence only. Mode semantics are
     // backend logic; the stub approximates with a case-insensitive
     // substring (plain/simple) or an anchored JS regex, and a broken

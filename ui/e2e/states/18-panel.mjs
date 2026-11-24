@@ -66,6 +66,11 @@ const STUB = `(function () {
       if (on) enabled.add(path); else enabled.delete(path);
       return null;
     },
+    async setCategoriesBulk(disable, enable) {
+      for (const p of disable) enabled.delete(p);
+      for (const p of enable) enabled.add(p);
+      return null;
+    },
     async visibilitySnapshot() {
       const byPath = new Map(CATEGORIES.map((c) => [c.path, 0]));
       let visible = 0;

@@ -792,9 +792,10 @@ class UiConsole {
   private flatCategories = (): { path: string; count: number }[] =>
     this.state.file?.load.categories ?? [];
 
-  /** §10 category toggle: applies propagateToggle's differential through
-   *  raw set_category_enabled (one call per path), then refetches the
-   *  snapshot through mutateVisibility (selection remap included). */
+  /** §10 category toggle: applies propagateToggle's differential through ONE
+   *  bulk wire call (bead 3af: one lock hold, one invalidation — a read can
+   *  no longer cache a mid-burst whitelist), then refetches the snapshot
+   *  through mutateVisibility (selection remap included). */
   toggleCategory = (path: string, on: boolean): Promise<ConsoleSnapshot> => {
     const flat = this.flatCategories();
     if (flat.length === 0) {
@@ -802,12 +803,7 @@ class UiConsole {
     }
     const { add, remove } = propagateToggle([path], buildTree(flat), on);
     return this.mutateVisibility(async () => {
-      for (const p of remove) {
-        await ipc().setCategoryEnabled(p, false);
-      }
-      for (const p of add) {
-        await ipc().setCategoryEnabled(p, true);
-      }
+      await ipc().setCategoriesBulk(remove, add);
     });
   };
 
@@ -819,12 +815,7 @@ class UiConsole {
     }
     const { add, remove } = toggleAll(flat, on);
     return this.mutateVisibility(async () => {
-      for (const p of remove) {
-        await ipc().setCategoryEnabled(p, false);
-      }
-      for (const p of add) {
-        await ipc().setCategoryEnabled(p, true);
-      }
+      await ipc().setCategoriesBulk(remove, add);
     });
   };
 
@@ -865,14 +856,10 @@ class UiConsole {
     }, 250);
   };
 
-  /** Depth of the visibility-mutation critical section (live round 3):
-   *  while a differential mid-applies — the console issues its
-   *  set_category_enabled / setLevel wire calls one by one inside one
-   *  mutateVisibility round with a single snapshot refetch at the end —
-   *  the shell's visible cache is transiently partial between the wire
-   *  calls. A recompute firing in that window scans (and the shell then
-   *  caches for the whole multi-second 1M+ row scan) a mid-burst state
-   *  whose total lands under the still-current epoch. */
+  /** Depth of the visibility-mutation critical section (live round 3; bead
+   *  3af made each differential ONE bulk wire call with a single backend
+   *  invalidation, but a toggle still refetches the snapshot at the end of
+   *  the round, so nested/overlapping mutations stay serialized here). */
   private mutating = 0;
 
   /** §8: Ctrl+F opens (a file must be loaded); the tumblers/query survive a
