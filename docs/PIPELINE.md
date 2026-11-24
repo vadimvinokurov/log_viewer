@@ -62,6 +62,10 @@ Claim tasks in the main session before spawning agents.
     in the footer; new states `loaded-level-off` (dimmed disabled level) and
     `filters-live-empty`/`filters-live-mixed` (FiltersTab on live console
     state) with fresh goldens.
+  - Rebaseline 2026-11-24 (bead qt7.3, §4 viewport anchor): new state
+    `anchor-scrolled-refilter` — scrolled deep, trace toggled off, anchored;
+    assertions run on `window.__headless.viewport()` numbers, golden
+    ui/e2e/goldens/anchor-scrolled-refilter.png.
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

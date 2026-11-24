@@ -169,6 +169,36 @@ describe("visibility state (§7, dsq.3)", () => {
     expect(s1.visibilityEpoch).toBe(2);
   });
 
+  it("selection-remap replaces the indexes by line number and moves the anchor (§4, qt7.3)", () => {
+    const s0 = appReducer(loadedState(), { kind: "selection-click", index: 3 });
+    const s1 = appReducer(s0, {
+      kind: "selection-remap",
+      indexes: [2, 5, 9],
+      anchor: 2,
+    });
+    expect(s1.selection).toEqual({ selected: [2, 5, 9], anchor: 2 });
+  });
+
+  it("selection-remap with an unresolvable anchor clears it but keeps the indexes", () => {
+    const s0 = appReducer(loadedState(), { kind: "selection-click", index: 3 });
+    const s1 = appReducer(s0, {
+      kind: "selection-remap",
+      indexes: [0],
+      anchor: null,
+    });
+    expect(s1.selection).toEqual({ selected: [0], anchor: null });
+  });
+
+  it("selection-remap bumps neither epoch (visibility-epoch handles the refill)", () => {
+    const s = appReducer(loadedState(), {
+      kind: "selection-remap",
+      indexes: [1],
+      anchor: 1,
+    });
+    expect(s.visibilityEpoch).toBe(0);
+    expect(s.fileEpoch).toBe(1);
+  });
+
   it("visibility events keep the selection untouched (qt7.3 owns remapping)", () => {
     const s0 = appReducer(loadedState(), { kind: "selection-click", index: 4 });
     const s1 = appReducer(s0, { kind: "visibility", snapshot: snapshot() });

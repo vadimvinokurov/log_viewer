@@ -6,6 +6,12 @@
 import { appReducer, initialAppState, type AppState, type AppEvent } from "./state";
 import type { VisibilityState } from "./state";
 import { ipc } from "./ipcClient";
+import {
+  remapSelection,
+  resolveLineIndex,
+  type LineAt,
+  type ViewportInfo,
+} from "./viewportAnchoring";
 
 export interface ConsoleSnapshot {
   screen: AppState["screen"];
@@ -25,6 +31,9 @@ interface TableHandle {
   /** Builds the copy text for the selection (loading uncached rows),
    * writes it to the clipboard and returns it for assertions. */
   copy(mode: CopyMode): Promise<string>;
+  /** Current viewport scroll state incl. the live anchor (§4, qt7.3);
+   * null while no table is mounted. Assertions use this, never DOM. */
+  viewport(): ViewportInfo | null;
 }
 
 class UiConsole {
@@ -82,6 +91,11 @@ class UiConsole {
     return null;
   };
 
+  /** Viewport state through the table handle (§4 text RPC, qt7.3). */
+  viewport = (): ViewportInfo | null => {
+    return this.table ? this.table.viewport() : null;
+  };
+
   /** §4 row-selection transitions (the reducer holds the transitions). */
   selectRow = (
     index: number,
@@ -137,11 +151,45 @@ class UiConsole {
     }
   };
 
+  /** 1-row probe of the visible sequence (contract dsq.3): get_rows(i, 1)
+   *  resolves the line_no of 0-based row i, or null past the end. Probes are
+   *  the console's only resolution path (the row cache lives in LogTable). */
+  private lineAt: LineAt = async (index: number) => {
+    const chunk = await ipc().getRows(index, 1);
+    const row = chunk[0];
+    return row ? row.line_no : null;
+  };
+
+  /** Pre-mutation resolve (§4): the selected indexes' and the pivot's line
+   *  numbers against the CURRENT visible sequence, before the mutation's
+   *  refetch makes those indexes stale. */
+  private resolveRemapInput = async (
+    selected: number[],
+  ): Promise<{ lines: number[]; anchorLine: number | null }> => {
+    const lineAt = this.lineAt;
+    const anchor = this.state.selection.anchor;
+    const lines: number[] = [];
+    for (const index of selected) {
+      const line = await lineAt(index);
+      if (line !== null) {
+        lines.push(line);
+      }
+    }
+    const anchorLine = anchor === null ? null : await lineAt(anchor);
+    return { lines, anchorLine };
+  };
+
   /** Runs one visibility mutation, then refetches and applies the snapshot;
-   *  a failed mutation surfaces through the existing error state. */
+   *  a failed mutation surfaces through the existing error state. With a
+   *  non-empty selection the selection is remapped by line numbers across
+   *  the change (§4, qt7.3); an empty selection costs zero extra IPC. */
   private mutateVisibility = async (
     mutator: () => Promise<unknown>,
   ): Promise<ConsoleSnapshot> => {
+    const selected = [...this.state.selection.selected].sort((a, b) => a - b);
+    const remap = selected.length
+      ? await this.resolveRemapInput(selected)
+      : null;
     try {
       await mutator();
     } catch (e) {
@@ -149,6 +197,17 @@ class UiConsole {
       return this.getSnapshot();
     }
     await this.refreshVisibility();
+    if (remap) {
+      const count = this.state.visibility?.visibleCount ?? 0;
+      const lineAt = this.lineAt;
+      const indexes = await remapSelection(remap.lines, count, lineAt);
+      const anchor =
+        remap.anchorLine === null
+          ? null
+          : await resolveLineIndex(remap.anchorLine, count, lineAt);
+      // Hidden pivot: the anchor clears, the remapped indexes stay.
+      this.dispatch({ kind: "selection-remap", indexes, anchor });
+    }
     return this.getSnapshot();
   };
 

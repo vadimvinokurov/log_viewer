@@ -85,6 +85,7 @@ export type AppEvent =
   | { kind: "selection-click"; index: number }
   | { kind: "selection-toggle"; index: number }
   | { kind: "selection-range"; index: number }
+  | { kind: "selection-remap"; indexes: number[]; anchor: number | null }
   | { kind: "visibility"; snapshot: VisibilityState };
 
 export function initialAppState(): AppState {
@@ -143,6 +144,15 @@ export function appReducer(state: AppState, event: AppEvent): AppState {
       return { ...state, selection: toggle(state.selection, event.index) };
     case "selection-range":
       return { ...state, selection: range(state.selection, event.index) };
+    // §4 (qt7.3): after a visibility change the console re-resolves the
+    // selection by line number and dispatches the new indexes here. The
+    // anchor follows the remapped pivot (null when it cannot resolve); the
+    // epochs stay untouched - the visibility event owns the table refill.
+    case "selection-remap":
+      return {
+        ...state,
+        selection: { selected: event.indexes, anchor: event.anchor },
+      };
     // §7 visibility bridge: mutation actions reapply the refetched snapshot.
     // The selection stays untouched — qt7.3 remaps it by line_no.
     case "visibility":

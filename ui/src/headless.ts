@@ -18,6 +18,9 @@ export function installHeadlessConsole(): () => void {
     load: (path: string) => console_.load(path),
     /** Scroll so the 1-based line is centered; resolves to the row count. */
     scrollToRow: (lineNo: number) => console_.scrollToRow(lineNo),
+    /** §4 viewport state incl. the anchor (qt7.3): scrollTop, scrollLeft,
+     *  anchor {index, line} and its captured offset; null without a table. */
+    viewport: () => console_.viewport(),
     /** §4 row selection: kind = click | toggle | range (from modifiers). */
     select: (index: number, kind: "click" | "toggle" | "range") =>
       console_.selectRow(index, kind),

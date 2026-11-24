@@ -16,7 +16,7 @@ import net from "node:net";
 const [, , argPath] = process.argv;
 const target = argPath
   ? path.resolve(argPath)
-  : path.resolve(process.cwd(), "../test_logs/log.txt");
+  : path.resolve(path.dirname(new URL(import.meta.url).pathname), "../test_logs/log.txt");
 
 function readPort() {
   const file = path.join(os.tmpdir(), "logviewer.driver.port");
@@ -265,6 +265,119 @@ if (filterRes.found) {
   );
 }
 
+// (e) anchor + remap (bead qt7.3): scroll deep, remember the top row's line
+// and its viewport offset, toggle a level that touches NEITHER the anchor row
+// nor the selected rows, and require: anchor line + offset held, scrollLeft
+// untouched, both restored on level-on. Then scrollToRow to two targets: the
+// anchor must land on the target line each time with the SAME centering
+// offset (centering without knowing the viewport height) and no horizontal
+// drift. Selection: two deep rows; after the same refilter their indexes may
+// shift, but their line numbers must survive the §4 remap.
+const anchorRes = await evalJs(port, `
+  const h = window.__headless;
+  const lc = h.state().file.lineCount;
+  // Anchor resolution (epoch binary search, virtualizer relayout) is async:
+  // read viewport() until it is stable (two equal reads, non-null anchor).
+  const settle = async () => {
+    let p;
+    for (let t = 0; t < 25; t++) {
+      await new Promise((r) => setTimeout(r, 120));
+      const v = h.viewport();
+      const k = JSON.stringify(v);
+      if (p === k && v && v.anchor) return v;
+      p = k;
+    }
+    return h.viewport();
+  };
+  const B = Math.floor(lc / 2);
+  const iA = B, iB = B - 500;
+  await h.select(iB, "click");
+  h.select(iA, "toggle");
+  const selPre = h.state().selection ? h.state().selection.selected : [];
+  const rowI = (i) => window.__TAURI_INTERNALS__.invoke("get_rows", { offset: i, limit: 1 })
+    .then((d) => (d.length ? d[0] : null));
+  const preRows = await Promise.all([rowI(iA), rowI(iB)]);
+  const selLevels = new Set(preRows.map((r) => (r ? r.level : null)));
+  await h.scrollToRow(B + 2500);
+  const pre = await settle();
+  if (!pre || !pre.anchor) return { ok: false, selPre: selPre.length, haveAnchor: false };
+  const anchorRow = await rowI(pre.anchor.index);
+  const levels = h.state().visibility ? h.state().visibility.levels : [];
+  const lv = levels.find((l) => l.enabled && l.count > 0 &&
+    !selLevels.has(l.level) && l.level !== (anchorRow ? anchorRow.level : null));
+  if (!lv) return { ok: false, selPre: selPre.length, noLevel: true };
+  const off = await h.setLevel(lv.level, false);
+  const post = await settle();
+  const selOff = off.selection ? off.selection.selected : [];
+  const offRows = await Promise.all(selOff.map((i) => rowI(i)));
+  const back = await h.setLevel(lv.level, true);
+  const rest = await settle();
+  const selRest = back.selection ? back.selection.selected : [];
+  const restRows = await Promise.all(selRest.map((i) => rowI(i)));
+  await h.scrollToRow(B + 7777);
+  const c1 = await settle();
+  await h.scrollToRow(B + 12345);
+  const c2 = await settle();
+  const lineOf = (r) => (r ? r.line_no : null);
+  return { ok: true, level: lv.level, B,
+    a0: pre.anchor.line, off0: pre.anchorOffsetPx, sl0: pre.scrollLeft,
+    a1: post ? (post.anchor ? post.anchor.line : null) : null,
+    off1: post ? post.anchorOffsetPx : null, sl1: post ? post.scrollLeft : null,
+    a2: rest ? (rest.anchor ? rest.anchor.line : null) : null,
+    off2: rest ? rest.anchorOffsetPx : null,
+    sel0: [lineOf(preRows[1]), lineOf(preRows[0])], selOffLine: offRows.map(lineOf), selOffN: selOff.length,
+    selRestLine: restRows.map(lineOf), selRestN: selRest.length,
+    c1line: c1 && c1.anchor ? c1.anchor.line : null, c1off: c1 ? c1.anchorOffsetPx : null,
+    c2line: c2 && c2.anchor ? c2.anchor.line : null, c2off: c2 ? c2.anchorOffsetPx : null,
+    c2sl: c2 ? c2.scrollLeft : null };`);
+check(
+  "e0. deep level found that misses the anchor and selected rows",
+  anchorRes.ok === true,
+  `selPre=${JSON.stringify(anchorRes.selPre ?? null)} ok=${JSON.stringify(anchorRes.ok)}`,
+);
+if (anchorRes.ok) {
+  check(
+    "e1. refilter holds the anchor row at the same viewport offset",
+    anchorRes.a1 === anchorRes.a0 && anchorRes.off1 === anchorRes.off0,
+    `line ${JSON.stringify(anchorRes.a0)}->${JSON.stringify(anchorRes.a1)} offset ${JSON.stringify(anchorRes.off0)}->${JSON.stringify(anchorRes.off1)}`,
+  );
+  check(
+    "e2. refilter leaves scrollLeft untouched",
+    anchorRes.sl1 === anchorRes.sl0,
+    `scrollLeft ${JSON.stringify(anchorRes.sl0)}->${JSON.stringify(anchorRes.sl1)}`,
+  );
+  check(
+    "e3. level-on restores the anchor and its offset",
+    anchorRes.a2 === anchorRes.a0 && anchorRes.off2 === anchorRes.off0,
+    `line ${JSON.stringify(anchorRes.a2)} offset ${JSON.stringify(anchorRes.off2)}`,
+  );
+  check(
+    "e4. selection remap preserves the selected lines across the refilter",
+    JSON.stringify(anchorRes.selOffLine) === JSON.stringify(anchorRes.sel0),
+    `pre-lines=${JSON.stringify(anchorRes.sel0)} post-lines=${JSON.stringify(anchorRes.selOffLine)} n=${anchorRes.selOffN}`,
+  );
+  check(
+    "e5. level-on remaps the selection back to the original indexes",
+    JSON.stringify(anchorRes.selRestLine) === JSON.stringify(anchorRes.sel0),
+    `lines=${JSON.stringify(anchorRes.selRestLine)} n=${anchorRes.selRestN}`,
+  );
+  check(
+    "e6. scrollToRow centers both targets at the same row offset",
+    (anchorRes.B + 7777) - anchorRes.c1line === (anchorRes.B + 12345) - anchorRes.c2line,
+    `c1 delta=${anchorRes.B + 7777 - anchorRes.c1line} c2 delta=${anchorRes.B + 12345 - anchorRes.c2line}`,
+  );
+  check(
+    "e7. scrollToRow centers with one constant offset",
+    anchorRes.c1off === anchorRes.c2off,
+    `c1=${JSON.stringify(anchorRes.c1off)} c2=${JSON.stringify(anchorRes.c2off)}`,
+  );
+  check(
+    "e8. scrollToRow does not drift horizontally",
+    anchorRes.c2sl === anchorRes.sl0,
+    `scrollLeft ${JSON.stringify(anchorRes.sl0)}->${JSON.stringify(anchorRes.c2sl)}`,
+  );
+}
+
 const failed = checks.filter((c) => !c.ok).length;
 const verdict = failed === 0 ? "OK" : "FAILED (" + failed + "/" + checks.length + ")";
 console.log(
@@ -279,6 +392,7 @@ console.log(
   " filterToggled=" + (filterRes.found ? filterRes.toggleVisible : "-") +
   " filtersRestored=" + (filterRes.found ? filterRes.restored : "-") +
   " copyRaw=" + (copyRes.rawEquals ? "equal" : "MISMATCH") +
-  " copyMessage=" + (copyRes.msgContained ? "contained" : "MISMATCH"),
+  " copyMessage=" + (copyRes.msgContained ? "contained" : "MISMATCH") +
+  " anchorOk=" + (anchorRes.ok && failed === 0 ? JSON.stringify(anchorRes.a0) + "@" + anchorRes.off0 + "px" : JSON.stringify(anchorRes.a1 ?? null)),
 );
 process.exit(failed === 0 ? 0 : 1);
