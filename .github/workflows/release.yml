@@ -35,8 +35,9 @@ jobs:
         run: npm --prefix ui run build
       - name: ui unit tests
         run: npm --prefix ui test
-      - name: ui visual goldens
-        run: npm --prefix ui run e2e
+      # Visual goldens are platform-render-dependent (the goldens were
+      # captured by this project's mac Chrome; linux fonts differ), so the
+      # golden gate runs in the macOS build job, not here.
 
   build:
     needs: gate
@@ -66,6 +67,10 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --prefix ui
+      - name: ui visual goldens (same platform the goldens were captured on)
+        run: |
+          npm --prefix ui run build
+          npm --prefix ui run e2e
       - name: tag must equal the tauri.conf.json version
         run: |
           tag="${{ github.ref_name }}"
