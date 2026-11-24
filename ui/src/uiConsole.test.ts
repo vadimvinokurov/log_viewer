@@ -338,4 +338,227 @@ describe("viewport text RPC (§4, qt7.3)", () => {
       reset();
     }
   });
+
+  it("mirrors the panel actions on window.__headless (rhl.2)", async () => {
+    const reset = installHeadlessConsole();
+    try {
+      const headless = (window as unknown as Record<string, unknown>)
+        .__headless as Record<string, unknown> | undefined;
+      expect(headless).not.toBeUndefined();
+      for (const name of [
+        "toggleCategory", "setAllCategories", "togglePanel", "setPanelTab",
+        "setPanelWidth", "setCategorySearch", "expandAllCategories",
+        "toggleExpansion",
+      ]) {
+        expect(typeof headless?.[name]).toBe("function");
+      }
+    } finally {
+      reset();
+    }
+  });
+});
+
+/** RAW stub with a real categories tree: load_file returns the flat list,
+ *  set_category_enabled flips a whitelist the visibility engine mirrors
+ *  (row visible = exact path AND every prefix enabled). */
+function categoryStub() {
+  const CATEGORIES = [
+    { path: "app", count: 0 },
+    { path: "app/main", count: 0 },
+    { path: "app/main/db", count: 40 },
+    { path: "app/main/api", count: 20 },
+    { path: "db", count: 0 },
+    { path: "db/pool", count: 20 },
+    { path: "uncategorized", count: 20 },
+  ];
+  const everyPath = (cs: { path: string }[]): string[] =>
+    [...new Set(cs.flatMap(({ path }) => {
+      const prefixes: string[] = [];
+      let i = path.indexOf("/");
+      while (i !== -1) { prefixes.push(path.slice(0, i)); i = path.indexOf("/", i + 1); }
+      return [...prefixes, path];
+    }))].sort();
+  const enabled = new Set(everyPath(CATEGORIES));
+  const calls: string[] = [];
+  const allowed = (cat: string): boolean => {
+    if (!enabled.has(cat)) return false;
+    let i = cat.indexOf("/");
+    while (i !== -1) { if (!enabled.has(cat.slice(0, i))) return false; i = cat.indexOf("/", i + 1); }
+    return true;
+  };
+  const stub: RawIpc & { setCategoryCalls(): string[] } = {
+    pickFile: async () => null,
+    loadFile: async () => ({
+      format: "plain", line_count: 100,
+      categories: CATEGORIES, levels: [], load_ms: 1,
+    }),
+    getRows: async () => [],
+    addFilter: async () => null,
+    setFilterEnabled: async () => null,
+    removeFilter: async () => null,
+    addPin: async () => null,
+    setPinEnabled: async () => null,
+    removePin: async () => null,
+    setLevelEnabled: async () => null,
+    setCategoryEnabled: async (path, on) => {
+      calls.push((on ? "+" : "-") + path);
+      if (on) enabled.add(path); else enabled.delete(path);
+      return null;
+    },
+    visibilitySnapshot: async () => ({
+      visible_count: CATEGORIES.filter((c) => c.count > 0 && allowed(c.path))
+        .reduce((sum, c) => sum + c.count, 0),
+      levels: [],
+      filters: [],
+      pins: [],
+      categories_enabled: [...enabled].sort(),
+    }),
+    setCategoryCalls: () => calls,
+  };
+  return stub;
+}
+
+/** The tree's paths in the byte-order sort category helpers emit. */
+const TREE_PATHS = [
+  "app", "app/main", "app/main/api", "app/main/db",
+  "db", "db/pool", "uncategorized",
+];
+const CATEGORY_TOGGLE_ALL_OFF = TREE_PATHS.map((p) => "-" + p);
+const CATEGORY_TOGGLE_ALL_ON = TREE_PATHS.map((p) => "+" + p);
+
+describe("panel console actions (rhl.2, §10.1)", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+  });
+
+  it("the snapshot mirrors the panel slice", async () => {
+    const { console_ } = await freshConsole(categoryStub());
+    expect(console_.getSnapshot().panel).toEqual({
+      open: true, tab: "categories", width: 220, search: "", expanded: [],
+    });
+  });
+
+  it("togglePanel / setPanelTab / setPanelWidth / setCategorySearch are pure dispatches", async () => {
+    const { console_ } = await freshConsole(categoryStub());
+    let panel = console_.togglePanel().panel;
+    expect(panel.open).toBe(false);
+    panel = console_.setPanelTab("filters").panel;
+    expect(panel.tab).toBe("filters");
+    panel = console_.setPanelWidth(300).panel;
+    expect(panel.width).toBe(300);
+    // splitter drag clamps into the 180-480 band (spec interpretation)
+    panel = console_.setPanelWidth(50).panel;
+    expect(panel.width).toBe(180);
+    panel = console_.setPanelWidth(1000).panel;
+    expect(panel.width).toBe(480);
+    panel = console_.setCategorySearch("db").panel;
+    expect(panel.search).toBe("db");
+  });
+
+  it("setPanelTab rejects an unknown tab (text RPC string boundary)", async () => {
+    const { console_ } = await freshConsole(categoryStub());
+    expect(console_.setPanelTab("settings").panel.tab).toBe("categories");
+  });
+
+  it("toggleExpansion flips one path without IPC", async () => {
+    const { console_ } = await freshConsole(categoryStub());
+    const panel = console_.toggleExpansion("app").panel;
+    expect(panel.expanded).toEqual(["app"]);
+  });
+
+  it("expandAllCategories uses the loaded file's tree (all paths incl. prefixes)", async () => {
+    const { console_ } = await freshConsole(categoryStub());
+    await console_.load("/tmp/log.txt");
+    const expanded = console_.expandAllCategories(true).panel.expanded;
+    expect(expanded).toEqual([
+      "app", "app/main", "app/main/api", "app/main/db",
+      "db", "db/pool", "uncategorized",
+    ]);
+  });
+
+  it("expandAllCategories(expand=false) collapses to the roots", async () => {
+    const { console_ } = await freshConsole(categoryStub());
+    await console_.load("/tmp/log.txt");
+    await console_.expandAllCategories(true);
+    const expanded = console_.expandAllCategories(false).panel.expanded;
+    expect(expanded).toEqual(["app", "db", "uncategorized"]);
+  });
+
+  it("load resets the expansion to the new file's root-level paths", async () => {
+    const { console_ } = await freshConsole(categoryStub());
+    await console_.load("/tmp/log.txt");
+    await console_.expandAllCategories(true);
+    expect(console_.getSnapshot().panel.expanded.length).toBeGreaterThan(3);
+    const { console_: fresh } = await freshConsole(categoryStub());
+    const snap = await fresh.load("/tmp/log.txt");
+    expect(snap.panel.expanded).toEqual(["app", "db", "uncategorized"]);
+  });
+
+  it("toggleCategory(off) drives the propagateToggle differential through set_category_enabled and refetches", async () => {
+    const stub = categoryStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    const snap = await console_.toggleCategory("app", false);
+    // down-propagation removes the node + its subtree paths; ancestors stay.
+    expect(stub.setCategoryCalls()).toEqual([
+      "-app", "-app/main", "-app/main/api", "-app/main/db",
+    ]);
+    expect(snap.visibility?.categoriesEnabled).toEqual(["db", "db/pool", "uncategorized"]);
+    // app/main rows drop out of the visible count (40 + 20 of 100).
+    expect(snap.visibility?.visibleCount).toBe(40);
+  });
+
+  it("toggleCategory(on) adds the subtree + every ancestor prefix", async () => {
+    const stub = categoryStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    await console_.toggleCategory("app", false);
+    stub.setCategoryCalls().length = 0;
+    const snap = await console_.toggleCategory("app", true);
+    expect(stub.setCategoryCalls()).toEqual([
+      "+app", "+app/main", "+app/main/api", "+app/main/db",
+    ]);
+    expect(snap.visibility?.visibleCount).toBe(100);
+  });
+
+  it("setAllCategories(on=false) unchecks everything via the All checkbox", async () => {
+    const stub = categoryStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    const snap = await console_.setAllCategories(false);
+    expect(stub.setCategoryCalls()).toEqual(CATEGORY_TOGGLE_ALL_OFF);
+    expect(snap.visibility?.visibleCount).toBe(0);
+  });
+
+  it("setAllCategories(on=true) checks everything", async () => {
+    const stub = categoryStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    await console_.setAllCategories(false);
+    stub.setCategoryCalls().length = 0;
+    const snap = await console_.setAllCategories(true);
+    expect(stub.setCategoryCalls()).toEqual(CATEGORY_TOGGLE_ALL_ON);
+    expect(snap.visibility?.visibleCount).toBe(100);
+  });
+
+  it("toggleCategory without a loaded file is a safe no-op", async () => {
+    const stub = categoryStub();
+    const { console_ } = await freshConsole(stub);
+    const snap = await console_.toggleCategory("app", false);
+    expect(stub.setCategoryCalls()).toEqual([]);
+    expect(snap.visibility ?? null).toBeNull();
+  });
+
+  it("a failing set_category_enabled surfaces through the error state and keeps the snapshot", async () => {
+    const stub = categoryStub();
+    stub.setCategoryEnabled = async () => {
+      throw new Error("ipc down");
+    };
+    const { console_ } = await freshConsole(stub);
+    await console_.load("/tmp/log.txt");
+    const before = console_.getSnapshot().visibility;
+    const after = await console_.toggleCategory("app", false);
+    expect(after.error).toBe("Error: ipc down");
+    expect(after.visibility).toEqual(before);
+  });
 });

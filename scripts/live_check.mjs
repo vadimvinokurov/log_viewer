@@ -378,6 +378,63 @@ if (anchorRes.ok) {
   );
 }
 
+// (f) categories (bead rhl.2, §10): panel opens on the categories tab; a real
+// category from the loaded file toggles off (its rows hide), All restores;
+// expand/collapse-all moves the expanded set; search field wires through.
+const catRes = await evalJs(port, `
+  const h = window.__headless;
+  const panel = h.state().panel;
+  if (!panel || !panel.open || panel.tab !== "categories") return { ok: false };
+  const rows = await window.__TAURI_INTERNALS__.invoke("get_rows", { offset: 0, limit: 200 });
+  const seen = [...new Set(rows.map((r) => r.category))];
+  const cat = seen.find((c) => c && c !== "uncategorized") || seen[0] || "uncategorized";
+  const base = h.state().visibility ? h.state().visibility.visibleCount : null;
+  const off = await h.toggleCategory(cat, false);
+  const offVis = off.visibility ? off.visibility.visibleCount : null;
+  const offSet = off.visibility ? off.visibility.categoriesEnabled : null;
+  const offPanel = off.panel ? { expanded: off.panel.expanded.length, search: off.panel.search } : null;
+  const back = await h.setAllCategories(true);
+  const backVis = back.visibility ? back.visibility.visibleCount : null;
+  const expAll = await h.expandAllCategories(true);
+  const expCount = expAll.panel ? expAll.panel.expanded.length : null;
+  const col = await h.expandAllCategories(false);
+  const colCount = col.panel ? col.panel.expanded.length : null;
+  const colVis = col.visibility ? col.visibility.visibleCount : null;
+  const s = await h.setCategorySearch(cat.slice(0, 3));
+  const searchSet = s.panel ? s.panel.search : null;
+  const back2 = await h.setCategorySearch("");
+  const toggled = await h.toggleExpansion(cat);
+  return { ok: true, cat, base, offVis: offVis !== null ? offVis : null, catGone: Array.isArray(offSet) ? !offSet.includes(cat) : null, offPanel,
+    backVis, expCount, colCount, colVis, searchSet,
+    toggleVis: toggled.visibility ? toggled.visibility.visibleCount : null };`);
+check(
+  "f0. panel open on the categories tab",
+  catRes.ok === true,
+  JSON.stringify(catRes),
+);
+if (catRes.ok) {
+  check(
+    `f1. toggleCategory('${catRes.cat}', false) hides its rows and unchecks the path`,
+    catRes.offVis < catRes.base && catRes.catGone === true,
+    `visible ${catRes.base}->${catRes.offVis} catGone=${catRes.catGone}`,
+  );
+  check(
+    "f2. setAllCategories(true) restores the visible count",
+    catRes.backVis === catRes.base,
+    `restored=${catRes.backVis} base=${catRes.base}`,
+  );
+  check(
+    "f3. expand-all grows the set, collapse shrinks it back",
+    catRes.expCount > catRes.colCount && catRes.colCount >= 0,
+    `expanded=${JSON.stringify(catRes.expCount)} collapsed=${JSON.stringify(catRes.colCount)}`,
+  );
+  check(
+    "f4. category search wires through and clears",
+    typeof catRes.searchSet === "string" && catRes.searchSet.length === Math.min(3, catRes.cat.length),
+    `search=${JSON.stringify(catRes.searchSet)}`,
+  );
+}
+
 const failed = checks.filter((c) => !c.ok).length;
 const verdict = failed === 0 ? "OK" : "FAILED (" + failed + "/" + checks.length + ")";
 console.log(

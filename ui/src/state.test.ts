@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   appReducer,
+  clampPanelWidth,
+  expandedForToggleAll,
+  initialPanelState,
   levelBarState,
   type AppState,
   type VisibilityState,
@@ -279,3 +282,117 @@ describe("levelBarState (§11 mapping)", () => {
     expect(bar?.enabled.trace).toBe(true);
   });
 });
+
+describe("side panel slice (rhl.2, §10.1)", () => {
+  it("panel defaults: open, categories tab, 220 px, empty search, nothing expanded", () => {
+    const p = initialPanelState();
+    expect(p).toEqual({ open: true, tab: "categories", width: 220, search: "", expanded: [] });
+  });
+
+  it("panel-toggle flips open without touching the rest", () => {
+    const s0 = appReducer(initialAppState(), { kind: "panel-toggle" });
+    expect(s0.panel.open).toBe(false);
+    const s1 = appReducer(s0, { kind: "panel-toggle" });
+    expect(s1.panel.open).toBe(true);
+    // Ctrl+B only toggles: tab, width, search, expansion survive.
+    expect(s1.panel.tab).toBe("categories");
+    expect(s1.panel.width).toBe(220);
+  });
+
+  it("panel-tab switches the active tab", () => {
+    const s = appReducer(initialAppState(), { kind: "panel-tab", tab: "filters" });
+    expect(s.panel.tab).toBe("filters");
+  });
+
+  it("panel-width clamps into the 180-480 px band (splitter drag bounds)", () => {
+    expect(appReducer(initialAppState(), { kind: "panel-width", width: 50 }).panel.width).toBe(180);
+    expect(appReducer(initialAppState(), { kind: "panel-width", width: 900 }).panel.width).toBe(480);
+    expect(appReducer(initialAppState(), { kind: "panel-width", width: 300 }).panel.width).toBe(300);
+  });
+
+  it("clampPanelWidth is the pure clamp used by the reducer", () => {
+    expect(clampPanelWidth(0)).toBe(180);
+    expect(clampPanelWidth(200)).toBe(200);
+    expect(clampPanelWidth(10000)).toBe(480);
+  });
+
+  it("panel-search stores the query verbatim", () => {
+    const s = appReducer(initialAppState(), { kind: "panel-search", query: "db" });
+    expect(s.panel.search).toBe("db");
+  });
+
+  it("panel-expansion-toggle adds and removes one path", () => {
+    const s0 = appReducer(initialAppState(), { kind: "panel-expansion-toggle", path: "app" });
+    expect(s0.panel.expanded).toEqual(["app"]);
+    const s1 = appReducer(s0, { kind: "panel-expansion-toggle", path: "db" });
+    expect(s1.panel.expanded).toEqual(["app", "db"]);
+    const s2 = appReducer(s1, { kind: "panel-expansion-toggle", path: "app" });
+    expect(s2.panel.expanded).toEqual(["db"]);
+  });
+
+  it("load-success resets expansion to the loaded file's top-level paths", () => {
+    const s = loadedWithCategories({ categories: [
+      { path: "app/main/db", count: 1 },
+      { path: "app/harness", count: 1 },
+      { path: "db/pool", count: 1 },
+      { path: "uncategorized", count: 1 },
+    ] });
+    expect(s.panel.expanded).toEqual(["app", "db", "uncategorized"]);
+    expect(s.panel.open).toBe(true);
+    expect(s.panel.tab).toBe("categories");
+  });
+
+  it("expansion survives every rebuild except file reload", () => {
+    const s0 = appReducer(initialAppState(), {
+      kind: "panel-expansion-toggle",
+      path: "app/main",
+    });
+    const loaded = appReducer(s0, {
+      kind: "load-success",
+      load: { format: "plain", lineCount: 0, categories: [], levels: [], loadMs: 1 },
+      fileName: "x.log",
+    });
+    // file reload resets expansion
+    expect(loaded.panel.expanded).toEqual([]);
+    const expandedAgain = appReducer(loaded, { kind: "panel-expansion-toggle", path: "app" });
+    const s1 = appReducer(expandedAgain, { kind: "visibility", snapshot: snapshot() });
+    // visibility rebuild keeps it
+    expect(s1.panel.expanded).toEqual(["app"]);
+  });
+
+  it("expandedForToggleAll: expand installs every tree path incl. prefix paths", () => {
+    const flat = [
+      { path: "app/main/db", count: 1 },
+      { path: "db/pool", count: 1 },
+    ];
+    expect(expandedForToggleAll(flat, true)).toEqual([
+      "app", "app/main", "app/main/db", "db", "db/pool",
+    ]);
+  });
+
+  it("expandedForToggleAll: collapse keeps only the roots expanded (§10 action 5)", () => {
+    const flat = [
+      { path: "app/main/db", count: 1 },
+      { path: "app/main/config/runtime", count: 1 },
+      { path: "db/pool", count: 1 },
+      { path: "uncategorized", count: 1 },
+    ];
+    expect(expandedForToggleAll(flat, false)).toEqual([
+      "app", "db", "uncategorized",
+    ]);
+  });
+});
+
+function loadedWithCategories(overrides: { categories?: { path: string; count: number }[] } = {}): AppState {
+  return appReducer(initialAppState(), {
+    kind: "load-success",
+    load: {
+      format: "plain",
+      lineCount: 2,
+      categories: overrides.categories ?? [],
+      levels: [],
+      loadMs: 5,
+    },
+    fileName: "log.txt",
+  });
+}

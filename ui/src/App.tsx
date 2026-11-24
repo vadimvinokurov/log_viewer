@@ -9,6 +9,10 @@ import { installHeadlessConsole } from "./headless";
 import { LogTable } from "./LogTable";
 import { LevelBar } from "./LevelBar.tsx";
 import { levelBarState } from "./state";
+import { buildTree } from "./categories";
+import { SidePanel, usePanelHotkey } from "./SidePanel.tsx";
+import { CategoriesTab } from "./CategoriesTab.tsx";
+import { FiltersTab } from "./FiltersTab.tsx";
 import { EmptyState } from "./EmptyState";
 import DevShowcase from "./devShowcase";
 
@@ -28,6 +32,13 @@ export default function App() {
   const busy = state.loadingFile !== null;
 
   useEffect(() => installHeadlessConsole(), []);
+
+  // §10.1: Ctrl+Cmd+B collapses/reopens the side panel; the listener lives
+  // with the shell because the panel unmounts when closed.
+  const togglePanel = useCallback(() => {
+    console_.togglePanel();
+  }, []);
+  usePanelHotkey(togglePanel);
 
   const openDialogAndLoad = useCallback(async () => {
     const file = await ipc().pickFile(state.lastDir);
@@ -79,26 +90,61 @@ export default function App() {
 
   return (
     <div className="app">
-      <main className="content">
-        {show ? (
-          <DevShowcase name={show} />
-        ) : state.file ? (
-          <LogTable
-            ref={(h) => console_.setTableHandle(h)}
-            rowCount={rowCount}
-            fileEpoch={state.fileEpoch}
-            visibilityEpoch={state.visibilityEpoch}
-            selection={state.selection}
-            onRowClick={(i, kind) => {
-              console_.selectRow(i, kind);
+      <div className="workspace">
+        <main className="content">
+          {show ? (
+            <DevShowcase name={show} />
+          ) : state.file ? (
+            <LogTable
+              ref={(h) => console_.setTableHandle(h)}
+              rowCount={rowCount}
+              fileEpoch={state.fileEpoch}
+              visibilityEpoch={state.visibilityEpoch}
+              selection={state.selection}
+              onRowClick={(i, kind) => {
+                console_.selectRow(i, kind);
+              }}
+            />
+          ) : (
+            <div className="empty-state">
+              <EmptyState />
+            </div>
+          )}
+        </main>
+        {/* §10.1: the panel docks right beside the table, only with a file
+            (furniture of the working surface like the LevelBar). */}
+        {state.file && (
+          <SidePanel
+            panel={state.panel}
+            onToggle={togglePanel}
+            onTab={(tab) => console_.setPanelTab(tab)}
+            onWidth={(px) => console_.setPanelWidth(px)}
+            content={{
+              categories: (
+                <CategoriesTab
+                  tree={buildTree(state.file.load.categories)}
+                  flat={state.file.load.categories}
+                  enabled={state.visibility?.categoriesEnabled ?? []}
+                  search={state.panel.search}
+                  expanded={state.panel.expanded}
+                  onToggle={(path, on) => void console_.toggleCategory(path, on)}
+                  onToggleAll={(on) => void console_.setAllCategories(on)}
+                  onSearch={(query) => console_.setCategorySearch(query)}
+                  onExpandAll={(expand) => console_.expandAllCategories(expand)}
+                  onToggleExpand={(path) => console_.toggleExpansion(path)}
+                />
+              ),
+              filters: (
+                <FiltersTab
+                  items={state.visibility?.filters ?? []}
+                  onToggle={(id, on) => void console_.toggleFilter(id, on)}
+                  onRemove={(id) => void console_.removeFilter(id)}
+                />
+              ),
             }}
           />
-        ) : (
-          <div className="empty-state">
-            <EmptyState />
-          </div>
         )}
-      </main>
+      </div>
       <footer className="bottom-bar">
         <span className="file-name">{state.file?.name}</span>
         <button className="bar-btn" onClick={openDialogAndLoad} disabled={busy}>

@@ -3,8 +3,9 @@
 //! reducer, no window required. The load action runs through the same IPC
 //! adapter as the button flow (stubbed in headless runs).
 
-import { appReducer, initialAppState, type AppState, type AppEvent } from "./state";
+import { appReducer, expandedForToggleAll, initialAppState, type AppState, type AppEvent, type PanelTab, PANEL_TABS } from "./state";
 import type { VisibilityState } from "./state";
+import { buildTree, propagateToggle, toggleAll } from "./categories";
 import { ipc } from "./ipcClient";
 import {
   remapSelection,
@@ -21,6 +22,14 @@ export interface ConsoleSnapshot {
   selection: { selected: number[]; anchor: number | null };
   /** Latest applied visibility snapshot (§7); null before the first one. */
   visibility: VisibilityState | null;
+  /** §10.1 side panel state (rhl.2). */
+  panel: {
+    open: boolean;
+    tab: PanelTab;
+    width: number;
+    search: string;
+    expanded: string[];
+  };
 }
 
 /** Copy column selection: raw file lines or the Message column (§4). */
@@ -70,6 +79,13 @@ class UiConsole {
             categoriesEnabled: [...v.categoriesEnabled],
           }
         : null,
+      panel: {
+        open: this.state.panel.open,
+        tab: this.state.panel.tab,
+        width: this.state.panel.width,
+        search: this.state.panel.search,
+        expanded: [...this.state.panel.expanded],
+      },
     };
   };
 
@@ -231,6 +247,84 @@ class UiConsole {
     this.mutateVisibility(() => ipc().setPinEnabled(id, on));
   removePin = (id: number): Promise<ConsoleSnapshot> =>
     this.mutateVisibility(() => ipc().removePin(id));
+
+  // ---- §10.1 side panel (bead rhl.2) ----
+
+  /** Pure panel dispatches: Ctrl+B, tab strip, splitter, tree search. */
+  togglePanel = (): ConsoleSnapshot => {
+    this.dispatch({ kind: "panel-toggle" });
+    return this.getSnapshot();
+  };
+
+  /** Tab switch; the text RPC is a string boundary (the reducer's types
+   *  cannot express an unknown tab), so unknown names fall back. */
+  setPanelTab = (tab: string): ConsoleSnapshot => {
+    const known = PANEL_TABS.find((candidate) => candidate === tab) ?? "categories";
+    this.dispatch({ kind: "panel-tab", tab: known });
+    return this.getSnapshot();
+  };
+
+  setPanelWidth = (px: number): ConsoleSnapshot => {
+    this.dispatch({ kind: "panel-width", width: px });
+    return this.getSnapshot();
+  };
+
+  setCategorySearch = (query: string): ConsoleSnapshot => {
+    this.dispatch({ kind: "panel-search", query });
+    return this.getSnapshot();
+  };
+
+  toggleExpansion = (path: string): ConsoleSnapshot => {
+    this.dispatch({ kind: "panel-expansion-toggle", path });
+    return this.getSnapshot();
+  };
+
+  /** Expand/collapse-all over the loaded file's tree (§10 action 5). */
+  expandAllCategories = (expand: boolean): ConsoleSnapshot => {
+    this.dispatch({ kind: "panel-expanded", expanded: expandedForToggleAll(this.flatCategories(), expand) });
+    return this.getSnapshot();
+  };
+
+  /** The loaded file's flat category list; empty before a load (actions
+   *  that need the tree no-op safely). */
+  private flatCategories = (): { path: string; count: number }[] =>
+    this.state.file?.load.categories ?? [];
+
+  /** §10 category toggle: applies propagateToggle's differential through
+   *  raw set_category_enabled (one call per path), then refetches the
+   *  snapshot through mutateVisibility (selection remap included). */
+  toggleCategory = (path: string, on: boolean): Promise<ConsoleSnapshot> => {
+    const flat = this.flatCategories();
+    if (flat.length === 0) {
+      return Promise.resolve(this.getSnapshot());
+    }
+    const { add, remove } = propagateToggle([path], buildTree(flat), on);
+    return this.mutateVisibility(async () => {
+      for (const p of remove) {
+        await ipc().setCategoryEnabled(p, false);
+      }
+      for (const p of add) {
+        await ipc().setCategoryEnabled(p, true);
+      }
+    });
+  };
+
+  /** All-checkbox toggle over every tree path (toggleAll differential). */
+  setAllCategories = (on: boolean): Promise<ConsoleSnapshot> => {
+    const flat = this.flatCategories();
+    if (flat.length === 0) {
+      return Promise.resolve(this.getSnapshot());
+    }
+    const { add, remove } = toggleAll(flat, on);
+    return this.mutateVisibility(async () => {
+      for (const p of remove) {
+        await ipc().setCategoryEnabled(p, false);
+      }
+      for (const p of add) {
+        await ipc().setCategoryEnabled(p, true);
+      }
+    });
+  };
 }
 
 export const console_ = new UiConsole();

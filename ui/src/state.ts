@@ -75,6 +75,8 @@ export interface AppState {
   visibilityEpoch: number;
   /** Bumped on every load-success: the table's full-reset signal (§4). */
   fileEpoch: number;
+  /** §10.1 side panel (rhl.2). */
+  panel: PanelState;
 }
 
 export type AppEvent =
@@ -86,7 +88,80 @@ export type AppEvent =
   | { kind: "selection-toggle"; index: number }
   | { kind: "selection-range"; index: number }
   | { kind: "selection-remap"; indexes: number[]; anchor: number | null }
-  | { kind: "visibility"; snapshot: VisibilityState };
+  | { kind: "visibility"; snapshot: VisibilityState }
+  // §10.1 side panel (rhl.2): pure UI state, no IPC behind the last four.
+  | { kind: "panel-toggle" }
+  | { kind: "panel-tab"; tab: PanelTab }
+  | { kind: "panel-width"; width: number }
+  | { kind: "panel-search"; query: string }
+  | { kind: "panel-expansion-toggle"; path: string }
+  | { kind: "panel-expanded"; expanded: string[] };
+
+/** §10.1 panel tabs, in the designed order (docs/UI_DESIGN.html). */
+export type PanelTab = "categories" | "filters" | "highlights" | "pinned";
+export const PANEL_TABS: readonly PanelTab[] = ["categories", "filters", "highlights", "pinned"];
+
+export interface PanelState {
+  open: boolean;
+  tab: PanelTab;
+  width: number;
+  /** Tree search query (§10); "" = no search active. */
+  search: string;
+  /** Expanded tree node paths. Tri-state and visibility are never stored. */
+  expanded: string[];
+}
+
+/** Spec interpretation (bead rhl.2): the panel stands open, 220 px
+ * (docs/UI_DESIGN.html "Main window"), bounds 180-480 px. */
+export const PANEL_MIN_WIDTH = 180;
+export const PANEL_MAX_WIDTH = 480;
+export const PANEL_DEFAULT_WIDTH = 220;
+
+export function clampPanelWidth(px: number): number {
+  if (px < PANEL_MIN_WIDTH) {
+    return PANEL_MIN_WIDTH;
+  }
+  return px > PANEL_MAX_WIDTH ? PANEL_MAX_WIDTH : px;
+}
+
+export function initialPanelState(): PanelState {
+  return { open: true, tab: "categories", width: PANEL_DEFAULT_WIDTH, search: "", expanded: [] };
+}
+
+/** Expansion default at load: root-level paths (no "/"), sorted, deduped —
+ *  top-level nodes expanded, children collapsed (bead rhl.2 spec
+ *  interpretation). The flat list holds observed paths; interior prefixes
+ *  appear as the first segments of those paths. */
+export function defaultExpanded(categories: readonly { path: string }[]): string[] {
+  const roots = new Set<string>();
+  for (const { path } of categories) {
+    const i = path.indexOf("/");
+    roots.add(i === -1 ? path : path.slice(0, i));
+  }
+  return [...roots].sort();
+}
+
+/** expand/collapse-all targets straight from the flat list (§10 action 5,
+ *  expandTargets semantics): expand installs every tree path including the
+ *  implicit prefixes; collapse keeps only the root-level paths expanded. */
+export function expandedForToggleAll(
+  categories: readonly { path: string }[],
+  expand: boolean,
+): string[] {
+  if (expand) {
+    const paths = new Set<string>();
+    for (const { path } of categories) {
+      paths.add(path);
+      let i = path.indexOf("/");
+      while (i !== -1) {
+        paths.add(path.slice(0, i));
+        i = path.indexOf("/", i + 1);
+      }
+    }
+    return [...paths].sort();
+  }
+  return defaultExpanded(categories);
+}
 
 export function initialAppState(): AppState {
   return {
@@ -99,6 +174,7 @@ export function initialAppState(): AppState {
     visibility: null,
     visibilityEpoch: 0,
     fileEpoch: 0,
+    panel: initialPanelState(),
   };
 }
 
@@ -126,6 +202,10 @@ export function appReducer(state: AppState, event: AppEvent): AppState {
         // right after through the visibility event.
         visibility: null,
         fileEpoch: state.fileEpoch + 1,
+        // §10 action 5: expansion does NOT survive a file reload — it
+        // resets to the new file's root-level paths. The rest of the
+        // panel state (open/tab/width/search) survives.
+        panel: { ...state.panel, expanded: defaultExpanded(event.load.categories) },
       };
     case "load-error":
       return {
@@ -157,6 +237,23 @@ export function appReducer(state: AppState, event: AppEvent): AppState {
     // The selection stays untouched — qt7.3 remaps it by line_no.
     case "visibility":
       return { ...state, visibility: event.snapshot, visibilityEpoch: state.visibilityEpoch + 1 };
+    // §10.1 panel transitions (rhl.2): pure UI state.
+    case "panel-toggle":
+      return { ...state, panel: { ...state.panel, open: !state.panel.open } };
+    case "panel-tab":
+      return { ...state, panel: { ...state.panel, tab: event.tab } };
+    case "panel-width":
+      return { ...state, panel: { ...state.panel, width: clampPanelWidth(event.width) } };
+    case "panel-search":
+      return { ...state, panel: { ...state.panel, search: event.query } };
+    case "panel-expansion-toggle": {
+      const expanded = state.panel.expanded.includes(event.path)
+        ? state.panel.expanded.filter((p) => p !== event.path)
+        : [...state.panel.expanded, event.path].sort();
+      return { ...state, panel: { ...state.panel, expanded } };
+    }
+    case "panel-expanded":
+      return { ...state, panel: { ...state.panel, expanded: [...event.expanded].sort() } };
   }
 }
 

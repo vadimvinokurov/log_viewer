@@ -36,6 +36,20 @@ export function installHeadlessConsole(): () => void {
     addPin: (mode: string, pattern: string) => console_.addPin(mode, pattern),
     setPinEnabled: (id: number, on: boolean) => console_.setPinEnabled(id, on),
     removePin: (id: number) => console_.removePin(id),
+    /** §10 categories (rhl.2): apply the propagateToggle differential and
+     *  refetch the snapshot. */
+    toggleCategory: (path: string, on: boolean) => console_.toggleCategory(path, on),
+    /** All-checkbox toggle over every category. */
+    setAllCategories: (on: boolean) => console_.setAllCategories(on),
+    /** §10.1 panel: Ctrl+B toggle, tab switch (categories|filters|
+     *  highlights|pinned), splitter width, tree search, expand/collapse-all,
+     *  one-node expansion flip. */
+    togglePanel: () => console_.togglePanel(),
+    setPanelTab: (tab: string) => console_.setPanelTab(tab),
+    setPanelWidth: (px: number) => console_.setPanelWidth(px),
+    setCategorySearch: (query: string) => console_.setCategorySearch(query),
+    expandAllCategories: (expand: boolean) => console_.expandAllCategories(expand),
+    toggleExpansion: (path: string) => console_.toggleExpansion(path),
     /** Installs an IPC stub for headless visual runs. */
     stubIpc: (stub: unknown) => {
       (window as unknown as Record<string, unknown>).__ipcStub = stub;

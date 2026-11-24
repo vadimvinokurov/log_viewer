@@ -66,6 +66,13 @@ Claim tasks in the main session before spawning agents.
     `anchor-scrolled-refilter` — scrolled deep, trace toggled off, anchored;
     assertions run on `window.__headless.viewport()` numbers, golden
     ui/e2e/goldens/anchor-scrolled-refilter.png.
+  - Rebaseline 2026-11-24 (bead rhl.2, §10 categories panel): loaded /
+    loaded-scrolled / 13-selection / 14-selection-menu / loaded-level-off /
+    anchor-scrolled-refilter shrank by the 220-px side panel (§10.1 opens
+    with a file); filters-live-mixed re-captured after the workspace wrapper.
+    New states `panel-categories`, `panel-uncheck` (toggleCategory propagation
+    hides the subtree rows) and `panel-tree-search` (matching branches only,
+    fully expanded) with fresh goldens.
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

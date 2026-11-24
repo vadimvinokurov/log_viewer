@@ -12,6 +12,8 @@
   --dim: #8795a4;
   --accent: #0078d7;
   --accent-tint: rgba(0, 120, 215, .1);
+  --border: #dfe4ea;
+  --border-strong: #c4cdd7;
   --pin: #e8c34a;
   --critical: #a01423;
   --error: #c02f2f;
@@ -34,6 +36,8 @@
     --dim: #6d7e8f;
     --accent: #4da3e8;
     --accent-tint: rgba(77, 163, 232, .14);
+    --border: #243040;
+    --border-strong: #33445a;
     --critical: #ff7b72;
     --error: #f26d6d;
     --warning: #d9b13b;
@@ -321,4 +325,186 @@ body {
    debug rows carry the debug color, so no rule is needed for .lvl-msg. */
 .row.lvl-msg > .cell {
   color: inherit;
+}
+
+/* ============ side panel (§10.1, bead rhl.2) ============
+   Sidebar classes copied verbatim from docs/UI_DESIGN.html; font tokens
+   mapped onto the app's --font-chrome / --font-data. */
+.workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.side {
+  flex: none;
+  background: var(--chrome);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs span {
+  flex: 1;
+  text-align: center;
+  padding: 7px 0 6px;
+  font: 500 11px/1 var(--font-chrome);
+  color: var(--dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tabs span.on {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tree {
+  flex: 1 1 auto;
+  padding: 10px 0 14px;
+  font: 500 12px/1.9 var(--font-data);
+  overflow-y: auto;
+}
+
+.tree .row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  white-space: nowrap;
+  /* The app's virtualized table also owns a global absolute-positioned
+     .row rule; the tree rows are static flex rows — reset the leakage. */
+  position: static;
+  left: auto;
+  top: auto;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  grid-template-columns: none;
+}
+
+.tree .row:hover {
+  background: transparent;
+}
+
+.tree .row .tw {
+  width: 10px;
+  color: var(--dim);
+  font-size: 9px;
+  flex: none;
+}
+
+.tree .row .cb {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  position: relative;
+  cursor: pointer;
+}
+
+.tree .row .cb.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.tree .row .cb.on::after {
+  content: "";
+  position: absolute;
+  inset: 1.5px 2px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-50deg) translateY(-1px);
+}
+
+.tree .row .cb.part::after {
+  content: "";
+  position: absolute;
+  inset: 2.5px;
+  background: var(--accent);
+  border-radius: 1.5px;
+}
+
+.tree .row .nm {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree .row .ct {
+  color: var(--dim);
+  margin-left: auto;
+  padding-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tree .row.off {
+  opacity: .45;
+}
+
+.tree .row b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tree-search {
+  flex: none;
+  margin: 10px 12px 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tree-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 11.5px/1 var(--font-chrome);
+  padding: 5px 8px;
+  outline: none;
+}
+
+.fold {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--dim);
+  font: 600 10px/1 var(--font-data);
+  cursor: pointer;
+}
+
+.fold:hover {
+  color: var(--ink);
+}
+
+.side-note {
+  color: var(--dim);
+  font: 11.5px/1.6 var(--font-chrome);
+  padding: 12px;
+}
+
+.side-splitter {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
 }
