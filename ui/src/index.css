@@ -589,3 +589,46 @@ body {
 .findbar .ar { font-size: 12px; }
 .findbar .x { padding: 3px 5px; color: var(--dim); cursor: pointer; }
 .findbar .x:hover, .findbar .ar:hover { color: var(--ink); }
+
+.update-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .16);
+  font: 500 12px/1 system-ui, sans-serif;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.update-banner-action {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font: 600 12px/1 system-ui, sans-serif;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.update-banner-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.update-banner-dismiss {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: 500 14px/1 system-ui, sans-serif;
+  padding: 0 2px;
+  cursor: pointer;
+}

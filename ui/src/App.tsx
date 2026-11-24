@@ -16,6 +16,7 @@ import { FiltersTab } from "./FiltersTab.tsx";
 import { PinnedTab } from "./PinnedTab.tsx";
 import { HighlightsTab } from "./HighlightsTab.tsx";
 import { SearchPanel } from "./SearchPanel.tsx";
+import { UpdateBanner } from "./UpdateBanner.tsx";
 import { CmdLine } from "./CmdLine.tsx";
 import { EmptyState } from "./EmptyState";
 import DevShowcase from "./devShowcase";
@@ -186,6 +187,9 @@ export default function App() {
     <div className="app">
       <div className="workspace">
         <main className="content">
+          {/* Auto-update banner (plan 2026-11-25): floats top-center over
+              the table; visible only in the phases bannerVisible() names. */}
+          <UpdateBanner />
           {show ? (
             <DevShowcase name={show} />
           ) : state.file ? (
