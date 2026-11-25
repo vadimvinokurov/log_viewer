@@ -1,5 +1,6 @@
 //! Categories tab of the side panel (FUNCTIONAL_SPEC §10, bead rhl.2):
-//! All tri-state checkbox on top, tree of checkboxes, search
+//! All tri-state checkbox on top — a foldable parent of the top level
+//! (2026-11-25) — tree of checkboxes, search
 //! input (matching branches fully expanded while active) and the
 //! expand/collapse-all fold button. Presentational: the decisions live in
 //! ui/src/categories.ts — the tri-state derives from the engine whitelist
@@ -124,7 +125,14 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
   const isOpen = (path: string): boolean => (search === "" ? expandedSet.has(path) : true);
 
   const paths = treePaths(tree);
-  const everythingExpanded = paths.length > 0 && paths.every((p) => isOpen(p));
+  // The All root is a foldable parent of the top level (2026-11-25): the
+  // fold button counts it as open only together with its children.
+  const hasTopLevel = tree.children.length > 0;
+  const allOpen = hasTopLevel && isOpen("");
+  const everythingExpanded =
+    paths.length > 0 &&
+    paths.every((p) => isOpen(p)) &&
+    (hasTopLevel ? allOpen : true);
   const allState = allCheck(flat, enabled);
 
   const renderNodes = (nodes: readonly UiCategoryNode[], depth: number): ReactElement[] =>
@@ -190,11 +198,19 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
       </div>
       <div className="tree" role="tree" aria-label="Categories">
         <div className="row" data-path="">
-          <span className="tw">▾</span>
+          {/* All is a foldable parent of the top level (2026-11-25): same
+              twisty contract as any node, keyed by the synthetic root path. */}
+          <span
+            className="tw"
+            style={{ cursor: hasTopLevel ? "pointer" : "default" }}
+            onClick={hasTopLevel ? () => onToggleExpand("") : undefined}
+          >
+            {hasTopLevel ? (allOpen ? "▾" : "▸") : "·"}
+          </span>
           {checkbox(allState, () => onToggleAll(allState !== "on"))}
           <span className="nm">All</span>
         </div>
-        {renderNodes(tree.children, 0)}
+        {allOpen || search !== "" ? renderNodes(tree.children, 0) : null}
       </div>
     </>
   );

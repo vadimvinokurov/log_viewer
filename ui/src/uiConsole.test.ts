@@ -569,7 +569,7 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     await console_.load("/tmp/log.txt");
     const expanded = console_.expandAllCategories(true).panel.expanded;
     expect(expanded).toEqual([
-      "app", "app/main", "app/main/api", "app/main/db",
+      "", "app", "app/main", "app/main/api", "app/main/db",
       "db", "db/pool", "uncategorized",
     ]);
   });
@@ -589,7 +589,7 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     expect(console_.getSnapshot().panel.expanded.length).toBeGreaterThan(3);
     const { console_: fresh } = await freshConsole(categoryStub());
     const snap = await fresh.load("/tmp/log.txt");
-    expect(snap.panel.expanded).toEqual(["app", "db", "uncategorized"]);
+    expect(snap.panel.expanded).toEqual(["", "app", "db", "uncategorized"]);
   });
 
   it("toggleCategory(off) drives the propagateToggle differential through ONE bulk call and refetches", async () => {

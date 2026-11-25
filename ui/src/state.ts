@@ -208,12 +208,15 @@ export function initialPanelState(): PanelState {
   return { open: true, tab: "categories", width: PANEL_DEFAULT_WIDTH, search: "", expanded: [] };
 }
 
-/** Expansion default at load: root-level paths (no "/"), sorted, deduped —
- *  top-level nodes expanded, children collapsed (bead rhl.2 spec
- *  interpretation). The flat list holds observed paths; interior prefixes
- *  appear as the first segments of those paths. */
+/** Expansion default at load: the synthetic All root (2026-11-25: All is a
+ *  foldable parent of the top level) plus the root-level paths (no "/"),
+ *  sorted, deduped — top-level nodes expanded, children collapsed (bead rhl.2
+ *  spec interpretation). An empty file keeps the empty set. */
 export function defaultExpanded(categories: readonly { path: string }[]): string[] {
-  const roots = new Set<string>();
+  if (categories.length === 0) {
+    return [];
+  }
+  const roots = new Set<string>([""]);
   for (const { path } of categories) {
     const i = path.indexOf("/");
     roots.add(i === -1 ? path : path.slice(0, i));
@@ -232,6 +235,10 @@ export function expandedForToggleAll(
 ): string[] {
   if (expand) {
     const paths = new Set<string>();
+    // the All root opens together with the top level (2026-11-25)
+    if (categories.length > 0) {
+      paths.add("");
+    }
     for (const { path } of categories) {
       paths.add(path);
       let i = path.indexOf("/");

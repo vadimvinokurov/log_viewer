@@ -27,6 +27,7 @@ function allEnabled(): string[] {
 }
 
 const EVERYTHING = [
+  "", // the synthetic All root is a foldable parent (2026-11-25)
   "app", "app/main", "app/main/api", "app/main/db",
   "db", "db/pool",
   "uncategorized",
@@ -146,8 +147,34 @@ describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
     expect(partial.onToggleAll).toHaveBeenCalledWith(true);
   });
 
+  it("All is a foldable parent: its twisty toggles the top level (2026-11-25)", () => {
+    const expandedProps = baseProps();
+    const { container } = render(createElement(CategoriesTab, expandedProps));
+    const tw = container.querySelector<HTMLElement>('[data-path=""] .tw');
+    expect(tw?.textContent).toBe("▾");
+    expect(tw?.style.cursor).toBe("pointer");
+    fireEvent.click(tw ?? container);
+    expect(expandedProps.onToggleExpand).toHaveBeenCalledWith("");
+
+    const collapsedProps = baseProps({
+      expanded: EVERYTHING.filter((p) => p !== ""),
+    });
+    const { container: collapsed } = render(createElement(CategoriesTab, collapsedProps));
+    const onlyAll = Array.from(collapsed.querySelectorAll<HTMLElement>(".tree .row"));
+    expect(onlyAll.map((el) => el.getAttribute("data-path"))).toEqual([""]);
+    expect(collapsed.querySelector('[data-path=""] .tw')?.textContent).toBe("▸");
+
+    // a file with no categories: the All row renders as a leaf (dead dot)
+    const emptyProps = baseProps({ tree: buildTree([]), flat: [], expanded: [] });
+    const { container: empty } = render(createElement(CategoriesTab, emptyProps));
+    const leaf = empty.querySelector<HTMLElement>('[data-path=""] .tw');
+    expect(leaf?.textContent).toBe("·");
+    fireEvent.click(leaf ?? empty);
+    expect(emptyProps.onToggleExpand).not.toHaveBeenCalled();
+  });
+
   it("the twisty toggles one node's expansion; leaves render a dot", () => {
-    const props = baseProps({ expanded: ["app"] });
+    const props = baseProps({ expanded: ["", "app"] });
     const { container } = render(createElement(CategoriesTab, props));
     const collapsed = container.querySelector<HTMLElement>(
       '[data-path="db"] .tw',
@@ -166,20 +193,28 @@ describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
     expect(props.onToggleExpand).toHaveBeenCalledTimes(1);
   });
 
-  it("collapsed parents hide their children; expanded show them", () => {
-    const { container } = render(createElement(CategoriesTab, baseProps({ expanded: [] })));
-    const rows = Array.from(container.querySelectorAll<HTMLElement>(".tree .row"));
-    const top = rows.map((el) => el.getAttribute("data-path"));
-    expect(top).toContain("app");
-    expect(top).not.toContain("app/main");
-
-    const { container: expandedTree } = render(
-      createElement(CategoriesTab, baseProps({ expanded: ["app", "app/main", "db"] })),
+  it("a collapsed parent hides its children; the collapsed All hides the top level", () => {
+    // the load default: All expanded, top-level roots expanded, inner collapsed
+    // All expanded, "app" opened two levels deep; the other roots stay
+    // collapsed (their own children hidden under their twisties)
+    const { container } = render(
+      createElement(CategoriesTab, baseProps({ expanded: ["", "app", "app/main"] })),
     );
-    const rows2 = Array.from(expandedTree.querySelectorAll<HTMLElement>(".tree .row"));
-    const paths = rows2.map((el) => el.getAttribute("data-path"));
+    const rows = Array.from(container.querySelectorAll<HTMLElement>(".tree .row"));
+    const paths = rows.map((el) => el.getAttribute("data-path"));
+    expect(paths).toContain("app");
+    expect(paths).toContain("app/main");
     expect(paths).toContain("app/main/api");
     expect(paths).not.toContain("unstable/pool");
+
+    // All collapsed: only the All row remains (one click closes the roots)
+    const { container: allCollapsed } = render(
+      createElement(CategoriesTab, baseProps({ expanded: [] })),
+    );
+    const onlyAll = Array.from(
+      allCollapsed.querySelectorAll<HTMLElement>(".tree .row"),
+    ).map((el) => el.getAttribute("data-path"));
+    expect(onlyAll).toEqual([""]);
   });
 
   it("search filters visible nodes and expands every branch while active", () => {
@@ -209,7 +244,7 @@ describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
 
     const folded = baseProps({
       expanded: [
-        "app", "app/main", "app/main/api", "app/main/db",
+        "", "app", "app/main", "app/main/api", "app/main/db",
         "db", "db/pool", "uncategorized", "unstable", "unstable/pool",
       ],
     });

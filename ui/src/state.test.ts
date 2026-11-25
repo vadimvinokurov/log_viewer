@@ -366,7 +366,9 @@ describe("side panel slice (rhl.2, §10.1)", () => {
       { path: "db/pool" },
       { path: "uncategorized" },
     ] });
-    expect(s.panel.expanded).toEqual(["app", "db", "uncategorized"]);
+    // All (the synthetic root) is expanded too so its top-level children
+    // stay visible (2026-11-25: All is a foldable parent of the roots).
+    expect(s.panel.expanded).toEqual(["", "app", "db", "uncategorized"]);
     expect(s.panel.open).toBe(true);
     expect(s.panel.tab).toBe("categories");
   });
@@ -395,7 +397,7 @@ describe("side panel slice (rhl.2, §10.1)", () => {
       { path: "db/pool" },
     ];
     expect(expandedForToggleAll(flat, true)).toEqual([
-      "app", "app/main", "app/main/db", "db", "db/pool",
+      "", "app", "app/main", "app/main/db", "db", "db/pool",
     ]);
   });
 
