@@ -28,6 +28,13 @@ import {
   type Anchor,
   type ViewportInfo,
 } from "./viewportAnchoring";
+import {
+  columnGridTemplate,
+  columnTotal,
+  effectiveWidths,
+  type ColumnKey,
+  type ColumnWidths,
+} from "./columnWidths.ts";
 // The row height lives in the pure anchoring module now (§4); re-exported
 // for the existing import sites.
 export { ROW_HEIGHT_PX };
@@ -54,6 +61,15 @@ interface Props {
   /** §12 snapshot pin list: drives the context menu's §4 Pin/Unpin
    *  presence (evaluation lives in the pins.ts pure module). */
   pins: PinItem[];
+  /** USER column widths (design 2026-11-25-column-resize); the effective
+   *  Message width is computed here from the measured viewport. */
+  columnWidths: ColumnWidths;
+  /** Drag on a header border: set one column's user width (live resize). */
+  onColumnSet(key: ColumnKey, px: number): void;
+  /** Drag end: persist the widths fire-and-forget. */
+  onColumnCommit(): void;
+  /** Double-click on a header border: reset to the §4 default. */
+  onColumnReset(key: ColumnKey): void;
   /** Row click: kind comes from the modifiers (§4 click/ctrl/shift). */
   onRowClick(index: number, kind: "click" | "toggle" | "range"): void;
 }
@@ -65,7 +81,7 @@ interface Props {
  * from the design tokens. Selection/context menu/copy land in qt7.2.
  */
 export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
-  { rowCount, fileEpoch, visibilityEpoch, selection, pins, onRowClick },
+  { rowCount, fileEpoch, visibilityEpoch, selection, pins, columnWidths, onColumnSet, onColumnCommit, onColumnReset, onRowClick },
   ref,
 ) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -106,6 +122,41 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     estimateSize: () => ROW_HEIGHT_PX,
     overscan: 10,
   });
+
+  // Viewport width for the effective column widths (design
+  // 2026-11-25-column-resize): a ResizeObserver keeps it live — window
+  // resizes and the side panel both change the table's viewport width.
+  const [vw, setVw] = useState(0);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      return;
+    }
+    setVw(el.clientWidth);
+    const ro = new ResizeObserver(() => setVw(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const effective = effectiveWidths(columnWidths, vw);
+
+  /** Drag one header border (design 2026-11-25-column-resize): listeners
+   *  live on the WINDOW so a mouseup outside the webview still ends the
+   *  drag; mouseup commits the widths (fire-and-forget persist). */
+  const startResize = (key: ColumnKey, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const start = columnWidths[key];
+    const move = (ev: MouseEvent) =>
+      onColumnSet(key, start + (ev.clientX - startX));
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      onColumnCommit();
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
 
   // New file (file epoch): throw away the cache, restart chunk planning and
   // also reset the scroll — a new file starts at the top (§4). Selection
@@ -564,14 +615,38 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
           // header showed a row-height gap above and covered row 0 (abspos
           // rows are unaffected by the padding — 2026-11-25 top-gap bug).
           height: virtualizer.getTotalSize() + ROW_HEIGHT_PX,
+          // Resizable columns (design 2026-11-25-column-resize): the inner
+          // layer carries the scroll width; when the effective widths fit
+          // the viewport, min-width below the width leaves the block at
+          // 100% (no horizontal overflow).
+          minWidth: columnTotal(effective),
         }}
         onContextMenu={rowCount > 0 ? openMenu : undefined}
       >
-        <div className="table-header">
-          <span className="cell cell-line">Line</span>
-          <span className="cell cell-time">Time</span>
-          <span className="cell cell-category">Category</span>
-          <span className="cell cell-message">Message</span>
+        <div
+          className="table-header"
+          style={{
+            gridTemplateColumns: columnGridTemplate(effective),
+            width: columnTotal(effective),
+          }}
+        >
+          {([["line", "Line"], ["time", "Time"], ["category", "Category"], ["message", "Message"]] as const).map(
+            ([key, label]) => (
+              <span key={key} className={`cell cell-${key}`}>
+                {label}
+                <span
+                  data-col-resizer={key}
+                  className="cell-resizer"
+                  onMouseDown={(e) => startResize(key, e)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onColumnReset(key);
+                  }}
+                />
+              </span>
+            ),
+          )}
         </div>
         {virtualItems.map((vi) => {
           const row = rows.get(vi.index);
@@ -584,6 +659,9 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
                 position: "absolute",
                 transform: `translateY(${vi.start + ROW_HEIGHT_PX}px)`,
                 height: ROW_HEIGHT_PX,
+                // Same template as the header (design 2026-11-25-column-resize).
+                gridTemplateColumns: columnGridTemplate(effective),
+                width: columnTotal(effective),
               }}
               onClick={(e) => onRowActivate(vi.index, e)}
               onContextMenu={openMenu}

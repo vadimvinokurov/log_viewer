@@ -222,6 +222,13 @@ export default function App() {
               // §12: the snapshot's pin list drives the context menu's §4
               // Pin/Unpin presence (evaluation lives in pins.ts).
               pins={state.visibility?.pins ?? []}
+              // Resizable columns (design 2026-11-25-column-resize): the
+              // user widths from the snapshot; drag → live set, release →
+              // fire-and-forget commit, double-click → reset to §4.
+              columnWidths={state.columnWidths}
+              onColumnSet={(key, px) => console_.setColumnWidth(key, px)}
+              onColumnCommit={() => console_.commitColumnWidths()}
+              onColumnReset={(key) => console_.resetColumnWidth(key)}
               onRowClick={(i, kind) => {
                 console_.selectRow(i, kind);
               }}

@@ -64,6 +64,12 @@ export function installHeadlessConsole(): () => void {
     togglePanel: () => console_.togglePanel(),
     setPanelTab: (tab: string) => console_.setPanelTab(tab),
     setPanelWidth: (px: number) => console_.setPanelWidth(px),
+    /** Resizable table columns (design 2026-11-25-column-resize): the live
+     *  width set (key ∈ line|time|category|message), the per-key reset and
+     *  the fire-and-forget persistence commit. */
+    setColumnWidth: (key: string, px: number) => console_.setColumnWidth(key, px),
+    resetColumnWidth: (key: string) => console_.resetColumnWidth(key),
+    commitColumnWidths: () => console_.commitColumnWidths(),
     setCategorySearch: (query: string) => console_.setCategorySearch(query),
     expandAllCategories: (expand: boolean) => console_.expandAllCategories(expand),
     toggleExpansion: (path: string) => console_.toggleExpansion(path),

@@ -231,10 +231,11 @@ body {
   border-radius: 5px;
 }
 
+/* The column tracks are INLINE now (design 2026-11-25-column-resize): the
+   effective widths are runtime state, not CSS constants. */
 .table-header,
 .row {
   display: grid;
-  grid-template-columns: 50px 110px 150px minmax(320px, 1fr);
   align-items: center;
   line-height: 23px;
   height: 23px;
@@ -251,11 +252,25 @@ body {
   font-family: var(--font-chrome);
   font-size: 12px;
   user-select: none;
-  min-width: 830px;
+}
+
+/* Header cells anchor their resize handles (design
+   2026-11-25-column-resize): a 10px strip at the column's right edge. */
+.table-header .cell {
+  position: relative;
+}
+
+.cell-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  cursor: col-resize;
+  user-select: none;
 }
 
 .row {
-  min-width: 830px;
   position: absolute;
   left: 0;
   top: 0;
@@ -285,10 +300,10 @@ body {
 }
 
 /* Absolutely positioned rows do not grow the scroll area themselves; the
-   inner layer carries the width and anchors them (`position: relative`). */
+   inner layer carries the width (inline `minWidth` per render) and anchors
+   them (`position: relative`). */
 .table-inner {
   position: relative;
-  min-width: 830px;
 }
 
 .cell {
