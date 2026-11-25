@@ -1,0 +1,228 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Token Usage Analysis</title>
+<style>
+  :root { color-scheme: light dark;
+    --bg: #fafaf7; --fg: #1c1d22; --muted: #6d6e76; --panel: #ffffff; --line: #e3e2da;
+    --accent: #155e75; --accent-soft: #e7f2f5; --bad: #b3261e; --bad-soft: #fbe9e6;
+    --good: #22683a; --good-soft: #e8f2ec; --warn: #9a5b00; --warn-soft: #fdf3e0; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark;
+    --bg: #17181c; --fg: #e6e6e9; --muted: #9a9ba3; --panel: #1f2026; --line: #34353d;
+    --accent: #6fc3dd; --accent-soft: #10333f; --bad: #e8837c; --bad-soft: #3a1a17;
+    --good: #7ccb99; --good-soft: #14301f; --warn: #e2b163; --warn-soft: #38290e; } }
+  :root[data-theme="dark"] { color-scheme: dark;
+    --bg: #17181c; --fg: #e6e6e9; --muted: #9a9ba3; --panel: #1f2026; --line: #34353d;
+    --accent: #6fc3dd; --accent-soft: #10333f; --bad: #e8837c; --bad-soft: #3a1a17;
+    --good: #7ccb99; --good-soft: #14301f; --warn: #e2b163; --warn-soft: #38290e; }
+  body { font: 400 14px/1.55 system-ui, sans-serif; max-width: 940px; margin: 0 auto;
+    padding: 28px max(16px, env(safe-area-inset-left, 0px)) 60px max(16px, env(safe-area-inset-right, 0px));
+    background: var(--bg); color: var(--fg); }
+  h1 { font-size: 22px; letter-spacing: -0.01em; } h2 { font-size: 16px; margin-top: 34px; }
+  h3 { font-size: 14px; margin-top: 22px; }
+  a { color: var(--accent); }
+  p, ul { margin: 8px 0; } ul { padding-left: 22px; } li { margin: 5px 0; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin: 10px 0; }
+  th, td { border-bottom: 1px solid var(--line); padding: 5px 10px; text-align: left; font-size: 13px; }
+  th { text-transform: uppercase; font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+  td.n { text-align: right; }
+  code { font-family: ui-monospace, monospace; font-size: 12px; background: var(--panel);
+    border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+  .est { color: var(--muted); font-style: italic; }
+  .warn { border-left: 3px solid var(--bad); padding: 8px 14px; background: var(--bad-soft); margin: 14px 0; border-radius: 0 6px 6px 0; }
+  .note { border-left: 3px solid var(--accent); padding: 8px 14px; background: var(--accent-soft); margin: 14px 0; border-radius: 0 6px 6px 0; }
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; min-width: 150px; }
+  .card b { font-size: 18px; font-variant-numeric: tabular-nums; display: block; }
+  .card span { color: var(--muted); font-size: 12px; }
+  .bar { height: 10px; background: var(--accent); border-radius: 2px; min-width: 2px; }
+  .barrow { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(120px, 300px) 110px; gap: 10px; align-items: center; padding: 4px 0; }
+  .barrow .lbl { font-size: 13px; min-width: 0; }
+  .barrow .amt { font-variant-numeric: tabular-nums; text-align: right; font-size: 13px; color: var(--muted); }
+  .tag { display: inline-block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+    padding: 1px 8px; border-radius: 10px; margin-right: 6px; white-space: nowrap; }
+  .t-exists { background: var(--good-soft); color: var(--good); }
+  .t-new { background: var(--accent-soft); color: var(--accent); }
+  .t-mech { background: var(--warn-soft); color: var(--warn); }
+</style>
+
+<h1>Token Usage Analysis — all sessions, 2026-11-22 → 2026-11-25</h1>
+<p>Data source: the machine-readable usage records inside all 15 Claude Code session
+transcripts for this project (52 transcripts including 37 subagent sessions; 4,849 API
+responses). Companion reports: <a href="report-02-agent-mistakes.html">agent mistakes</a>,
+<a href="report-03-testing.html">testing inventory</a>. Underlying table:
+<code>docs/notes/report-data-tokens.md</code>.</p>
+
+<div class="warn"><strong>Backend caveat:</strong> the runs execute on a GLM backend whose
+transcripts never report cache-creation tokens (<code>cache_creation = 0</code> in all
+4,849 responses), so fresh <code>input</code> is abnormally high and may absorb what a
+Claude backend would book as cache writes. Treat the input/cache split as an estimate;
+the ordering-by-session is robust.</div>
+
+<div class="cards">
+  <div class="card"><b>332 M</b><span>weighted cost units (est.)</span></div>
+  <div class="card"><b>281.8 M</b><span>fresh input tokens</span></div>
+  <div class="card"><b>456.3 M</b><span>context-replay (cache-read) tokens</span></div>
+  <div class="card"><b>0.97 M</b><span>output tokens (0.3 %)</span></div>
+  <div class="card"><b>191 k</b><span>tokens read per assistant response (avg)</span></div>
+</div>
+
+<p>Weighting used (state-once, then divide): <code>1× input + 1.25× cache-write + 0.1×
+cache-read + 5× output</code>. Output is negligible: <strong>this project's cost is
+100 % input-side</strong> — how much text gets re-read, not how much code gets written.</p>
+
+<h2>1. Where the 332 M went — by session</h2>
+<table>
+  <tr><th>#</th><th>Session</th><th>Date</th><th>Hours</th><th class="n">Turns</th><th class="n">Cost (M, est.)</th><th>What it was</th></tr>
+  <tr><td>1</td><td><code>9785223c</code></td><td>11-23→24</td><td class="n">8.7</td><td class="n">561</td><td class="n">80.2</td><td>v0.3 scaffold → rewrite: engine, UI, table, levels/filters</td></tr>
+  <tr><td>2</td><td><code>3de36a6d</code></td><td>11-24</td><td class="n">15.3</td><td class="n">463</td><td class="n">44.7</td><td>the same rewrite continued (16 subagents, 1,393 subagent turns)</td></tr>
+  <tr><td>3</td><td><code>405193b3</code></td><td>11-25</td><td class="n">0.9</td><td class="n">233</td><td class="n">37.8</td><td>UI/design iteration, Playwright-heavy (233 turns in 0.9 h = highest burn rate)</td></tr>
+  <tr><td>4</td><td><code>f3da036d</code></td><td>11-25</td><td class="n">1.7</td><td class="n">346</td><td class="n">28.5</td><td>release v0.3.0 + golden re-baseline (the same golden PNG re-read 6×)</td></tr>
+  <tr><td>5</td><td><code>0203913a</code></td><td>11-24→25</td><td class="n">7.7</td><td class="n">345</td><td class="n">24.1</td><td>cmdline chain + settings</td></tr>
+  <tr><td>6</td><td><code>b3c8e200</code></td><td>11-25</td><td class="n">1.1</td><td class="n">326</td><td class="n">18.5</td><td>selection/table work — 326 turns in 1.1 h after /clear</td></tr>
+  <tr><td>7–11</td><td>5 sessions</td><td>11-23→25</td><td class="n">5.6</td><td class="n">731</td><td class="n">20.7</td><td>column-resize, categories, UI polish, docs, this report's mining</td></tr>
+  <tr><td>12–15</td><td>4 sessions</td><td>—</td><td class="n">≈0.3</td><td class="n">30</td><td class="n">0.5</td><td>short pokes / aborted start (<code>b06a7fff</code>: 0 responses)</td></tr>
+</table>
+<p>Top-3 sessions carry <strong>49 %</strong> of the total, top-5 carry <strong>74 %</strong>.
+The pattern is not "many small chats": it is a handful of marathon sessions whose every
+turn re-pays the whole visible conversation. The two most expensive hours ever spent are
+<code>405193b3</code> and <code>c5dcb43a</code> (~40 M weighted units per hour each —
+short sessions doing image-heavy UI iteration).</p>
+
+<h2>2. Main conversation vs subagents</h2>
+<table>
+  <tr><th>Slice</th><th class="n">Turns</th><th class="n">Input</th><th class="n">Replay</th><th class="n">Cost share</th></tr>
+  <tr><td>Coordinator sessions</td><td class="n">2,957</td><td class="n">227.2 M</td><td class="n">338.2 M</td><td class="n">79.3 %</td></tr>
+  <tr><td>Subagents</td><td class="n">1,892</td><td class="n">54.6 M</td><td class="n">118.1 M</td><td class="n">20.7 %</td></tr>
+</table>
+<p>Subagents produced ~2× the work per turn (258 vs 163 output tokens/turn) at ⅕ of the
+billshare — the delegation rule already in CLAUDE.md 7 is the right one. But the
+biggest single subagent (<code>3de36a6d</code>, 233 turns for a UI task) cost 15.8 M
+weighted units — more than four entire mid-size sessions. Delegation absorbs noise only
+if the agent is capped; agent 7 in the mistakes report (<a href="report-02-agent-mistakes.html">runaway agents</a>)
+shows what happens when it is not: ~2.65 M subagent units on 11-24 alone, five days'
+worth of "budget" burned after the token rules were written.</p>
+
+<h2>3. The five appetite drivers, sized</h2>
+<div class="barrow"><span class="lbl">Fresh input re-sent every turn (context not served from cache)</span><div class="bar" style="width:100%"></div><span class="amt">84.8 %·281.8 M</span></div>
+<div class="barrow"><span class="lbl">Conversation replay, paid per turn by long sessions</span><div class="bar" style="width:33%;background:var(--muted)"></div><span class="amt">13.7 %·456.3 M</span></div>
+<div class="barrow"><span class="lbl">Image reads as pixel data (26 results, 14.5 MB)</span><div class="bar" style="width:5%;background:var(--muted)"></div><span class="amt">~1.5 %·4–6 M</span></div>
+<div class="barrow"><span class="lbl">Degenerate tool loops (359 wasted calls)</span><div class="bar" style="width:4%;background:var(--bad)"></div><span class="amt">~1 %·lost calls</span></div>
+<div class="barrow"><span class="lbl">Output tokens (everything written)</span><div class="bar" style="width:3%;background:var(--muted)"></div><span class="amt">1.5 %·0.97 M</span></div>
+
+<ul>
+  <li><strong>Fresh input dominates</strong> (95 k tokens/turn average, 153 k worst).
+  On this backend every turn re-reads the whole context at full price. Cutting context
+  size (shorter sessions, leaner system prompt, fewer loaded skills) is worth ~8× vs
+  the same tokens served from cache — it is the one lever that matters most.</li>
+  <li><strong>Replay tail</strong> is the second lever: <code>9785223c</code> averaged
+  161 k replay tokens per turn because the visible conversation grew for 9 hours with
+  screenshots and 100-line file reads in it. CLAUDE.md 7's "end turn at checkpoints"
+  exists because of exactly this session's shape.</li>
+  <li><strong>Images:</strong> 58 Read calls on PNG/JPG, 14.5 MB of base64 in results;
+  <code>f3da036d</code> read the same golden PNG six times (1.67 MB), <code>405193b3</code>
+  spent 4.8 MB in one session on screenshots and goldens. Full-window shots at
+  2800×1800 are the most expensive single reads in the history.</li>
+  <li><strong>Degenerate loops:</strong> 359 calls were part of 3-or-more-repeat
+  consecutive runs (10.9 % of all main-conversation tool calls). Worst: 24 consecutive
+  edits of <code>FUNCTIONAL_SPEC.html</code>, 27× the identical live-check bash wrapper,
+  14× a python3-heredoc edit of <code>live_check.mjs</code>, 7× heredoc fights against
+  a design script, 13× the identical <code>git show</code>. The driver.rs heredoc fight
+  that produced CLAUDE.md 7's ban is one entry in a wider pattern: every long
+  same-tool run ends the same way — with a wholesale rewrite of the file.</li>
+  <li><strong>Gates:</strong> ~397 vitest/cargo/build/e2e/clippy bash calls in the
+  coordinator, 117 in <code>9785223c</code> alone (48 cargo, 29 build, 28 vitest,
+  10 clippy) — several identical back-to-back. Scoped-gate discipline (run one module's
+  file while iterating) is paying off but was applied late in long sessions.</li>
+  <li><strong>Recurring background noise:</strong> the beads export diff (20–33 KB)
+  appeared as a large tool result in 7 of 15 sessions — an avoidable fixed cost of
+  every <code>bd sync</code>-touching command; the agent-brief, once written, dropped
+  agent prompts from ~1 k tokens to ~30 lines and is the best-verified saving on record.</li>
+</ul>
+
+<h2>4. Recommendations to cut consumption</h2>
+<h3>Already on the books (keep enforcing)</h3>
+<p><span class="tag t-exists">CLAUDE.md 7</span>Short turns at milestones · agent prompts
+point at <code>docs/notes/agent-brief.md</code> · numbers instead of screenshots ·
+scoped gates between steps · cap agents · no heredoc edits. Each of the six has a
+measured failure in this data set; each also has a measured success (the 40–60 k band
+of well-briefed module agents). They are written as prose, and the mistakes report shows
+prose decays in long sessions — treat them as the fallback, mechanisms as the default
+(next section).</p>
+<h3>New, in order of expected effect</h3>
+<ol>
+  <li><strong>Keep the coordinator conversation small at all times.</strong> This is the
+  85 %-driver. Practically: /clear or a fresh session at every task boundary; a task is
+  a bead id, and the coordinator reads the bead + the returning summary, not the files;
+  large reads (full files, docs, transcripts) belong in agents. A mid-size coordinator
+  conversation of ~40 turns at 95 k input costs ~4 M units per turn-set; the same work
+  relaunched per milestone would cost a fraction.</li>
+  <li><strong>Never re-read a file for one detail.</strong> The dominant avoidable Read
+  pattern is same-file 3–6× reads (ipc.rs ×3, golden loaded.png ×6, uiConsole.ts ×4).
+  Rule for the coordinator: read a file once, keep the relevant block in the plan
+  (bead description), and delegate all later looks at that file to the agent that owns
+  the change.</li>
+  <li><strong>Kill loops mechanically at the third identical failure.</strong> The 359
+  lost calls are mostly 20–50-minute loops that a "rewrite the file wholesale" would
+  have ended in 2 calls. This is the one rule worth a hook, not prose: a post-tool-use
+  guard that flags the third consecutive same-tool call and forces an alternative
+  route. See the mistakes report — three of top loss drivers are loop-shaped.</li>
+  <li><strong>Pictures are for visual acceptance only</strong> (already rule 4) — the
+  data adds: also never re-read the same golden twice; the diff % already answers
+  "did it change", and the harness's text diffs answer more than a second read.</li>
+  <li><strong>Trim the fixed background cost.</strong> Suppress the 20–33 KB beads
+  export diff from appearing in coordinator context (redirect <code>bd</code> export
+  noise to agents or set the export to run at session close); keep the coordinator's
+  system-prompt side small (fewer auto-loaded skills per session; the kit's
+  <code>using-skills</code> hook adds a full rule text to every session — make that
+  hook 5 lines, not a full skill text).</li>
+  <li><strong>Batch gates at natural boundaries</strong> — the ~397 gate calls include
+  several full-workspace reruns less than an hour apart. The checkpoint-commit pattern
+  pairs with a fixed one-shot "full gate before commit" (rule 9), and scoped
+  single-file gates everywhere else.</li>
+</ol>
+
+<h2>5. What to add to vvv-claude-kit for token economy</h2>
+<p>The project's own history is the best argument: the only interventions that
+permanently changed behavior were <em>mechanisms</em> (the <code>bd prime</code> hook,
+<code>agent-brief.md</code>, <code>live_check.mjs</code>), not prose rules. Kit items,
+in cost-effect order:</p>
+<table>
+  <tr><th>Item</th><th>Form</th><th>What it does</th><th>Evidence</th></tr>
+  <tr><td><code>token-budget</code></td><td>skill + prompt template</td><td>Every agent
+  prompt carries a hard line: "budget ≤ X tool calls / ~120k tokens; if you approach it,
+  checkpoint (bd update --notes) and stop." Template lives in one file, prompt = pointers only.</td><td>628k/578k/385k/361k runaway agents after rules existed; 5× regression</td></tr>
+  <tr><td><code>loop-breaker</code></td><td>hook (post-tool-use)</td><td>Count consecutive
+  same-tool/same-target calls; on the 3rd, refuse and tell the agent to change approach
+  (rewrite whole file via Write, run a scoped gate, or spawn an agent).</td><td>359 lost calls; heredoc and doc-edit chains</td></tr>
+  <tr><td><code>agent-brief</code> (generalized)</td><td>skill</td><td>Standing rule +
+  template for <code>docs/notes/agent-brief.md</code>: layer rules, partition, style,
+  traps, and the pointer-only prompt format. New projects get the brief in session 1.</td><td>Prompt size ~1 k → ~30 lines; best-verified saving</td></tr>
+  <tr><td><code>gate-scheduler</code></td><td>skill (short)</td><td>One table: iterate →
+  scoped single-module test; milestone/commit → full workspace + clippy + e2e, once.
+  Forbids two full runs within one checkpoint; forbids gate reruns without a code change.</td><td>117 gate calls in one session; several identical repeats</td></tr>
+  <tr><td><code>visual-check-budget</code></td><td>addition to ui-development</td><td>Read
+  at most one image per decision; never the same image twice for the same question;
+  element-scope shots over full-window; diff %/text results over pixels.</td><td>58 PNG reads, 14.5 MB; one golden read 6×</td></tr>
+  <tr><td><code>session-shape</code></td><td>skill</td><td>Coordinator-side discipline:
+  /clear at task boundaries, coordinator reads results not files, replay tail grows
+  quadratically — a rule the kit can state in 10 lines because it applies to every project.</td><td>332 M total, top-3 = 49 %; 95 k fresh input/turn</td></tr>
+</table>
+
+<h2>6. Recommended way of working with agents (this project, next 30 days)</h2>
+<ol>
+  <li>Coordinator: task boundary → /clear → <code>bd ready</code> → claim → read bead +
+  brief + spec section (one screen max) → spawn agent with pointer-prompt + budget →
+  receive summary → run the one scoped gate needed to trust it → close bead → commit →
+  end turn.</li>
+  <li>Agents get: bead id, agent-brief pointer, ≤3 files, the exact gate commands, the
+  token budget line, and the checkpoint instruction. Nothing else inline.</li>
+  <li>Two gates maximum per coordinator turn; visual checks via <code>npm run e2e</code>
+  diff percentages and the design oracle, images only when a human decision is needed.</li>
+  <li>Keep the 40–60 k agent band as the target; treat any agent > ~100 M raw tokens
+  as a process bug: stop it, capture its notes from <code>bd update</code>, decompose
+  the bead.</li>
+</ol>
+<p class="est">Method notes: usage figures come straight from transcript
+<code>message.usage</code>; session-to-bead attribution is from conversation content;
+backend-weight caveat as shown. The mining draft with the full 15-session tables and
+the tool-call profile is <code>docs/notes/report-data-tokens.md</code>.</p>
