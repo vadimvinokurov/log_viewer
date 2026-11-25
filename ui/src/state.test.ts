@@ -3,6 +3,7 @@ import {
   appReducer,
   clampPanelWidth,
   expandedForToggleAll,
+  fileTitle,
   formatBytes,
   initialPanelState,
   levelBarState,
@@ -10,6 +11,15 @@ import {
   type VisibilityState,
   initialAppState,
 } from "./state";
+
+describe("fileTitle (native window title, 2026-11-25 owner decision)", () => {
+  it("shows the file name and the humanized size", () => {
+    expect(fileTitle("log.txt", 183_000_000)).toBe("log.txt · 183 MB");
+    expect(fileTitle("service-2024-06-01.log", 883_091_968)).toBe(
+      "service-2024-06-01.log · 883 MB",
+    );
+  });
+});
 
 describe("formatBytes (file slot «name · size» per UI design)", () => {
   it("keeps small files in bytes", () => {

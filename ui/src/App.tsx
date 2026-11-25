@@ -8,7 +8,7 @@ import { ipc } from "./ipcClient";
 import { installHeadlessConsole } from "./headless";
 import { LogTable } from "./LogTable";
 import { LevelBar } from "./LevelBar.tsx";
-import { levelBarState, formatBytes } from "./state";
+import { levelBarState, fileTitle } from "./state";
 import { buildTree } from "./categories";
 import { SidePanel, usePanelHotkey } from "./SidePanel.tsx";
 import { CategoriesTab } from "./CategoriesTab.tsx";
@@ -173,6 +173,26 @@ export default function App() {
     return () => unlisten?.();
   }, []);
 
+  // The file indicator lives in the NATIVE window title (2026-11-25 owner
+  // decision, mock titlebar): "log.txt · 183 MB" — the bottom bar shows
+  // Open/Reload/command line/levels only. Outside a real webview (headless
+  // visual runs) there is no native window; the title effect is a no-op.
+  useEffect(() => {
+    const name = state.file?.name;
+    const sizeBytes = state.file?.load.sizeBytes;
+    if (name === undefined || sizeBytes === undefined) {
+      return;
+    }
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().setTitle(fileTitle(name, sizeBytes));
+      } catch {
+        // headless/browser runs have no native title to set
+      }
+    })();
+  }, [state.file]);
+
   const status = (() => {
     return busy ? `loading ${lastPathSegment(state.loadingFile ?? "")}…` : null;
   })();
@@ -280,12 +300,8 @@ export default function App() {
         )}
       </div>
       <footer className="bottom-bar">
-        {/* File slot per the UI design titlebar: "name · size" — no format
-            /line-count/load-time status here (2026-11-25 owner decision:
-            the bottom bar never prints that status). */}
-        <span className="file-name">
-          {state.file ? `${state.file.name} · ${formatBytes(state.file.load.sizeBytes)}` : null}
-        </span>
+        {/* No file indicator here: "name · size" lives in the native window
+            title (2026-11-25 owner decision, see the title effect above). */}
         <button className="bar-btn" onClick={openDialogAndLoad} disabled={busy}>
           Open
         </button>

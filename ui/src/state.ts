@@ -31,6 +31,13 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
 }
 
+/** The native window title per the UI design titlebar (2026-11-25 owner
+ *  decision: the file indicator lives in the WINDOW TITLE, not in the
+ *  bottom bar): "log.txt · 183 MB". */
+export function fileTitle(name: string, sizeBytes: number): string {
+  return `${name} · ${formatBytes(sizeBytes)}`;
+}
+
 /** One level entry of the visibility snapshot (camelCase, §7/§11). */
 export interface VisibilityLevel {
   level: string;
