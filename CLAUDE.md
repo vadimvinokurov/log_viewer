@@ -47,6 +47,10 @@
    caches first) + full `npx vitest run`. The run leaves the
    marker `.release-gates/last-run.json` (commit SHA, ok) — the evidence a tag
    push is legitimate. Details and the lesson learned: `docs/PIPELINE.md` §6a.
+   **Full procedure, including the tauri.conf.json version bump (the CI gate
+   that dropped the v0.3.1 windows build) and the tag/push shape: the
+   project skill `.claude/skills/release-flow/SKILL.md` — always invoke it
+   before release-tag work.**
 
 10. **Building the app binary: never bare `cargo build` in `src-tauri/`.**
     (Owner's rule, 2026-11-25, after a plain `cargo build` produced a blank
