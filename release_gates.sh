@@ -5,8 +5,7 @@
 # .release-gates/last-run.json (commit SHA, ok) is the evidence.
 #
 # The gates mirror the release workflow (.github/workflows/release.yml, job
-# "gate") plus the golden gate that CI runs only on macOS (job "goldens").
-# Run: bash release_gates.sh
+# "gate"). Run: bash release_gates.sh
 
 set -u
 
@@ -18,9 +17,6 @@ GATES=(
   # (tsc -b can hide breakage behind tsbuildinfo), then tsc -b + vite build.
   "npm --prefix ui run build"
   "npm --prefix ui test"
-  # Visual goldens (playwright-core + pixelmatch, committed PNGs). Resolved
-  # from ui/ — a run from the repo root silently tests the wrong environment.
-  "npm --prefix ui run e2e"
 )
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
