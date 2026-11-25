@@ -176,10 +176,7 @@
   .tree { padding: 10px 0 14px; font: 400 13px/1.85 var(--font-sans); overflow-y: auto; }
   .tree .row { display: flex; align-items: center; gap: 7px; padding: 0 12px; white-space: nowrap; }
   .tree .row .tw { width: 16px; color: var(--muted); font-size: 16px; flex: none; line-height: 1; }
-  .tree .row .cb { width: 16px; height: 16px; flex: none; border: 1.5px solid var(--border-strong); border-radius: 4px; background: var(--surface); position: relative; }
-  .tree .row .cb.on { background: var(--accent); border-color: var(--accent); }
-  .tree .row .cb.on::after { content: ""; position: absolute; inset: 1.5px 2px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-50deg) translateY(-1px); }
-  .tree .row .cb.part::after { content: ""; position: absolute; inset: 2.5px; background: var(--accent); border-radius: 1.5px; }
+  .tree .row input[type="checkbox"] { width: 16px; height: 16px; flex: none; margin: 0; accent-color: var(--accent); }
   .tree .row .nm { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
   .tree .row .ct { color: var(--dim); margin-left: auto; padding-left: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
   .tree .row.off { opacity: .45; }
@@ -405,19 +402,19 @@
             <span class="fold" role="button" tabindex="0" aria-label="Expand all"><svg width="13" height="8" viewBox="0 0 9 6" aria-hidden="true" style="width:13px;height:8px"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           </div>
           <div class="tree grow">
-            <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>
-            <div class="row"><span class="tw">▾</span><span class="cb on"></span><span class="nm">app</span><span class="ct">812k</span></div>
-            <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">main</span><span class="ct">34k</span></div>
-            <div class="row indent1"><span class="tw">▾</span><span class="cb on"></span><span class="nm">config</span><span class="ct">778k</span></div>
-            <div class="row indent2"><span class="tw">·</span><span class="cb on"></span><span class="nm">runtime</span><span class="ct">61k</span></div>
-            <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">db</span><span class="ct">2.1M</span></div>
-            <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">pool</span><span class="ct">611k</span></div>
-            <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">statement</span><span class="ct">890k</span></div>
-            <div class="row"><span class="tw">▸</span><span class="cb on"></span><span class="nm">auth</span><span class="ct">96k</span></div>
-            <div class="row"><span class="tw">·</span><span class="cb on"></span><span class="nm">net/http</span><span class="ct">2.9M</span></div>
-            <div class="row off"><span class="tw">·</span><span class="cb"></span><span class="nm">scheduler</span><span class="ct">405k</span></div>
-            <div class="row off"><span class="tw">·</span><span class="cb"></span><span class="nm">cache</span><span class="ct">14k</span></div>
-            <div class="row"><span class="tw">·</span><span class="cb on"></span><span class="nm">uncategorized</span><span class="ct">2.6k</span></div>
+            <div class="row"><span class="tw">▾</span><input type="checkbox" class="cb-part" checked><span class="nm">All</span><span class="ct">6.4M</span></div>
+            <div class="row"><span class="tw">▾</span><input type="checkbox" checked><span class="nm">app</span><span class="ct">812k</span></div>
+            <div class="row indent1"><span class="tw">▸</span><input type="checkbox" checked><span class="nm">main</span><span class="ct">34k</span></div>
+            <div class="row indent1"><span class="tw">▾</span><input type="checkbox" checked><span class="nm">config</span><span class="ct">778k</span></div>
+            <div class="row indent2"><span class="tw">·</span><input type="checkbox" checked><span class="nm">runtime</span><span class="ct">61k</span></div>
+            <div class="row"><span class="tw">▾</span><input type="checkbox" class="cb-part" checked><span class="nm">db</span><span class="ct">2.1M</span></div>
+            <div class="row indent1"><span class="tw">▸</span><input type="checkbox" checked><span class="nm">pool</span><span class="ct">611k</span></div>
+            <div class="row indent1"><span class="tw">▸</span><input type="checkbox" checked><span class="nm">statement</span><span class="ct">890k</span></div>
+            <div class="row"><span class="tw">▸</span><input type="checkbox" checked><span class="nm">auth</span><span class="ct">96k</span></div>
+            <div class="row"><span class="tw">·</span><input type="checkbox" checked><span class="nm">net/http</span><span class="ct">2.9M</span></div>
+            <div class="row off"><span class="tw">·</span><input type="checkbox"><span class="nm">scheduler</span><span class="ct">405k</span></div>
+            <div class="row off"><span class="tw">·</span><input type="checkbox"><span class="nm">cache</span><span class="ct">14k</span></div>
+            <div class="row"><span class="tw">·</span><input type="checkbox" checked><span class="nm">uncategorized</span><span class="ct">2.6k</span></div>
           </div>
         </div>
       </div>
@@ -513,19 +510,19 @@
         <span class="fold" role="button" tabindex="0" aria-label="Expand all"><svg width="13" height="8" viewBox="0 0 9 6" aria-hidden="true" style="width:13px;height:8px"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </div>
       <div class="tree grow">
-        <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>
-        <div class="row"><span class="tw">▾</span><span class="cb on"></span><span class="nm">app</span><span class="ct">812k</span></div>
-        <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">main</span><span class="ct">34k</span></div>
-        <div class="row indent1"><span class="tw">▾</span><span class="cb on"></span><span class="nm">config</span><span class="ct">778k</span></div>
-        <div class="row indent2"><span class="tw">·</span><span class="cb on"></span><span class="nm">runtime</span><span class="ct">61k</span></div>
-        <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">db</span><span class="ct">2.1M</span></div>
-        <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">pool</span><span class="ct">611k</span></div>
-        <div class="row indent1"><span class="tw">▸</span><span class="cb on"></span><span class="nm">statement</span><span class="ct">890k</span></div>
-        <div class="row"><span class="tw">▸</span><span class="cb on"></span><span class="nm">auth</span><span class="ct">96k</span></div>
-        <div class="row"><span class="tw">·</span><span class="cb on"></span><span class="nm">net/http</span><span class="ct">2.9M</span></div>
-        <div class="row off"><span class="tw">·</span><span class="cb"></span><span class="nm">scheduler</span><span class="ct">405k</span></div>
-        <div class="row off"><span class="tw">·</span><span class="cb"></span><span class="nm">cache</span><span class="ct">14k</span></div>
-        <div class="row"><span class="tw">·</span><span class="cb on"></span><span class="nm">uncategorized</span><span class="ct">2.6k</span></div>
+        <div class="row"><span class="tw">▾</span><input type="checkbox" class="cb-part" checked><span class="nm">All</span><span class="ct">6.4M</span></div>
+        <div class="row"><span class="tw">▾</span><input type="checkbox" checked><span class="nm">app</span><span class="ct">812k</span></div>
+        <div class="row indent1"><span class="tw">▸</span><input type="checkbox" checked><span class="nm">main</span><span class="ct">34k</span></div>
+        <div class="row indent1"><span class="tw">▾</span><input type="checkbox" checked><span class="nm">config</span><span class="ct">778k</span></div>
+        <div class="row indent2"><span class="tw">·</span><input type="checkbox" checked><span class="nm">runtime</span><span class="ct">61k</span></div>
+        <div class="row"><span class="tw">▾</span><input type="checkbox" class="cb-part" checked><span class="nm">db</span><span class="ct">2.1M</span></div>
+        <div class="row indent1"><span class="tw">▸</span><input type="checkbox" checked><span class="nm">pool</span><span class="ct">611k</span></div>
+        <div class="row indent1"><span class="tw">▸</span><input type="checkbox" checked><span class="nm">statement</span><span class="ct">890k</span></div>
+        <div class="row"><span class="tw">▸</span><input type="checkbox" checked><span class="nm">auth</span><span class="ct">96k</span></div>
+        <div class="row"><span class="tw">·</span><input type="checkbox" checked><span class="nm">net/http</span><span class="ct">2.9M</span></div>
+        <div class="row off"><span class="tw">·</span><input type="checkbox"><span class="nm">scheduler</span><span class="ct">405k</span></div>
+        <div class="row off"><span class="tw">·</span><input type="checkbox"><span class="nm">cache</span><span class="ct">14k</span></div>
+        <div class="row"><span class="tw">·</span><input type="checkbox" checked><span class="nm">uncategorized</span><span class="ct">2.6k</span></div>
       </div>
     </div>
     <div class="panel">
@@ -535,20 +532,20 @@
         <span class="fold" role="button" tabindex="0" aria-label="Expand all"><svg width="13" height="8" viewBox="0 0 9 6" aria-hidden="true" style="width:13px;height:8px"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </div>
       <div class="tree grow">
-        <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>
-        <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm"><b>db</b></span><span class="ct">2.1M</span></div>
-        <div class="row indent1"><span class="tw">▾</span><span class="cb on"></span><span class="nm"><b>db</b>/pool</span><span class="ct">611k</span></div>
-        <div class="row indent2"><span class="tw">·</span><span class="cb on"></span><span class="nm">readonly</span><span class="ct">214k</span></div>
-        <div class="row indent1"><span class="tw">·</span><span class="cb"></span><span class="nm"><b>db</b>/statement</span><span class="ct">890k</span></div>
+        <div class="row"><span class="tw">▾</span><input type="checkbox" class="cb-part" checked><span class="nm">All</span><span class="ct">6.4M</span></div>
+        <div class="row"><span class="tw">▾</span><input type="checkbox" class="cb-part" checked><span class="nm"><b>db</b></span><span class="ct">2.1M</span></div>
+        <div class="row indent1"><span class="tw">▾</span><input type="checkbox" checked><span class="nm"><b>db</b>/pool</span><span class="ct">611k</span></div>
+        <div class="row indent2"><span class="tw">·</span><input type="checkbox" checked><span class="nm">readonly</span><span class="ct">214k</span></div>
+        <div class="row indent1"><span class="tw">·</span><input type="checkbox"><span class="nm"><b>db</b>/statement</span><span class="ct">890k</span></div>
       </div>
     </div>
     <div class="panel">
       <div class="tabs"><span>Categories</span><span class="on">Filters</span><span>Highlights</span><span>Pinned</span></div>
       <div class="tree grow" style="padding-top:12px">
-        <div class="row"><span class="cb on"></span><span class="nm">:f "timeout"</span><span class="ct">✕</span></div>
-        <div class="row off"><span class="cb"></span><span class="nm">:fs ("auth" OR "login")</span><span class="ct">✕</span></div>
-        <div class="row"><span class="cb on"></span><span class="nm">:fn 12034</span><span class="ct">✕</span></div>
-        <div class="row"><span class="cb on"></span><span class="nm">:fr ^retry</span><span class="ct">✕</span></div>
+        <div class="row"><input type="checkbox" checked><span class="nm">:f "timeout"</span><span class="ct">✕</span></div>
+        <div class="row off"><input type="checkbox"><span class="nm">:fs ("auth" OR "login")</span><span class="ct">✕</span></div>
+        <div class="row"><input type="checkbox" checked><span class="nm">:fn 12034</span><span class="ct">✕</span></div>
+        <div class="row"><input type="checkbox" checked><span class="nm">:fr ^retry</span><span class="ct">✕</span></div>
       </div>
     </div>
   </div>
@@ -662,6 +659,8 @@
 
 <script>
   try {
+    /* native checkboxes have no markup-only indeterminate state */
+    document.querySelectorAll('input.cb-part').forEach(function (i) { i.indeterminate = true; });
     var group = document.querySelector('.seg');
     var btns = { 't-auto': null, 't-light': 'light', 't-dark': 'dark' };
     group.addEventListener('click', function (e) {
