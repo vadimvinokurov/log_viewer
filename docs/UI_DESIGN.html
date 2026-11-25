@@ -9,9 +9,9 @@
   Type — system sans for chrome (buttons, tabs, labels), system fixed-font mono (SF Mono / Menlo /
   Consolas — the OS system mono, v1 parity) for every piece of data (rows, counts, command line).
   Chrome stays quiet; the table owns ~90% of the pixels. No webfonts.
-  Sizes — carried over from the v1 Qt app (log-viewer-v1): table row 21px (mono glyph height + 6),
-  columns 50/110/150, bottom bar 32px, controls 24px tall, sidebar 280px, tabs as pills,
-  native-style 16px checkboxes in the tree.
+  Sizes — carried over from the v1 Qt app (log-viewer-v1) and tightened 2026-11-25:
+  table row 18px (13px mono + 3px breathing), bottom bar 32px, controls 24px tall,
+  sidebar 280px, tabs as pills, native-style 16px checkboxes in the tree.
   Layout — slim titlebar, full-bleed table, default 280px Categories sidebar docked right (hidden
   only by demand), 32px bottom bar
   (Open/Reload · command line · level buttons). Page presents framed window mocks,
@@ -212,15 +212,15 @@
 
   /* ============ table ============ */
   .tablewrap { flex: 1 1 auto; min-width: 0; position: relative; }
-  .grid { font: 400 13px/21px var(--font-mono); font-variant-numeric: tabular-nums; }
+  .grid { font: 400 13px/18px var(--font-mono); font-variant-numeric: tabular-nums; }
 
   .hrow, .drow {
     display: grid; grid-template-columns: 50px 110px 150px minmax(0, 1fr);
     align-items: center; white-space: nowrap;
   }
-  .hrow { height: 21px; background: var(--chrome); border-bottom: 1px solid var(--border); color: var(--dim); font: 600 11px/21px var(--font-sans); }
+  .hrow { height: 18px; background: var(--chrome); border-bottom: 1px solid var(--border); color: var(--dim); font: 600 11px/18px var(--font-sans); }
 
-  .drow { height: 21px; cursor: default; }
+  .drow { height: 18px; cursor: default; }
   .drow:nth-child(even):not(.sel):not(:hover) { background: color-mix(in srgb, var(--chrome) 35%, var(--table-bg)); }
   .drow:hover { background: color-mix(in srgb, var(--chrome-2) 60%, var(--table-bg)); }
   .drow.sel { background: var(--accent-tint); }
@@ -648,7 +648,8 @@
     <li><strong>Chrome text in the system sans, data in the system fixed font</strong> — the split is visible at a glance:
     anything you read from the log file is the system mono, anything the app itself says is the system sans. No webfonts —
     the v1 Qt app used <code>QFontDatabase</code> system fonts and the design keeps that parity.</li>
-    <li><strong>Density over comfort.</strong> Row is 21 px (system-mono glyph height + 6 px, v1 parity); zebra striping is faint and
+    <li><strong>Density over comfort.</strong> Row is 18 px (13 px mono + 3 px breathing — tightened
+    2026-11-25, the owner wants the log stack denser than the v1 21 px); zebra striping is faint and
     disappears on hover/selection, so scanning stays primary.</li>
   </ul>
 </section>
