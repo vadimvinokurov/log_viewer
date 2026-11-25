@@ -459,3 +459,38 @@ describe("search slice (bead 2wu.1, §8)", () => {
     expect(s.search.current).toBe(2);
   });
 });
+
+describe("column-widths slice (design 2026-11-25-column-resize)", () => {
+  it("starts at the §4 defaults", () => {
+    expect(initialAppState().columnWidths).toEqual({
+      line: 50,
+      time: 110,
+      category: 150,
+      message: 600,
+    });
+  });
+
+  it("column-set clamps to the floor and leaves the other keys alone", () => {
+    let s = appReducer(initialAppState(), { kind: "column-set", key: "time", width: -3 });
+    expect(s.columnWidths.time).toBe(20);
+    expect(s.columnWidths.line).toBe(50);
+    expect(s.columnWidths.message).toBe(600);
+    s = appReducer(s, { kind: "column-set", key: "category", width: 9999 });
+    expect(s.columnWidths.category).toBe(9999);
+    expect(s.columnWidths.time).toBe(20);
+  });
+
+  it("column-reset puts the key back to its §4 default", () => {
+    let s = appReducer(initialAppState(), { kind: "column-set", key: "line", width: 700 });
+    s = appReducer(s, { kind: "column-reset", key: "line" });
+    expect(s.columnWidths.line).toBe(50);
+  });
+
+  it("column-load replaces the whole object (startup seed, already-normalized)", () => {
+    const s = appReducer(initialAppState(), {
+      kind: "column-load",
+      widths: { line: 60, time: 120, category: 160, message: 620 },
+    });
+    expect(s.columnWidths).toEqual({ line: 60, time: 120, category: 160, message: 620 });
+  });
+});

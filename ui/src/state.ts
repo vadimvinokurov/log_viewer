@@ -11,6 +11,13 @@ import { EMPTY_SELECTION, range, select, toggle, type SelectionState } from "./s
 import { LEVEL_ORDER, type EnabledLevels, type Level, type LevelCounts } from "./levelBar";
 import type { FilterItem } from "./filtersTab";
 import type { HighlightItem } from "./highlights";
+import {
+  DEFAULT_COLUMN_WIDTHS,
+  resetWidth,
+  setWidth,
+  type ColumnKey,
+  type ColumnWidths,
+} from "./columnWidths.ts";
 
 export interface LoadInfo {
   format: string;
@@ -98,6 +105,9 @@ export interface AppState {
   fileEpoch: number;
   /** §10.1 side panel (rhl.2). */
   panel: PanelState;
+  /** Resizable table columns (§4 defaults; design 2026-11-25): the USER
+   *  widths — effective widths render from them in LogTable. */
+  columnWidths: ColumnWidths;
   /** §8 search panel (bead 2wu.1). */
   search: SearchState;
 }
@@ -126,7 +136,13 @@ export type AppEvent =
   | { kind: "search-mode"; mode: SearchMode }
   | { kind: "search-query"; query: string }
   | { kind: "search-result"; positions: number[]; current: number | null }
-  | { kind: "search-current"; current: number };
+  | { kind: "search-current"; current: number }
+  // Resizable table columns (design 2026-11-25-column-resize): pure slice
+  // events; the clamps live in the pure columnWidths module. The load event
+  // carries the already-normalized widths from the settings round-trip.
+  | { kind: "column-set"; key: ColumnKey; width: number }
+  | { kind: "column-reset"; key: ColumnKey }
+  | { kind: "column-load"; widths: ColumnWidths };
 
 /** §10.1 panel tabs, in the designed order (docs/UI_DESIGN.html). */
 export type PanelTab = "categories" | "filters" | "highlights" | "pinned";
@@ -241,6 +257,7 @@ export function initialAppState(): AppState {
     fileEpoch: 0,
     panel: initialPanelState(),
     search: initialSearchState(),
+    columnWidths: { ...DEFAULT_COLUMN_WIDTHS },
   };
 }
 
@@ -320,6 +337,13 @@ export function appReducer(state: AppState, event: AppEvent): AppState {
     }
     case "panel-expanded":
       return { ...state, panel: { ...state.panel, expanded: [...event.expanded].sort() } };
+    // Resizable table columns (design 2026-11-25-column-resize).
+    case "column-set":
+      return { ...state, columnWidths: setWidth(state.columnWidths, event.key, event.width) };
+    case "column-reset":
+      return { ...state, columnWidths: resetWidth(state.columnWidths, event.key) };
+    case "column-load":
+      return { ...state, columnWidths: { ...event.widths } };
     // §8 search panel (bead 2wu.1): open/close keep mode, query and the
     // latest positions (reopening rescans the same query through the
     // console); a mode switch does not clear the previous matches — the
