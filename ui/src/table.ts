@@ -24,10 +24,20 @@ export class ChunkPlanner {
   private loaded = new Set<number>();
   private inFlight = new Set<number>();
 
-  /** Chunk ranges to fetch now; an empty result means nothing is pending. */
+  /** Chunk ranges to fetch now; an empty result means nothing is pending.
+   *  Ranges are ordered by distance from the chunks covering the visible
+   *  range: the on-screen chunks load before the preloads, so the rows the
+   *  user is looking at appear after one round trip, not after two
+   *  neighboring chunks (owner flicker report 2026-11-25: the epoch's blank
+   *  flash lasted two round trips). */
   plan(visibleStart: number, visibleEnd: number, rowCount: number): { start: number; end: number }[] {
-    const first = Math.max(0, Math.floor(visibleStart / ROW_CHUNK) - 1);
-    const last = Math.floor(Math.max(0, Math.min(rowCount - 1, visibleEnd)) / ROW_CHUNK) + 1;
+    const visibleFirst = Math.max(0, Math.floor(visibleStart / ROW_CHUNK));
+    const visibleLast = Math.min(
+      Math.floor((rowCount - 1) / ROW_CHUNK),
+      Math.floor(visibleEnd / ROW_CHUNK),
+    );
+    const first = Math.max(0, visibleFirst - 1);
+    const last = visibleLast + 1;
     const ranges: { start: number; end: number }[] = [];
     for (let chunk = first; chunk <= last; chunk++) {
       const start = chunk * ROW_CHUNK;
@@ -42,7 +52,19 @@ export class ChunkPlanner {
       this.inFlight.add(idx);
       ranges.push({ start, end });
     }
-    return ranges;
+    // Distance from the visible chunk range, ties break toward the earlier
+    // chunk (deterministic order for the preload pair around the view).
+    const distance = (chunkIndex: number): number =>
+      chunkIndex < visibleFirst
+        ? visibleFirst - chunkIndex
+        : chunkIndex > visibleLast
+          ? chunkIndex - visibleLast
+          : 0;
+    return ranges.sort(
+      (a, b) =>
+        distance(a.start / ROW_CHUNK) - distance(b.start / ROW_CHUNK) ||
+        a.start - b.start,
+    );
   }
 
   markLoaded(chunkStart: number): void {

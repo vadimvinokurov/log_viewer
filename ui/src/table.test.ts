@@ -18,11 +18,13 @@ describe("row chunk planning (qt7.1, §4 virtualized load)", () => {
 
   it("prefetches the previous chunk when scrolling below the top", () => {
     const planner = new ChunkPlanner();
-    // Visible chunk 3 -> preload chunks 2..5.
+    // Visible chunk 3 -> preload chunks 2..4. The chunk CONTAINING the
+    // visible range loads before its preloads: the rows on screen appear
+    // after one round trip, not two (owner flicker report 2026-11-25).
     const ranges = planner.plan(3000, 3030, 100_000);
     expect(ranges).toEqual([
-      { start: 2000, end: 3000 },
       { start: 3000, end: 4000 },
+      { start: 2000, end: 3000 },
       { start: 4000, end: 5000 },
     ]);
   });
