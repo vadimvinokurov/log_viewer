@@ -5,6 +5,13 @@
 
 import { appReducer, expandedForToggleAll, initialAppState, type AppState, type AppEvent, type PanelTab, PANEL_TABS, type SearchMode } from "./state";
 import type { VisibilityState } from "./state";
+import {
+  COLUMN_KEYS,
+  parseColumnWidths,
+  serializeColumnWidths,
+  type ColumnKey,
+  type ColumnWidths,
+} from "./columnWidths.ts";
 import { buildTree, propagateToggle, toggleAll } from "./categories";
 import { ipc } from "./ipcClient";
 import { commands, type SettingsDto } from "./bindings";
@@ -56,6 +63,9 @@ export interface ConsoleSnapshot {
   /** §15 Open-dialog start dir (bead vk9.2): the seeded setting, updated by
    *  every successful open; the App passes this value to pickFile. */
   settings: { lastOpenDir: string };
+  /** Resizable table columns (design 2026-11-25-column-resize): the USER
+   *  widths the drags produce; effective widths live in the table. */
+  columnWidths: ColumnWidths;
   /** §13 command line (bead 7rf.1): the field text, the in-session history
    *  (chronological) and the recall cursor (historyIndex = history.length is
    *  the empty draft past the newest entry). */
@@ -111,23 +121,37 @@ const historyCommands = (): HistoryCommands => {
 interface SettingsCommands {
   settingsGet(): Promise<SettingsDto>;
   setLastOpenDir(dir: string): Promise<null>;
+  /** Design 2026-11-25-column-resize: `null` stores unset (§4 defaults). */
+  setColumnWidths(widths: number[] | null): Promise<null>;
 }
 
 const realSettingsCommands: SettingsCommands = {
   settingsGet: () => commands.settingsGet(),
   setLastOpenDir: (dir) => commands.setLastOpenDir(dir),
+  setColumnWidths: (widths) => commands.setColumnWidths(widths),
 };
 
-/** The same resolution rule as historyCommands(): a stub carrying BOTH
- *  settings methods wins, everything else gets the generated bindings. */
+/** The same resolution rule as historyCommands(): a stub carrying the §15
+ *  settings methods wins, everything else gets the generated bindings.
+ *  `setColumnWidths` is not part of the presence check — older unit stubs
+ *  that predate the column epic keep working, and a stub without the
+ *  setter degrades to a no-op fallback (persistence is best-effort). */
 const settingsCommands = (): SettingsCommands => {
   const stub = (window as unknown as { __ipcStub?: Partial<SettingsCommands> })
     .__ipcStub;
   const settingsGet = typeof stub?.settingsGet === "function" ? stub.settingsGet : null;
   const setLastOpenDir = typeof stub?.setLastOpenDir === "function" ? stub.setLastOpenDir : null;
-  return stub !== null && settingsGet !== null && setLastOpenDir !== null
-    ? { settingsGet, setLastOpenDir }
-    : realSettingsCommands;
+  if (stub !== null && settingsGet !== null && setLastOpenDir !== null) {
+    return {
+      settingsGet,
+      setLastOpenDir,
+      setColumnWidths:
+        typeof stub?.setColumnWidths === "function"
+          ? (widths) => stub.setColumnWidths(widths)
+          : () => Promise.resolve(null),
+    };
+  }
+  return realSettingsCommands;
 };
 
 // ---- Auto-update (plan 2026-11-25): the raw updater commands seam ----
@@ -222,7 +246,10 @@ class UiConsole {
       void settingsCommands()
         .settingsGet()
         .then(
-          (settings) => this.seedLastOpenDir(settings.last_open_dir),
+          (settings) => {
+            this.seedLastOpenDir(settings.last_open_dir);
+            this.seedColumnWidths(settings.column_widths);
+          },
           () => undefined,
         );
       // The automatic startup check (design: §Update UX): a silent probe;
@@ -241,6 +268,12 @@ class UiConsole {
     if (dir !== "") {
       this.dispatch({ kind: "remember-dialog-dir", dir });
     }
+  };
+
+  /** Design 2026-11-25-column-resize: the persisted widths (null = unset)
+   *  normalize in one place (parseColumnWidths) and seed the reducer. */
+  private seedColumnWidths = (raw: number[] | null | undefined): void => {
+    this.dispatch({ kind: "column-load", widths: parseColumnWidths(raw ?? null) });
   };
 
   /** The command-line slice as a STABLE reference for useSyncExternalStore. */
@@ -372,6 +405,7 @@ class UiConsole {
       },
       search: this.searchSnapshot(),
       settings: { lastOpenDir: this.state.lastDir },
+      columnWidths: { ...this.state.columnWidths },
       command: {
         value: this.cmdline.value,
         history: [...this.cmdline.history],
@@ -916,6 +950,37 @@ class UiConsole {
 
   setPanelWidth = (px: number): ConsoleSnapshot => {
     this.dispatch({ kind: "panel-width", width: px });
+    return this.getSnapshot();
+  };
+
+  /** Resizable table columns (design 2026-11-25-column-resize): the text
+   *  RPC keys are a string boundary — unknown names change nothing, and
+   *  the 20px clamp lives in the reducer (columnWidths.setWidth). */
+  setColumnWidth = (key: string, px: number): ConsoleSnapshot => {
+    const known = COLUMN_KEYS.find((candidate) => candidate === key);
+    if (!known) {
+      return this.getSnapshot();
+    }
+    this.dispatch({ kind: "column-set", key: known as ColumnKey, width: px });
+    return this.getSnapshot();
+  };
+
+  /** Double-click on the border: the key returns to its §4 default. */
+  resetColumnWidth = (key: string): ConsoleSnapshot => {
+    const known = COLUMN_KEYS.find((candidate) => candidate === key);
+    if (!known) {
+      return this.getSnapshot();
+    }
+    this.dispatch({ kind: "column-reset", key: known as ColumnKey });
+    return this.getSnapshot();
+  };
+
+  /** Drag end: the user widths persist fire-and-forget (best-effort, like
+   *  every settings write); the snapshot keeps holding the local widths. */
+  commitColumnWidths = (): ConsoleSnapshot => {
+    void settingsCommands()
+      .setColumnWidths(serializeColumnWidths(this.state.columnWidths) as never)
+      .catch(() => undefined);
     return this.getSnapshot();
   };
 

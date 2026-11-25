@@ -2619,3 +2619,135 @@ describe("concurrent update checks (final review I-1): a stale probe never clobb
     expect(console_.getUpdate().phase).toBe("available");
   });
 });
+
+describe("column-widths persistence (design 2026-11-25-column-resize)", () => {
+  /** RAW stub in the §15 pattern: settings_get carries `column_widths`,
+   *  set_column_widths records its calls. `withSetter` off = the stub does
+   *  NOT know the new command (commit must degrade to a no-op fallback). */
+  interface ColumnWidthsStub extends RawIpc {
+    columnWidthsCalls(): (number[] | null)[];
+  }
+
+  function columnWidthsStub(
+    options: { withSetter?: boolean; column_widths?: number[] | null } = {},
+  ): ColumnWidthsStub {
+    const calls: (number[] | null)[] = [];
+    return {
+      pickFile: async () => null,
+      loadFile: async () => ({
+        format: "plain", line_count: 12, size_bytes: 883, categories: [], levels: [], load_ms: 1,
+      }),
+      getRows: async () => [],
+      addFilter: async () => null,
+      setFilterEnabled: async () => null,
+      removeFilter: async () => null,
+      addPin: async () => null,
+      setPinEnabled: async () => null,
+      removePin: async () => null,
+      clearPins: async () => null,
+      clearFilters: async () => null,
+      addHighlight: async () => null,
+      setHighlightEnabled: async () => null,
+      setHighlightColor: async () => null,
+      removeHighlight: async () => null,
+      clearHighlights: async () => null,
+      setLevelEnabled: async () => null,
+      setCategoryEnabled: async () => null,
+      setCategoriesBulk: async () => null,
+      searchVisible: async () => ({ total: 0, positions: [] }),
+      visibilitySnapshot: async () => ({
+        visible_count: 12,
+        levels: ["critical", "error", "warning", "msg", "debug", "trace"].map((level) => ({
+          level, enabled: true, count: 2,
+        })),
+        filters: [],
+        pins: [],
+        highlights: [],
+        categories_enabled: ["app/db"],
+      }),
+      settingsGet: async () => ({
+        history_size: 20,
+        last_open_dir: "",
+        default_categories_enabled: true,
+        column_widths: options.column_widths ?? null,
+      }) as never,
+      setLastOpenDir: async () => null,
+      ...(options.withSetter === false
+        ? {}
+        : {
+            setColumnWidths: async (widths: number[] | null) => {
+              calls.push(widths);
+              return null as never;
+            },
+          }),
+      columnWidthsCalls: () => calls,
+    };
+  }
+
+  it("a fresh console seeds the column widths from the settings at construction", async () => {
+    const { console_ } = await freshConsole(
+      columnWidthsStub({ column_widths: [60, 120, 160, 620] }),
+    );
+    await vi.waitFor(() => {
+      expect(console_.getSnapshot().columnWidths).toEqual({
+        line: 60, time: 120, category: 160, message: 620,
+      });
+    });
+  });
+
+  it("null persisted widths seed the §4 defaults", async () => {
+    const { console_ } = await freshConsole(columnWidthsStub({ column_widths: null }));
+    await console_.load("log.txt"); // flush the construction's read attempt
+    expect(console_.getSnapshot().columnWidths).toEqual({
+      line: 50, time: 110, category: 150, message: 600,
+    });
+  });
+
+  it("setColumnWidth updates the snapshot slice and clamps to the floor", () => {
+    return vi.waitFor(async () => {
+      const { console_ } = await freshConsole(columnWidthsStub());
+      const set = console_.setColumnWidth("category", 250);
+      expect(set.columnWidths.category).toBe(250);
+      expect(console_.getSnapshot().columnWidths).toEqual({
+        line: 50, time: 110, category: 250, message: 600,
+      });
+    });
+  });
+
+  it("setColumnWidth with an unknown key changes nothing (string boundary)", () => {
+    return vi.waitFor(async () => {
+      const { console_ } = await freshConsole(columnWidthsStub());
+      const before = console_.getSnapshot().columnWidths;
+      const after = console_.setColumnWidth("nope", 1);
+      expect(after.columnWidths).toEqual(before);
+    });
+  });
+
+  it("resetColumnWidth restores the §4 default for the key", () => {
+    return vi.waitFor(async () => {
+      const { console_ } = await freshConsole(columnWidthsStub());
+      console_.setColumnWidth("time", 400);
+      const after = console_.resetColumnWidth("time");
+      expect(after.columnWidths.time).toBe(110);
+    });
+  });
+
+  it("commitColumnWidths persists the serialized 4-entry array", async () => {
+    const stub = columnWidthsStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("log.txt"); // flush the construction's read attempt
+    console_.setColumnWidth("category", 250);
+    console_.commitColumnWidths();
+    await vi.waitFor(() => {
+      expect(stub.columnWidthsCalls()).toEqual([[50, 110, 250, 600]]);
+    });
+  });
+
+  it("commitColumnWidths with a stub lacking the setter resolves without throwing", async () => {
+    const { console_ } = await freshConsole(columnWidthsStub({ withSetter: false }));
+    await console_.load("log.txt");
+    console_.setColumnWidth("category", 250);
+    expect(() => console_.commitColumnWidths()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 5));
+  });
+});
