@@ -186,6 +186,8 @@ describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
     expect(props.onSearch).toHaveBeenCalledWith("db");
     const fold = container.querySelector<HTMLElement>(".fold");
     expect(fold?.getAttribute("aria-label")).toBe("Expand all");
+    // native chevron glyph (2026-11-25 mock decision), not a text triangle
+    expect(fold?.querySelector("svg")).not.toBeNull();
     fireEvent.click(fold ?? container);
     expect(props.onExpandAll).toHaveBeenCalledWith(true);
 

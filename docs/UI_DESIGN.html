@@ -185,10 +185,15 @@
     color: var(--ink); font: 400 11.5px/1 system-ui, sans-serif; padding: 5px 8px; outline: none;
   }
   .fold {
-    flex: none; width: 24px; height: 24px; border: 1px solid var(--border-strong); border-radius: 6px;
-    background: var(--surface); color: var(--dim); font: 600 10px/1 "IBM Plex Mono", monospace; cursor: pointer;
+    flex: none; width: 25px; height: 25px; border-radius: 6px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; color: var(--muted);
+    /* native push-button: hairline ring, soft drop shadow, barely-there fill */
+    border: none;
+    background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--chrome) 60%, var(--surface)));
+    box-shadow: 0 0 0 .5px var(--border-strong), 0 1px 2px rgba(0,0,0,.12);
   }
-  .fold:hover { color: var(--ink); }
+  .fold:hover { color: var(--ink); background: var(--surface); }
+  .fold:active { background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface)); box-shadow: 0 0 0 .5px var(--border-strong) inset; }
   .panelwrap { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; margin-top: 12px; }
   .panel {
     width: 262px; height: 500px; display: flex; flex-direction: column;
@@ -390,7 +395,7 @@
           <div class="tabs"><span class="on">Categories</span><span>Filters</span><span>Highlights</span><span>Pinned</span></div>
           <div class="tree-search">
             <input type="text" placeholder="Filter tree" aria-label="Filter tree">
-            <span class="fold" role="button" tabindex="0" aria-label="Expand all">▾</span>
+            <span class="fold" role="button" tabindex="0" aria-label="Expand all"><svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           </div>
           <div class="tree grow">
             <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>
@@ -498,7 +503,7 @@
       <div class="tabs"><span class="on">Categories</span><span>Filters</span><span>Highlights</span><span>Pinned</span></div>
       <div class="tree-search">
         <input type="text" placeholder="Filter tree" aria-label="Filter tree">
-        <span class="fold" role="button" tabindex="0" aria-label="Expand all">▾</span>
+        <span class="fold" role="button" tabindex="0" aria-label="Expand all"><svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </div>
       <div class="tree grow">
         <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>
@@ -520,7 +525,7 @@
       <div class="tabs"><span class="on">Categories</span><span>Filters</span><span>Highlights</span><span>Pinned</span></div>
       <div class="tree-search">
         <input type="text" value="db" aria-label="Filter tree with query db">
-        <span class="fold" role="button" tabindex="0" aria-label="Expand all">▾</span>
+        <span class="fold" role="button" tabindex="0" aria-label="Expand all"><svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </div>
       <div class="tree grow">
         <div class="row"><span class="tw">▾</span><span class="cb part"></span><span class="nm">All</span><span class="ct">6.4M</span></div>

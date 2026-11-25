@@ -166,7 +166,19 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
           aria-label={everythingExpanded ? "Collapse all" : "Expand all"}
           onClick={() => onExpandAll(!everythingExpanded)}
         >
-          {everythingExpanded ? "▾" : "▸"}
+          {/* native chevron glyph (2026-11-25 mock decision), not a text
+              triangle: the mono "▾" read as a cramped box inside the 24px
+              chrome button */}
+          <svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true">
+            <path
+              d="M1 1l3.5 3.5L8 1"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </span>
       </div>
       <div className="tree" role="tree" aria-label="Categories">
