@@ -1,5 +1,8 @@
 # BENCHMARKS (bead log_viewer2-7no.1, perf epic)
 
+This doc is the project's performance table: it is where the `dual-path-oracle`
+obligation 3 (recorded speedup) is discharged.
+
 Criterion benches over the real `test_logs/` corpus. Harness:
 `crates/logviewer-core/benches/corpus.rs`. The fixtures live in the local,
 never-committed `test_logs/` folder (repo rule 1); when they are absent the

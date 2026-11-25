@@ -25,8 +25,10 @@ marked `// spec interpretation:` in code; report each such decision.
 - **Golden fixtures**: committed small synthetic files (core: `tests/fixtures/`), at
   least one case computed fully by hand. `test_logs/` is never a test corpus (rule 1
   of CLAUDE.md) and is never copied from.
-- **Dual-path oracle**: every non-obvious/optimized algorithm gets a naive reference
-  implementation compared against the fast one on the same inputs.
+- **Dual-path oracle (skill `vvv-claude-kit:dual-path-oracle`)**: every non-obvious/optimized
+  algorithm ships with its naive reference twin in the same changeset; an equality test
+  (identical inputs to both, Δ ≤ ε) is permanent — deleting it is a violation; the speedup
+  is measured and recorded in `docs/BENCHMARKS.md` (the project's performance table).
 - **Quality gates**: `cargo test --workspace` all green; `cargo clippy --workspace
   --all-targets` zero warnings; TypeScript strict with no `any`/`as` suppression on
   the UI side.
@@ -49,7 +51,11 @@ Claim tasks in the main session before spawning agents.
   without a window through the app's own text interface - `window.__headless`
   (state snapshots + actions, see `ui/src/headless.ts`). The visual harness
   and component verification use it, never DOM poking in ad-hoc scripts.
-- **Visual acceptance is a committed, repeatable harness (rules 6/7)**:
+  (Skill `vvv-claude-kit:headless-text-rpc` carries the obligations: one shared
+  handler for button and command, typed coercion at one boundary, fakes shaped
+  like the real IPC, snapshot as the acceptance ground.)
+- **Visual acceptance is a committed, repeatable harness (testable-apps-development
+  rules 6–7; skill `vvv-claude-kit:ui-development`)**:
   `npm run e2e` (ui/e2e/render.mjs) builds the app, serves `dist` itself,
   renders each declared state (empty / loaded / loaded-scrolled / error)
   through system Chrome with the IPC stubbed, screenshots to PNG and compares
@@ -128,6 +134,17 @@ Claim tasks in the main session before spawning agents.
     (0.000% on the following full run). All diffs pre-baseline stayed inside the
     0.5% threshold, so the re-baseline was done explicitly per the visual-change
     rule, not because the suite failed.
+  - All golden work follows the `vvv-claude-kit:golden-rebaseline` triage protocol:
+    read the diff output before any artifact, classify intended vs regression in the
+    task text, record a before/after diff per overwritten golden, fresh render review
+    before any overwrite.
+  - Golden layout status: the harness serves whole-screen **state goldens**
+    (one PNG per UI state). The kit's `ui-development` skill moves to **component ×
+    variant goldens plus 3–5 composite screens**, with the design doc GENERATED from
+    the component sources (`ui_design/ui_components/`); a hand-made mock compared
+    against the app (today's `design_check.mjs` PAIRS) is a listed trap. The project
+    is in the skill's "hand-made design doc present (pre-migration)" state; migration
+    is planned work (bead), not a silent rewrite of the harness.
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app
@@ -151,28 +168,39 @@ data transformations live in logviewer-core.
 
 ## 6a. Release (owner rule, 2026-11-25 - learned from the v0.2.0 failure)
 
-Pushing a release tag (`v*`, the tag-driven `release` workflow) is allowed only
-after the SAME runs the CI performs have been made locally, on the exact commit
-the tag will point to, and came back green:
+The rules live in the kit skill `vvv-claude-kit:release-gates`; this section
+fixes the project instantiation. A release tag (`v*`, the tag-driven `release`
+workflow) is pushed only after the project script **`bash release_gates.sh`**
+(repo root) ran green on the exact commit the tag will point to — same-gated
+run, no tag from memory:
 
-1. `cargo test --workspace` (repo root; regenerates `ui/src/bindings.ts` - a
-   dirty tree after it is a finding, not commit noise).
-2. From `ui/`: `npm run build` - this is `tsc -b && vite build`. `tsc -b` is the
-   only gate that catches TypeScript errors; vitest does not (esbuild strips
-   types), so a suite green without this step proves nothing about types.
-   The incremental cache (tsbuildinfo) can hide breakage: wipe stale caches
-   (or `rm -f tsconfig*.tsbuildinfo node_modules/.tmp/*.tsbuildinfo`) before
-   the decisive check.
-3. From `ui/`: `npx vitest run` (full suite, not per file).
-4. From `ui/`: `npm run e2e` (all states against the committed goldens).
-5. A live check in the real window (`scripts/live_check.mjs`) for whatever the
-   release adds - the milestone rule 5 lives here too.
+1. `release_gates.sh` holds the gate list in release order (obligation 2: the
+   script is the list, never memory):
+   - `cargo test --workspace` (repo root; regenerates `ui/src/bindings.ts` - a
+     dirty tree after it is a finding, not commit noise);
+   - `ui`: stale tsbuildinfo wiped, then `npm run build` (`tsc -b && vite
+     build`) - `tsc -b` is the only gate that catches TypeScript errors; vitest
+     does not (esbuild strips types), so a suite green without this step proves
+     nothing about types;
+   - `ui`: `npx vitest run` (full suite, not per file);
+   - `ui`: `npm run e2e` (all states against the committed goldens).
+2. The script's marker `.release-gates/last-run.json` (commit SHA, `ok: true`)
+   is the evidence the tagged commit passed; a gate run on a different commit
+   has no value.
+3. Only when the marker is green on the tagged commit: commit, push `main`,
+   create and push the `v*` tag. A live check in the real window
+   (`scripts/live_check.mjs`) stays a milestone obligation (CLAUDE.md rule 5)
+   for whatever the release adds - the release-gates skill covers the gates
+   list, the milestone rule covers the window.
+4. A failed tag push names the run: fix the cause, re-run
+   `bash release_gates.sh`, then publish. If CI still fails after the local
+   gates passed on the same commit, the diff between local and CI environments
+   is the task - not another blind tag push.
 
-Only when all of the above passed: commit, push `main`, create and push the
-`v*` tag. Watching the run (`gh run view`) completes the release; a red run is
-a stop-and-fix, not a re-tag later. The release history (v0.2.0, 2026-11-25):
-the gates were run, but with a stale incremental tsc cache and without a fresh
-`tsc -b`; the tag had to be moved after the CI typecheck failure.
+The release history (v0.2.0, 2026-11-25): the gates were run from memory, with
+a stale incremental tsc cache and without a fresh `tsc -b`; the tag had to be
+moved after the CI typecheck failure. The script exists so this cannot recur
+silently.
 
 ## 7. Knowledge lifecycle
 

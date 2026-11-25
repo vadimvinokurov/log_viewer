@@ -86,7 +86,7 @@ fn reader_helpers() {
   assert_eq!(format_from_reader(data), Format::Ksiva);
 }
 
-/// Dual-path oracle (building-testable-apps rule 3): the optimized memchr-based
+/// Dual-path oracle (testable-apps-development rule 3): the optimized memchr-based
 /// offset builder must agree with a naive `split`-based reference on every
 /// fixture and on adversarial in-memory inputs.
 #[test]

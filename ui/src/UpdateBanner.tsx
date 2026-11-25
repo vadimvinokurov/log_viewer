@@ -1,7 +1,7 @@
 //! The auto-update banner (plan 2026-11-25): a floating non-blocking chip
 //! over the table. The component only wires the console's update slice to
 //! markup — every transition lives in updates.ts, every action in
-//! uiConsole.ts (building-testable-apps rule 4/1). Copy is English per the
+//! uiConsole.ts (testable-apps-development rule 4/1). Copy is English per the
 //! project language rule.
 
 import { useSyncExternalStore, type ReactNode } from "react";

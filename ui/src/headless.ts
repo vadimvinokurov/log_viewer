@@ -1,4 +1,4 @@
-//! Headless text interface of the UI (building-testable-apps rule 6: text RPC
+//! Headless text interface of the UI (testable-apps-development rule 6: text RPC
 //! must cover every interactive capability without a window).
 //!
 //! The console is always registered on `window.__headless` (insignificant in

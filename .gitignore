@@ -10,6 +10,9 @@ test_logs/
 .beads/proxieddb/
 *.gate.lock*
 
+# Release gates marker (release_gates.sh; kit skill release-gates)
+.release-gates/
+
 # Build artifacts / dependencies
 node_modules/
 ui/dist/

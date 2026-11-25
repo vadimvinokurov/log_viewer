@@ -10,9 +10,9 @@
 
 2. **All information about the project lives in `docs/`** — look there first before asking or exploring elsewhere. Current contents: `docs/FUNCTIONAL_SPEC.html` (the functional specification, in Russian by decision of the owner), `docs/UI_DESIGN.html`, `docs/STACK.md`, `docs/PIPELINE.md`.
 
-3. **Use the installed skills, always.** Before any coding session, check the skill list and invoke what applies: `/vvv-claude-kit:building-testable-apps` for any new code, `/superpowers:test-driven-development` for any code, `/vvv-claude-kit:ui-development` for any UI work. Do not skip them because a task looks small — do not rely on memory of their contents; invoke them.
+3. **Use the installed skills, always.** Before any coding session, check the skill list and invoke what applies: `/vvv-claude-kit:testable-apps-development` for any new code, `/superpowers:test-driven-development` for any code, `/vvv-claude-kit:headless-text-rpc` when adding an interactive capability or wiring automated UI checks, `/vvv-claude-kit:ui-development` for any UI work, `/vvv-claude-kit:dual-path-oracle` when writing or optimizing a non-obvious algorithm, `/vvv-claude-kit:golden-rebaseline` when any golden comparison fails, `/vvv-claude-kit:release-gates` before any release-tag work. Do not skip them because a task looks small — do not rely on memory of their contents; invoke them.
 
-4. **`building-testable-apps` rules apply in full, not selectively.** (Owner's feedback, 2026-11-24 — invoke the skill and re-check this list before closing any code or UI task.)
+4. **`testable-apps-development` (with its text-RPC companion `headless-text-rpc`) rules apply in full, not selectively.** (Owner's feedback, 2026-11-24 — invoke the skill(s) and re-check this list before closing any code or UI task.)
    - The UI is a thin layer: every decision is logic in a pure module with vitest tests; components only wire IPC + store to markup.
    - Text RPC: the app exposes `window.__headless` (state snapshots + actions); harnesses drive it — no ad-hoc DOM poking, no one-off `evaluate` scripts.
    - Visual acceptance = render-to-PNG via the committed harness (`ui/e2e/render.mjs`, `npm run e2e`) with committed golden PNGs per UI state; pixel-diff against goldens, thresholds and re-baselining documented in `docs/PIPELINE.md` §5. Ad-hoc OS screenshots are never acceptance evidence.
@@ -37,13 +37,15 @@
 
 8. **Standing commit authority.** (Owner's feedback, 2026-11-24: «комить сам, когда считаешь нужным».) The agent commits locally on its own judgment — after every milestone with green gates (per rule 7's checkpoint commits), no owner approval needed. Push / Dolt remote sync stays out of scope: local commits only; pushing requires an explicit owner request.
 
-9. **Release push = local gates first.** (Owner's rule, 2026-11-25, after the
-   v0.2.0 CI typecheck failure.) A release tag push must come only after the
-   SAME runs CI performs were made locally, on the tagged commit, and are
-   green: `cargo test --workspace` + `npm run build` (tsc -b! — the only gate
-   that catches TS errors; wipe stale tsbuildinfo caches) + full
-   `npx vitest run` + `npm run e2e`. Details and the lesson learned:
-   `docs/PIPELINE.md` §6a.
+9. **Release push = gated by the project script, never memory.** (Owner's rule,
+   2026-11-25, after the v0.2.0 CI typecheck failure; operating form: the kit's
+   `release-gates` skill.) A release tag push must come only after
+   `bash release_gates.sh` (repo root) ran green on the exact commit the tag
+   will point to: `cargo test --workspace` + `npm run build` in `ui/` (tsc -b!
+   — the only gate that catches TS errors; the script wipes stale tsbuildinfo
+   caches first) + full `npx vitest run` + `npm run e2e`. The run leaves the
+   marker `.release-gates/last-run.json` (commit SHA, ok) — the evidence a tag
+   push is legitimate. Details and the lesson learned: `docs/PIPELINE.md` §6a.
 
 ## Workflow
 

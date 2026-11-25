@@ -1,4 +1,5 @@
-//! Design oracle (building-testable-apps rules 4/6/7): the reference is the
+//! Design oracle (testable-apps-development rules 4/6/7; skill
+//! ui-development): the reference is the
 //! committed design doc, not our own previous output. This script renders
 //! docs/UI_DESIGN.html in headless Chrome, screenshots the framed component
 //! mocks, renders the same components from the app's showcase (?show=...),

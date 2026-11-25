@@ -6,6 +6,8 @@ the coordinator must not restate spec semantics in prompts (CLAUDE.md rule 7).
 ## Where truth lives
 - Behavior: `docs/FUNCTIONAL_SPEC.html` (§-sections; owner reads it, do not paraphrase).
 - Visuals: `docs/UI_DESIGN.html` is the oracle — classes/tokens are copied verbatim from it.
+  (Status per the `ui-development` skill: hand-made doc, pre-migration; the generated-doc
+  migration is planned work — see docs/PIPELINE.md §5.)
 - Process: `docs/PIPELINE.md` (TDD, goldens, file partition, IPC conventions).
 - Stack/versions: `docs/STACK.md`.
 
@@ -23,7 +25,8 @@ the coordinator must not restate spec semantics in prompts (CLAUDE.md rule 7).
   (`uiConsole` + `window.__headless`); stubs mirror RAW IPC shapes
   (snake_case), normalization lives only in `ipcClient.ts`.
 - Visual acceptance: `npx vitest run` (from `ui/`), then `npm run build && npm run e2e`
-  with committed goldens; design oracle `node scripts/design_check.mjs` for design pairs.
+  with committed goldens; a failed golden goes through the `golden-rebaseline` triage
+  (docs/PIPELINE.md §5); design oracle `node scripts/design_check.mjs` for design pairs.
 - File partition for parallel agents: pre-created stubs + pre-added deps; agents never
   touch `lib.rs`, `Cargo.toml`, or other agents' files; integration is the coordinator's job.
 

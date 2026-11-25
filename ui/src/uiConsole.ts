@@ -1,4 +1,4 @@
-//! UI console: the text interface over the app state (building-testable-apps
+//! UI console: the text interface over the app state (testable-apps-development
 //! rule 6). App renders from it, the headless harness acts on it - one
 //! reducer, no window required. The load action runs through the same IPC
 //! adapter as the button flow (stubbed in headless runs).

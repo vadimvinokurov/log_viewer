@@ -1,4 +1,4 @@
-//! Visual acceptance harness (docs/PIPELINE.md §5; building-testable-apps
+//! Visual acceptance harness (docs/PIPELINE.md §5; testable-apps-development
 //! rules 6/7): the page renders its states through a system Chrome
 //! (headless), driven by the app's own text interface (window.__headless);
 //! every state is screenshotted to a PNG and compared against the committed
