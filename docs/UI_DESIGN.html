@@ -167,12 +167,11 @@
   .side { width: 280px; flex: none; background: var(--chrome); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
   .tabs { display: flex; border-bottom: 1px solid var(--border); }
   .tabs span {
-    flex: 1; text-align: center; padding: 5px 12px 5px; margin: 5px 0;
-    font: 600 11px/1 var(--font-sans); color: var(--ink); cursor: pointer;
-    background: var(--chrome-2); border-radius: 8px;
+    flex: 1; text-align: center; padding: 7px 3px 6px;
+    font: 500 11px/1 var(--font-sans); color: var(--dim); cursor: pointer;
+    border-bottom: 2px solid transparent;
   }
-  .tabs span + span { margin-left: 2px; }
-  .tabs span.on { background: var(--surface); box-shadow: 0 0 0 .5px var(--border); }
+  .tabs span.on { color: var(--accent); border-bottom-color: var(--accent); }
   .tree { padding: 10px 0 14px; font: 400 13px/1.85 var(--font-sans); overflow-y: auto; }
   .tree .row { display: flex; align-items: center; gap: 7px; padding: 0 12px; white-space: nowrap; }
   .tree .row .tw { width: 16px; color: var(--muted); font-size: 16px; flex: none; line-height: 1; }
