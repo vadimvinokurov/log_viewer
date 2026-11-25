@@ -25,9 +25,10 @@ the coordinator must not restate spec semantics in prompts (CLAUDE.md rule 7).
   state moves through the single reducer (`state.ts`) with two front doors
   (`uiConsole` + `window.__headless`); stubs mirror RAW IPC shapes
   (snake_case), normalization lives only in `ipcClient.ts`.
-- Visual acceptance: `npx vitest run` (from `ui/`), then `npm run build && npm run e2e`
-  with committed goldens; a failed golden goes through the `golden-rebaseline` triage
-  (docs/PIPELINE.md §5); design oracle `node scripts/design_check.mjs` for design pairs.
+- Verification gates: `npx vitest run` (from `ui/`) for logic, then
+  `npm run build` (tsc -b) — Visual acceptance and live checks are retired
+  (owner, 2026-11-25; see docs/PIPELINE.md §5): no goldens, no design oracle,
+  do not recreate `ui/e2e/` or `scripts/*.mjs` checkers without an owner request.
 - File partition for parallel agents: pre-created stubs + pre-added deps; agents never
   touch `lib.rs`, `Cargo.toml`, or other agents' files; integration is the coordinator's job.
 

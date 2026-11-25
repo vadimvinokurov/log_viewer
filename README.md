@@ -38,5 +38,4 @@ cargo tauri build          # in src-tauri/ context: `cargo tauri build`
 ```
 
 Tests: `cargo test --workspace` (Rust core + shell), `npm --prefix ui test`
-(unit logic), `npm --prefix ui run e2e` (visual goldens) — see
-`docs/PIPELINE.md` for the gates.
+(unit logic) — see `docs/PIPELINE.md` for the gates.
