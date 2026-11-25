@@ -4,8 +4,10 @@
 //! `~/.logviewer/`; core code receives the path from the caller):
 //!
 //! - `settings.json` — a JSON object; known keys are `history_size` (integer,
-//!   default 100), `last_open_dir` (string, default `""`) and
-//!   `default_categories_enabled` (boolean, reserved). Missing keys fall back
+//!   default 100), `last_open_dir` (string, default `""`),
+//!   `default_categories_enabled` (boolean, reserved) and `column_widths`
+//!   (string: four comma-joined integers `"50,110,150,600"`, `""` = unset, or
+//!   the raw JSON `null` which also reads as unset). Missing keys fall back
 //!   to their defaults; unknown keys are preserved verbatim across load+save.
 //! - `history.json` — a JSON array of command strings.
 //!
@@ -57,6 +59,10 @@ pub struct Settings {
   pub last_open_dir: String,
   /// Reserved placeholder (§15); not yet consulted by any feature.
   pub default_categories_enabled: bool,
+  /// Resizable table column widths (line, time, category, message) from the
+  /// last drag (design 2026-11-25-column-resize). `None` = unset = the UI
+  /// renders the §4 defaults.
+  pub column_widths: Option<[u32; 4]>,
 }
 
 impl Default for Settings {
@@ -65,6 +71,7 @@ impl Default for Settings {
       history_size: DEFAULT_HISTORY_SIZE,
       last_open_dir: String::new(),
       default_categories_enabled: false,
+      column_widths: None,
     }
   }
 }
@@ -194,11 +201,12 @@ impl Store {
   }
 }
 
-/// The three key names this module owns, in canonical (write-out) order.
-const KNOWN_KEYS: [&str; 3] = [
+/// The four key names this module owns, in canonical (write-out) order.
+const KNOWN_KEYS: [&str; 4] = [
   "history_size",
   "last_open_dir",
   "default_categories_enabled",
+  "column_widths",
 ];
 
 /// Apply the parsed `settings.json` entries: known keys decode, unknown keys
@@ -223,6 +231,11 @@ fn settings_from_entries(entries: &[(String, String)]) -> Settings {
           s.default_categories_enabled = v;
         }
       }
+      "column_widths" => {
+        if let Some(w) = decode_string(raw).and_then(|text| parse_column_widths(&text)) {
+          s.column_widths = w;
+        }
+      }
       _ => {}
     }
   }
@@ -232,11 +245,10 @@ fn settings_from_entries(entries: &[(String, String)]) -> Settings {
 /// Produce the entry list for the next save: known keys carry their canonical
 /// serialization (in the order they appear in the loaded file, missing ones
 /// appended at the end), unknown keys keep their verbatim raw text. This is
-/// also the serializer for the create-defaults case: `raw = &[]` yields a
-/// file with all three known keys.
+/// values (`raw = &[]` yields a file with all known keys.
 fn raw_with_settings(raw: &[(String, String)], s: &Settings) -> Vec<(String, String)> {
   let mut next: Vec<(String, String)> = Vec::with_capacity(raw.len() + KNOWN_KEYS.len());
-  let mut seen = [false; 3];
+  let mut seen = [false; 4];
   for (key, old_value) in raw {
     if let Some(slot) = KNOWN_KEYS.iter().position(|k| *k == key.as_str()) {
       seen[slot] = true;
@@ -259,8 +271,37 @@ fn serialize_known(slot: usize, s: &Settings) -> String {
     0 => s.history_size.to_string(),
     1 => encode_string(&s.last_open_dir),
     2 => s.default_categories_enabled.to_string(),
+    3 => encode_string(&column_widths_text(s.column_widths)),
     _ => unreachable!(),
   }
+}
+
+/// The stored text of `column_widths`: four comma-joined integers, `""` when
+/// unset (the UI falls back to the §4 defaults on empty).
+fn column_widths_text(ws: Option<[u32; 4]>) -> String {
+  match ws {
+    None => String::new(),
+    Some([line, time, category, message]) => {
+      format!("{line},{time},{category},{message}")
+    }
+  }
+}
+
+/// Decode the `column_widths` text back into widths: empty and malformed
+/// strings read as unset (tolerant, backward compatible).
+fn parse_column_widths(text: &str) -> Option<Option<[u32; 4]>> {
+  if text.is_empty() {
+    return Some(None);
+  }
+  let mut parts = text.split(',');
+  let mut out = [0u32; 4];
+  for slot in &mut out {
+    *slot = parts.next()?.trim().parse().ok()?;
+  }
+  if parts.next().is_some() {
+    return None;
+  }
+  Some(Some(out))
 }
 
 /// Render `settings.json`: known keys in file order (then missing ones),
@@ -666,7 +707,7 @@ mod tests {
     assert!(store.history().is_empty());
     assert_eq!(
       read(&dir, SETTINGS_FILE),
-      "{\n  \"history_size\": 100,\n  \"last_open_dir\": \"\",\n  \"default_categories_enabled\": false\n}\n"
+      "{\n  \"history_size\": 100,\n  \"last_open_dir\": \"\",\n  \"default_categories_enabled\": false,\n  \"column_widths\": \"\"\n}\n"
     );
     assert_eq!(read(&dir, HISTORY_FILE), "[]\n");
   }
@@ -685,7 +726,7 @@ mod tests {
     store.set_settings(s).unwrap();
     assert_eq!(
       read(&dir, SETTINGS_FILE),
-      "{\n  \"last_open_dir\": \"C:\\\\logs\",\n  \"history_size\": 100,\n  \"default_categories_enabled\": false\n}\n"
+      "{\n  \"last_open_dir\": \"C:\\\\logs\",\n  \"history_size\": 100,\n  \"default_categories_enabled\": false,\n  \"column_widths\": \"\"\n}\n"
     );
   }
 
@@ -705,13 +746,14 @@ mod tests {
         history_size: 50,
         last_open_dir: "/var/log".to_string(),
         default_categories_enabled: false,
+        column_widths: None,
       })
       .unwrap();
     // Order comes from the file: unknown keys stay put, history_size is
     // rewritten in place, keys missing from the file are appended.
     assert_eq!(
       read(&dir, SETTINGS_FILE),
-      "{\n  \"custom_flag\": true,\n  \"nested\": {\"a\": [1, 2]},\n  \"history_size\": 50,\n  \"last_open_dir\": \"/var/log\",\n  \"default_categories_enabled\": false\n}\n"
+      "{\n  \"custom_flag\": true,\n  \"nested\": {\"a\": [1, 2]},\n  \"history_size\": 50,\n  \"last_open_dir\": \"/var/log\",\n  \"default_categories_enabled\": false,\n  \"column_widths\": \"\"\n}\n"
     );
     let store = Store::open(&dir);
     assert_eq!(store.settings().history_size, 50);
@@ -759,6 +801,7 @@ mod tests {
         history_size: 2,
         last_open_dir: String::new(),
         default_categories_enabled: false,
+        column_widths: None,
       })
       .unwrap();
     store.push_history("c1".to_string()).unwrap();
@@ -836,6 +879,7 @@ mod tests {
       history_size: 7,
       last_open_dir: "/elsewhere".to_string(),
       default_categories_enabled: true,
+      column_widths: None,
     };
     assert_eq!(store.set_settings(changed), Err(()));
     assert_eq!(store.settings().history_size, 100);
@@ -851,5 +895,42 @@ mod tests {
     write(&dir, HISTORY_FILE, "[\"a\", \"b\", \"c\"]");
     let store = Store::open(&dir);
     assert_eq!(store.history(), ["b", "c"]);
+  }
+
+  #[test]
+  fn column_widths_default_to_unset_in_the_default_file() {
+    let dir = temp_dir("cw_default");
+    let store = Store::open(&dir);
+    assert_eq!(store.settings().column_widths, None);
+    assert!(read(&dir, SETTINGS_FILE).contains("\"column_widths\": \"\""));
+  }
+
+  #[test]
+  fn column_widths_roundtrip_across_reopen() {
+    let dir = temp_dir("cw_roundtrip");
+    let mut store = Store::open(&dir);
+    let mut s = store.settings().clone();
+    s.column_widths = Some([60, 120, 160, 620]);
+    store.set_settings(s).unwrap();
+    assert!(read(&dir, SETTINGS_FILE).contains("\"column_widths\": \"60,120,160,620\""));
+    let store = Store::open(&dir);
+    assert_eq!(store.settings().column_widths, Some([60, 120, 160, 620]));
+  }
+
+  #[test]
+  fn malformed_column_widths_value_falls_back_to_none() {
+    let dir = temp_dir("cw_bad");
+    write(&dir, SETTINGS_FILE, "{\"column_widths\": \"x,y\"}");
+    let store = Store::open(&dir);
+    assert_eq!(store.settings().column_widths, None);
+  }
+
+  #[test]
+  fn settings_file_without_column_widths_key_keeps_defaults() {
+    let dir = temp_dir("cw_old_file");
+    write(&dir, SETTINGS_FILE, "{\"last_open_dir\": \"C:\\\\logs\"}");
+    let store = Store::open(&dir);
+    assert_eq!(store.settings().last_open_dir, "C:\\logs");
+    assert_eq!(store.settings().column_widths, None);
   }
 }

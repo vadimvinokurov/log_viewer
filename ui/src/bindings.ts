@@ -65,16 +65,23 @@ export const commands = {
 	 */
 	historyPush: (cmd: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("history_push", { cmd }, options),
 	/**
-	 *  The settings the UI consults (§15): the Open-dialog start directory and
-	 *  the history cap. `default_categories_enabled` travels too (unknown keys
-	 *  are preserved by the store; the field is reserved).
+	 *  The settings the UI consults (§15): the Open-dialog start directory, the
+	 *  history cap and the persisted table column widths (design
+	 *  2026-11-25-column-resize). `default_categories_enabled` travels too
+	 *  (unknown keys are preserved by the store; the field is reserved).
 	 */
-	settingsGet: (options?: InvokeOptions) => __TAURI_INVOKE<SettingsDto>("settings_get", undefined, options),
+	settingsGet: (options?: InvokeOptions) => __TAURI_INVOKE<SettingsDto_Serialize>("settings_get", undefined, options),
 	/**
 	 *  Persist the Open-dialog start directory (§2, §15). The string is stored
 	 *  as-is; an empty string clears it back to the default.
 	 */
 	setLastOpenDir: (dir: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_last_open_dir", { dir }, options),
+	/**
+	 *  Persist the resizable table column widths (design
+	 *  2026-11-25-column-resize); validation lives in
+	 *  [`normalize_column_widths`].
+	 */
+	setColumnWidths: (widths: number[] | null, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_column_widths", { widths }, options),
 	/**
 	 *  Toggle a level by its lowercase long name ("critical".."trace", same
 	 *  spellings as the snapshot's level lists).
@@ -249,10 +256,30 @@ export type SearchMatchDto = {
 };
 
 /**  The persisted settings the UI consults (§15; raw snake_case). */
-export type SettingsDto = {
+export type SettingsDto = SettingsDto_Serialize | SettingsDto_Deserialize;
+
+/**  The persisted settings the UI consults (§15; raw snake_case). */
+export type SettingsDto_Deserialize = {
 	history_size: number,
 	last_open_dir: string,
 	default_categories_enabled: boolean,
+	/**
+	 *  Resizable table column widths (line, time, category, message); null =
+	 *  unset = the UI renders the §4 defaults (design 2026-11-25-column-resize).
+	 */
+	column_widths?: number[] | null,
+};
+
+/**  The persisted settings the UI consults (§15; raw snake_case). */
+export type SettingsDto_Serialize = {
+	history_size: number,
+	last_open_dir: string,
+	default_categories_enabled: boolean,
+	/**
+	 *  Resizable table column widths (line, time, category, message); null =
+	 *  unset = the UI renders the §4 defaults (design 2026-11-25-column-resize).
+	 */
+	column_widths: number[] | null,
 };
 
 /**

@@ -33,7 +33,7 @@ fn open_creates_missing_files_with_defaults() {
   assert!(store.history().is_empty());
   assert_eq!(
     std::fs::read_to_string(dir.join("settings.json")).unwrap(),
-    "{\n  \"history_size\": 100,\n  \"last_open_dir\": \"\",\n  \"default_categories_enabled\": false\n}\n"
+    "{\n  \"history_size\": 100,\n  \"last_open_dir\": \"\",\n  \"default_categories_enabled\": false,\n  \"column_widths\": \"\"\n}\n"
   );
   assert_eq!(std::fs::read_to_string(dir.join("history.json")).unwrap(), "[]\n");
 }
@@ -53,11 +53,12 @@ fn unknown_keys_survive_load_and_save() {
       history_size: 50,
       last_open_dir: "/var/log".to_string(),
       default_categories_enabled: false,
+      column_widths: None,
     })
     .unwrap();
   assert_eq!(
     std::fs::read_to_string(dir.join("settings.json")).unwrap(),
-    "{\n  \"custom_flag\": true,\n  \"history_size\": 50,\n  \"last_open_dir\": \"/var/log\",\n  \"default_categories_enabled\": false\n}\n"
+    "{\n  \"custom_flag\": true,\n  \"history_size\": 50,\n  \"last_open_dir\": \"/var/log\",\n  \"default_categories_enabled\": false,\n  \"column_widths\": \"\"\n}\n"
   );
 }
 
@@ -78,6 +79,7 @@ fn history_dedup_empty_and_cap() {
       history_size: 2,
       last_open_dir: String::new(),
       default_categories_enabled: false,
+      column_widths: None,
     })
     .unwrap();
   store.push_history("e".to_string()).unwrap();
@@ -128,6 +130,7 @@ fn read_only_dir_write_fails_and_memory_state_is_unchanged() {
       history_size: 7,
       last_open_dir: "/elsewhere".to_string(),
       default_categories_enabled: true,
+      column_widths: None,
     }),
     Err(())
   );

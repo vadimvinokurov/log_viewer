@@ -180,6 +180,9 @@ pub struct SettingsDto {
   pub history_size: u32,
   pub last_open_dir: String,
   pub default_categories_enabled: bool,
+  /// Resizable table column widths (line, time, category, message); null =
+  /// unset = the UI renders the §4 defaults (design 2026-11-25-column-resize).
+  pub column_widths: Option<Vec<u32>>,
 }
 
 /// The single read command's shape (contract, raw snake_case).
@@ -720,9 +723,10 @@ pub async fn history_push(
   guard.push_history(cmd).map_err(|_| "history write failed".to_owned())
 }
 
-/// The settings the UI consults (§15): the Open-dialog start directory and
-/// the history cap. `default_categories_enabled` travels too (unknown keys
-/// are preserved by the store; the field is reserved).
+/// The settings the UI consults (§15): the Open-dialog start directory, the
+/// history cap and the persisted table column widths (design
+/// 2026-11-25-column-resize). `default_categories_enabled` travels too
+/// (unknown keys are preserved by the store; the field is reserved).
 #[tauri::command]
 #[specta::specta]
 pub async fn settings_get(
@@ -734,6 +738,7 @@ pub async fn settings_get(
     history_size: s.history_size,
     last_open_dir: s.last_open_dir.clone(),
     default_categories_enabled: s.default_categories_enabled,
+    column_widths: s.column_widths.map(Into::into),
   })
 }
 
@@ -748,6 +753,49 @@ pub async fn set_last_open_dir(
   let mut guard = state.lock().map_err(|_| lock_err())?;
   let mut next = guard.settings().clone();
   next.last_open_dir = dir;
+  guard.set_settings(next).map_err(|_| "settings write failed".to_owned())
+}
+
+/// Validation of the `set_column_widths` payload (design
+/// 2026-11-25-column-resize): exactly four entries (line, time, category,
+/// message) in `1..=1_000_000`, or `None` to reset to unset. The UI clamps
+/// further (20px floor); the backend rejects only shapes it cannot store.
+/// Pure so the test module can cover it (tauri::State cannot be built
+/// outside an app — see the visibility-bridge tests' note).
+pub(crate) fn normalize_column_widths(
+  widths: &Option<Vec<u32>>,
+) -> Result<Option<[u32; 4]>, String> {
+  match widths {
+    None => Ok(None),
+    Some(w) => {
+      if w.len() != 4 {
+        return Err("column widths: exactly 4 entries expected".to_owned());
+      }
+      let mut out = [0u32; 4];
+      for (slot, value) in out.iter_mut().zip(w.iter()) {
+        if *value == 0 || *value > 1_000_000 {
+          return Err("column widths: entries must be in 1..=1_000_000".to_owned());
+        }
+        *slot = *value;
+      }
+      Ok(Some(out))
+    }
+  }
+}
+
+/// Persist the resizable table column widths (design
+/// 2026-11-25-column-resize); validation lives in
+/// [`normalize_column_widths`].
+#[tauri::command]
+#[specta::specta]
+pub async fn set_column_widths(
+  widths: Option<Vec<u32>>,
+  state: tauri::State<'_, SettingsState>,
+) -> Result<(), String> {
+  let widths = normalize_column_widths(&widths)?;
+  let mut guard = state.lock().map_err(|_| lock_err())?;
+  let mut next = guard.settings().clone();
+  next.column_widths = widths;
   guard.set_settings(next).map_err(|_| "settings write failed".to_owned())
 }
 
@@ -2029,5 +2077,30 @@ fn history_roundtrip_and_persistence() {
     // Spans still render after the reload.
     let rows = get_rows_inner(0, 10, &file, &vis, &hl).unwrap();
     assert_eq!(rows[0].spans.len(), 3); // two boom spans + the whole line
+  }
+
+  #[test]
+  fn column_widths_none_stores_unset() {
+    assert_eq!(normalize_column_widths(&None), Ok(None));
+  }
+
+  #[test]
+  fn column_widths_four_entries_normalize() {
+    assert_eq!(
+      normalize_column_widths(&Some(vec![60, 120, 160, 620])),
+      Ok(Some([60u32, 120, 160, 620]))
+    );
+  }
+
+  #[test]
+  fn column_widths_wrong_length_is_an_error() {
+    assert!(normalize_column_widths(&Some(vec![1, 2, 3])).is_err());
+    assert!(normalize_column_widths(&Some(vec![1, 2, 3, 4, 5])).is_err());
+  }
+
+  #[test]
+  fn column_widths_out_of_range_is_an_error() {
+    assert!(normalize_column_widths(&Some(vec![0, 120, 160, 620])).is_err());
+    assert!(normalize_column_widths(&Some(vec![60, 120, 1_000_001, 620])).is_err());
   }
 }

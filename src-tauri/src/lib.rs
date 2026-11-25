@@ -57,6 +57,7 @@ fn build_bindings() -> tauri_specta::Builder<tauri::Wry> {
     ipc::history_push,
     ipc::settings_get,
     ipc::set_last_open_dir,
+    ipc::set_column_widths,
     ipc::set_level_enabled,
     ipc::set_category_enabled,
     ipc::set_categories_bulk,
