@@ -48,6 +48,19 @@
    marker `.release-gates/last-run.json` (commit SHA, ok) — the evidence a tag
    push is legitimate. Details and the lesson learned: `docs/PIPELINE.md` §6a.
 
+10. **Building the app binary: never bare `cargo build` in `src-tauri/`.**
+    (Owner's rule, 2026-11-25, after a plain `cargo build` produced a blank
+    white window: without the `tauri/custom-protocol` feature the tauri crate
+    reports dev mode, and the webview loads `build.devUrl`
+    (`http://localhost:5173`) where nothing listens.) Build with
+    `cargo build --features tauri/custom-protocol` in `src-tauri/` — the flag
+    `cargo tauri build` passes. The tauri build script recompiles the app
+    package automatically when `ui/dist` changes, so the usual flow is
+    `npm --prefix ui run build` → that cargo command → run
+    `target/debug/logviewer`. Symptom checklist if a launched window is blank:
+    driver POST with `{"js": "return ..."}` returning `null` vs hanging, and
+    beads memory `tauri-debug-build-needs-custom-protocol`.
+
 ## Workflow
 
 Three storage roles:
