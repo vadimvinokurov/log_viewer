@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Testing Layer Inventory</title>
+<title>Инвентаризация тестирования</title>
 <style>
   :root { color-scheme: light dark;
     --bg: #fafaf7; --fg: #1c1d22; --muted: #6d6e76; --panel: #ffffff; --line: #e3e2da;
@@ -39,214 +39,223 @@
   .layer-row td { padding-top: 9px; padding-bottom: 9px; }
 </style>
 
-<h1>Testing Layer Inventory — logviewer2</h1>
-<p>What is tested, how, and a per-layer value verdict measured against the project's own
-goal: an agent must be able to verify any feature without a screen, and a release must be
-cuttable without human QA. Companion reports:
-<a href="report-01-token-usage.html">token usage</a> ·
-<a href="report-02-agent-mistakes.html">agent mistakes</a>.
-Draft source: <code>docs/notes/report-data-testing.md</code>.</p>
+<h1>Инвентаризация тестирования — logviewer2</h1>
+<p>Что тестируется, как, и вердикт полезности каждого слоя, измеренный против
+собственной цели проекта: агент должен уметь проверить любую фичу без экрана, а релиз
+должен разрезаться без ручной QA. Сопутствующие отчёты:
+<a href="report-01-token-usage.html">токены</a> ·
+<a href="report-02-agent-mistakes.html">ошибки с агентом</a>.
+Черновик-источник: <code>docs/notes/report-data-testing.md</code>.</p>
 
 <div class="cards">
-  <div class="card"><b>~600</b><span>automated test cases (Rust + TS)</span></div>
-  <div class="card"><b>43</b><span>golden PNG states visually accepted</span></div>
-  <div class="card"><b>14</b><span>named real-window live checks</span></div>
-  <div class="card"><b>9</b><span>committed synthetic fixture logs</span></div>
-  <div class="card"><b>12</b><span>distinct test layers</span></div>
+  <div class="card"><b>~600</b><span>автоматических кейсов (Rust + TS)</span></div>
+  <div class="card"><b>43</b><span>golden PNG-стейта, принятых визуально</span></div>
+  <div class="card"><b>14</b><span>именованных live-проверок реального окна</span></div>
+  <div class="card"><b>9</b><span>закоммиченных синтетических fixture-логов</span></div>
+  <div class="card"><b>12</b><span>различных слоёв тестирования</span></div>
 </div>
 
-<h2>1. The layers</h2>
+<h2>1. Слои</h2>
 <table>
-  <tr><th style="width:26%">Layer — what &amp; how</th><th style="width:20%">Size</th><th>Value verdict</th></tr>
-  <tr class="layer-row"><td><h3>1 · Rust core unit tests</h3>TDD <code>#[cfg(test)]</code>
-  cases per pure module — parser, visibility, query, highlights, settings, matching,
-  categories.</td><td>8 files<br><b class="n">127 cases</b></td>
-  <td><span class="verdict v-load">Load-bearing</span> The cheapest, fastest, most-used
-  layer; the entire TDD loop runs on it. No change to its shape needed.</td></tr>
+  <tr><th style="width:26%">Слой — что и как</th><th style="width:20%">Размер</th><th>Вердикт полезности</th></tr>
+  <tr class="layer-row"><td><h3>1 · Rust core unit-тесты</h3>TDD-кейсы
+  <code>#[cfg(test)]</code> на каждый чистый модуль — парсер, visibility, query,
+  highlights, settings, matching, categories.</td><td>8 файлов<br><b class="n">127 кейсов</b></td>
+  <td><span class="verdict v-load">Несущий</span> Самый дешёвый, быстрый и используемый
+  слой; весь TDD-цикл идёт на нём. Форму менять не нужно.</td></tr>
 
-  <tr class="layer-row"><td><h3>2 · Golden fixture corpus</h3>Small synthetic committed
-  <code>.log</code> files, incl. ≥1 hand-computed case (spec-driven, CLAUDE.md rule 4 /
-  building-testable-apps rule 4). Scanner/settings goldens plus one <code>#[ignore]</code>d
-  perf smoke over the real test_logs folder.</td><td>9 fixture logs<br>13 golden tests</td>
-  <td><span class="verdict v-load">Load-bearing</span> The only byte-level truth for the
-  parser. Correctly NOT reusing <code>test_logs/</code> (uncommitted, rule 1). Gap: only 9
-  files — §3's disambiguation matrix wants more boundary cases; see gaps.</td></tr>
+  <tr class="layer-row"><td><h3>2 · Golden fixture-корпус</h3>Малые синтетические
+  закоммиченные <code>.log</code>-файлы, включая ≥1 кейс, посчитанный вручную
+  (фиксируется правилом 4 CLAUDE.md / building-testable-apps). Scanner/settings
+  goldens плюс один <code>#[ignore]</code>-перф-смоук по реальной папке test_logs.</td>
+  <td>9 fixture-логов<br>13 golden-тестов</td>
+  <td><span class="verdict v-load">Несущий</span> Единственная байт-уровневая правда
+  парсера. Корректно НЕ переиспользует <code>test_logs/</code> (некоммичен, правило 1).
+  Пробел: всего 9 файлов — матрица дизамбигуации §3 хочет больше пограничных кейсов;
+  см. пропуски.</td></tr>
 
-  <tr class="layer-row"><td><h3>3 · Dual-path oracle</h3>Every optimized algorithm ships a
-  naive reference implementation; equivalence tests feed both the same input.</td>
-  <td>3 algorithms<br>~4 tests</td>
-  <td><span class="verdict v-load">Load-bearing, narrow</span> Where it exists
-  (visibility walks, scanner offsets) it is exactly the guard the 75.7 ms optimization
-  relied on. Narrow: regex/fancy-regex fallback paths are not oracled yet.</td></tr>
+  <tr class="layer-row"><td><h3>3 · Dual-path оракул</h3>Каждый неочевидный алгоритм
+  носит наивную reference-имплементацию; equivalence-тесты кормят обе одинаковым input.</td>
+  <td>3 алгоритма<br>~4 теста</td>
+  <td><span class="verdict v-load">Несущий, узкий</span> Где есть (visibility-обходы,
+  scanner offsets) — ровно страховка, на которую оперлась 2× оптимизация до 75.7 мс.
+  Узкий: fallback-пути regex/fancy-regex не оракулится.</td></tr>
 
-  <tr class="layer-row"><td><h3>4 · Tauri shell tests + bindings</h3>Real async IPC
-  wrappers tested; <code>cargo test</code> regenerates specta bindings, so drift breaks
-  the build.</td><td>40 cases</td>
-  <td><span class="verdict v-load">Load-bearing</span> This is why
-  "hand-written bindings" never became a bug class here. Keep.</td></tr>
+  <tr class="layer-row"><td><h3>4 · Tauri shell-тесты + bindings</h3>Реальные async IPC
+  обёртки тестируются; <code>cargo test</code> регенерирует specta-bindings, значит
+  дрейф ломает сборку.</td><td>40 кейсов</td>
+  <td><span class="verdict v-load">Несущий</span> Именно поэтому «рукописные bindings»
+  здесь никогда не стали классом багов. Оставить.</td></tr>
 
   <tr class="layer-row"><td><h3>5 · Headless text RPC — <code>window.__headless</code></h3>
-  ~45 snapshot/action capabilities; every state visible as text; the single door for
-  harness, component data and the live driver. 106-case contract suite.</td>
-  <td>~45 capabilities<br><b class="n">106 cases</b></td>
-  <td><span class="verdict v-load">Keystone</span> The best architectural decision in the
-  UI: layers 8, 9, 10 and 12 all ride on it, and every UI acceptance is reproducible
-  without a screen. This layer is the app's testability spine.</td></tr>
+  ~45 возможностей снимки/действия; каждое состояние видно текстом; единственная дверь
+  для харнесса, данных компонентов и live-драйвера. Контрактный набор 106 кейсов.</td>
+  <td>~45 возможностей<br><b class="n">106 кейсов</b></td>
+  <td><span class="verdict v-load">Ключевой камень</span> Лучшее архитектурное решение
+  UI: слои 8, 9, 10 и 12 все едут на нём, и каждая UI-приёмка воспроизводима без экрана.
+  Этот слой — позвоночник тестируемости приложения.</td></tr>
 
-  <tr class="layer-row"><td><h3>6 · Pure TS unit tests</h3>Vitest over pure modules:
+  <tr class="layer-row"><td><h3>6 · Чистые TS unit-тесты</h3>Vitest по чистым модулям:
   state reducer (45), categories (35), cmdline (22), selection (21), viewport anchoring
-  (18), …</td><td>12 files<br><b class="n">226 cases</b></td>
-  <td><span class="verdict v-load">Load-bearing</span> The JS mirror of layer 1 — every
-  UI decision is logic-in-a-module, tested without a screen. Working as intended.</td></tr>
+  (18), …</td><td>12 файлов<br><b class="n">226 кейсов</b></td>
+  <td><span class="verdict v-load">Несущий</span> JS-зеркало слоя 1 — каждое UI-решение
+  это логика-в-модуле, проверяемая без экрана. Работает как задуманно.</td></tr>
 
-  <tr class="layer-row"><td><h3>7 · Component tests (testing-library)</h3>Thin
-  components tested at the DOM level.</td><td>7 files<br><b class="n">55 cases</b></td>
-  <td><span class="verdict v-margin">Marginal → useful</span> Partially redundant with
-  layers 5+8: the headless API verifies state, goldens verify markup. Kept because thin
-  components are cheap to test at this level, but it should never grow at the expense of
-  5+8. New component logic belongs in layers 5/6 first.</td></tr>
+  <tr class="layer-row"><td><h3>7 · Компонентные тесты (testing-library)</h3>Тонкие
+  компоненты, тестируемые на уровне DOM.</td><td>7 файлов<br><b class="n">55 кейсов</b></td>
+  <td><span class="verdict v-margin">Пограничные → полезные</span> Частично избыточны с
+  слоями 5+8: headless API проверяет состояние, goldens — разметку. Оставлены, потому
+  что тонкие компоненты дёшевы на этом уровне, но этот слой никогда не должен расти в
+  ущерб 5+8. Логика новых компонентов — сначала в 5/6.</td></tr>
 
-  <tr class="layer-row"><td><h3>8 · Golden-PNG visual acceptance</h3>
-  <code>ui/e2e/render.mjs</code>: 19 state generators → 43 states → 43 committed goldens,
-  headless Chrome at 1400×900, IPC stubbed per state, pixelmatch vs threshold;
-  documented re-baselines.</td><td><b class="n">43 states</b> / 43 goldens<br>9 re-baselines</td>
-  <td><span class="verdict v-load">Load-bearing</span> Replaced ~60 ad-hoc screenshots
-  (see token report — screenshots were a top-3 cost driver). Two costs to manage: a
-  whole-app restyle re-baselines all 43, and local Chrome/font drift is an unowned flake
-  source — see gaps.</td></tr>
+  <tr class="layer-row"><td><h3>8 · Golden-PNG визуальная приемка</h3>
+  <code>ui/e2e/render.mjs</code>: 19 генераторов стейтов → 43 стейта → 43 закоммиченных
+  goldens, headless Chrome 1400×900, IPC по-стейтово подменён, pixelmatch против
+  порога; документированные ребазлайны.</td><td><b class="n">43 стейта</b> / 43 goldens<br>9 ребазлайнов</td>
+  <td><span class="verdict v-load">Несущий</span> Заменил ~60 ad-hoc скриншотов (токен-
+  отчёт: скриншоты были топ-3 драйвером стоимости). Две цены для управления: рестайл
+  всего приложения перебазит все 43, а дрейф локального Chrome/шрифтов — непринадлежащая
+  никому не приписанный источник флаков — см. пропуски.</td></tr>
 
-  <tr class="layer-row"><td><h3>9 · Design oracle</h3><code>design_check.mjs</code>
-  compares committed design frames (<code>docs/UI_DESIGN.html</code>) against the
-  app's <code>?show=</code> states, 3 element pairs, 5 % threshold.</td><td>3 pairs</td>
-  <td><span class="verdict v-margin">Marginal, decaying</span> Only ~3 of ~10 design
-  elements are wired; not in npm scripts or CI, so nothing forces it before a UI close.
-  It answers precisely the "does the app still match the agreed design" question the
-  mock-churn session (mistakes report P9) was asking — high potential, currently
-  underwired. Needs PAIRS growth + gate wiring, not abandonment.</td></tr>
+  <tr class="layer-row"><td><h3>9 · Дизайн-оракул</h3><code>design_check.mjs</code>
+  сравнивает закоммиченные дизайн-фреймы (<code>docs/UI_DESIGN.html</code>) с
+  <code>?show=</code>-состояниями приложения: 3 пары элементов, порог 5 %.</td>
+  <td>3 пары</td>
+  <td><span class="verdict v-margin">Пограничный, выветривается</span> Подключено
+  ~3 из ~10 элементов дизайна; не в npm-скриптах и CI, ничто не форсирует перед закрытием
+  UI. Отвечает ровно на вопрос «соответствует ли приложение согласованному дизайну»,
+  который задавала churn-сессия макета (ошибки P9) — высокий потенциал, сейчас
+  недопросвечен. Нужно: рост пар и проводка в гейт, а не отказ от слоя.</td></tr>
 
-  <tr class="layer-row"><td><h3>10 · Live real-window driver</h3>
-  <code>live_check.mjs</code> (738 lines) + native driver server: real
-  <code>test_logs/</code> file through real Tauri IPC, numbers-only assertions,
-  no-retry semantics; 14 named checks today (pins, highlights, cmdline).</td>
-  <td>14 named checks</td>
-  <td><span class="verdict v-load">Load-bearing but trimmed</span> The only layer that
-  covers the real window — and it has caught bugs no offline layer could (the per-probe
-  counts walk). Key flaw: milestone scenarios are <em>replaced</em>, not accumulated —
-  milestones h/i/j-era flows have checks, older verified flows none. Persistent named
-  checks must accumulate.</td></tr>
+  <tr class="layer-row"><td><h3>10 · Live-драйвер реального окна</h3>
+  <code>live_check.mjs</code> (738 строк) + нативный driver-сервер: настоящий файл
+  <code>test_logs/</code> через реальный Tauri IPC, только числовые ассерты, no-retry
+  семантика; 14 названных проверок сегодня (pins, highlights, cmdline).</td>
+  <td>14 названных проверок</td>
+  <td><span class="verdict v-load">Несущий, но урезанный</span> Единственный слой,
+  покрывающий реальное окно — и он поймал баги, недостижимые офлайн-слоями (per-probe
+  обход counts). Ключевой дефект: сценарии рубежа <em>заменяются</em>, а не
+  накапливаются — у milestones h/i/j-эры есть проверки, у старых проверенных флоу —
+  нет. Постоянные named-чеки должны накапливаться.</td></tr>
 
-  <tr class="layer-row"><td><h3>11 · Benchmarks (criterion)</h3>Real-corpus benchmark
-  runs + baselines in <code>BENCHMARKS.md</code> (e.g. visibility 154→75.7 ms).</td>
-  <td>1 bench suite</td>
-  <td><span class="verdict v-load">Valuable, ungated</span> Produces the numbers that
-  justify algorithm work, but nothing fails on regression, and it cannot run in CI
-  (depends on the uncommitted test_logs). See gaps.</td></tr>
+  <tr class="layer-row"><td><h3>11 · Бенчмарки (criterion)</h3>Прогоны по реальному
+  корпусу + базлайны в <code>BENCHMARKS.md</code> (напр., visibility 154→75.7 мс).</td>
+  <td>1 bench-набор</td>
+  <td><span class="verdict v-load">Ценный, без гейта</span> Даёт числа, которые
+  обосновывают алгоритмическую работу, но ничто не фейлится на регресс, и CI это
+  запускать не может (зависит от некоммиченного test_logs). См. пропуски.</td></tr>
 
-  <tr class="layer-row"><td><h3>12 · CI parity</h3>Gates: workspace cargo + <code>tsc -b</code>
-  build + vitest; goldens on macOS; builds for mac-universal + win-NSIS.</td>
-  <td>release.yml</td>
-  <td><span class="verdict v-load">Good, parity almost complete</span> The v0.2.0 incident
-  (mistakes P2) proved why local parity matters — CI now mirrors the gates. Missing: linter
-  (oxlint), design oracle, benchmarks. One remaining trap: windows-nsis config is only
-  exercised at release.</td></tr>
+  <tr class="layer-row"><td><h3>12 · CI-паритет</h3>Гейты: workspace cargo +
+  <code>tsc -b</code> build + vitest; goldens на macOS; сборки mac-universal +
+  win-NSIS.</td><td>release.yml</td>
+  <td><span class="verdict v-load">Хорошо, паритет почти полный</span> Инцидент v0.2.0
+  (ошибки P2) доказал, зачем нужен локальный паритет — CI теперь зеркалит гейты.
+  Отсутствует: линтер (oxlint), дизайн-оракул, бенчмарки. Оставшаяся ловушка:
+  windows-nsis конфиг проверяется только на релизе.</td></tr>
 </table>
 
-<h2>2. Coverage picture</h2>
-<p><strong>Strong:</strong> the parser/engine path (layers 1+2+3+4) and the UI
-decision/state path (layers 5+6+8) both have layered, mostly redundant-in-a-good-way
-coverage; every UI state is both state-asserted (5) and pixel-accepted (8). This is what
-makes headless-first development real rather than rhetorical — the app was demonstrably
-verifiable without a screen across the whole v0.3 rewrite.</p>
-<p><strong>Weak:</strong> everything at the two ends of the funnel. Real-window checks
-(10) exist for recently-finished milestones only; benchmarks (11) have no regression
-gate; the design oracle (9) covers 3 elements; and the failure-visual states are barely
-present (one <code>error.png</code> golden, no loading/overflow state coverage).</p>
+<h2>2. Картина покрытия</h2>
+<p><strong>Сильно:</strong> путь парсер/движок (слои 1+2+3+4) и путь UI-решений/состояний
+(слои 5+6+8) оба имеют слоистое, полезно-избыточное покрытие; каждое UI-состояние и
+каждое UI-состояние и ассертится state-слоем (5), и принимается пиксельно (8). Именно это делает headless-first
+разработку реальной, а не риторической — приложение было демонстративно верифицируемым
+без экрана на всём переписывании v0.3.</p>
+<p><strong>Слабо:</strong> всё на двух концах воронки. Real-window проверки (10)
+существуют лишь для недавно завершённых milestones; бенчмарки (11) без
+регрессионного гейта; дизайн-оракул (9) покрывает 3 элемента; failure-визуальные
+состояния почти не представлены (один golden <code>error.png</code>, нет покрытия
+loading/overflow).</p>
 
-<h2>3. Gaps, ranked by expected cost of staying unfilled</h2>
+<h2>3. Пробелы, по ожидаемой цене оставления незаполненными</h2>
 <ol>
-  <li><strong>No parse robustness testing</strong> — no fuzzing/property testing on the
-  parser (the one component that faces arbitrary user bytes). 9 fixtures + 31 cases
-  cover intended inputs only. A proptest (arbitrary bytes → no panic, no hang) is a
-  few hours of work and removes an unbounded risk class.</li>
-  <li><strong>Live-check regression drift</strong> — verified flows lose their named
-  checks as milestones pass. Recommendation: make the 14 → ~40 named checks permanent
-  and additive; a milestone's live-check section never shrinks.</li>
-  <li><strong>No benchmark regression gate</strong> — measure always, fail never.
-  Add <code>--baseline prev</code> comparisons in the release-gates script (per
-  BENCHMARKS.md rows), not CI (needs test_logs).</li>
-  <li><strong>Design oracle decay</strong> — 3 pairs, no wiring. Every design frame
-  should gain a <code>?show=</code> variant + PAIRS entry at creation time, and the
-  oracle runs before closing any visual task.</li>
-  <li><strong>Failure/empty/loading visual states</strong> — one error golden today.
-  Empty file, load-failed, permission-failed, empty categories — each should be a state
-  generator + golden, or the UI will be re-designed at first real error.</li>
-  <li><strong>Golden flake ownership</strong> — Chrome version/font drift can break all
-  43 locally. Cheapest fix: record the Chrome/OS version with each re-baseline note
-  (PIPELINE §5) and keep threshold policy explicit; on drift, re-run once on a second
-  machine before suspecting the code.</li>
-  <li><strong>Accessibility</strong> — aria incidentally present via standard components,
-  but no tab-order/contrast/axe checks even for the app's custom rows and tabs. Low
-  urgency for a personal tool, high leverage if this ships to others.</li>
+  <li><strong>Нет robustness-тестирования парсера</strong> — нет fuzzing/property
+  тестов на парсер (единственный компонент, смотрящий в произвольные пользовательские
+  байты). 9 fixtures + 31 кейс покрывают задуманные входы. Proptest (произвольные байты
+  → нет паники, нет зависания) — несколько часов работы и снимает неограниченный
+  риск-класс.</li>
+  <li><strong>Дрейф live-check-регрессий</strong> — подтверждённые течи теряют
+  именованные проверки по мере прохождения milestones. Рекомендация: постоянные и
+  аддитивные 14 → ~40 named-чеков; live-check-секция milestone никогда не уменьшается.</li>
+  <li><strong>Нет benchmark-регрессионного гейта</strong> — измерение всегда, провал
+  никогда. Добавить сравнение <code>--baseline prev</code> в релизный gates-скрипт
+  (по строкам BENCHMARKS.md), не в CI (нужен test_logs).</li>
+  <li><strong>Выветривание дизайн-оракула</strong> — 3 пары, нет проводки. Каждый
+  дизайн-фрейм должен получать variant <code>?show=</code> + PAIRS-запись в момент
+  создания, и оракул запускается перед закрытием любой визуальной задачи.</li>
+  <li><strong>Failure/empty/loading визуальные состояния</strong> — сегодня один
+  error-golden. Пустой файл, провал загрузки, провал доступа, пустые categories —
+  каждый должен быть генератором стейта + golden, иначе UI будет пере-спроектирован на
+  первом реальном баге.</li>
+  <li><strong>Флаки golden-ов без владельца</strong> — дрейф Chrome/шрифтов может переломать
+  все 43 локально. Дешевле всего: записывать версию Chrome/OS с каждой заметкой
+  ребазлайна (PIPELINE §5) и держать пороговую политику явной; при дрейфе — перезапустить
+  на второй машине, прежде чем подозревать код.</li>
+  <li><strong>Доступность</strong> — aria присутствует за счёт стандартных компонентов,
+  но нет tab-order/contrast/axe-проверок даже для кастомных строк и табов приложения.
+  Низкая срочность для персонального тулбара, высокий рычаг, если выйдет к другим.</li>
 </ol>
 
-<h2>4. Testing-skill recommendations for vvv-claude-kit</h2>
-<p>Today the kit has one testing-bearing skill (<code>building-testable-apps</code>, the
-seven rules) — correct as a constitution, but the project invented concrete operating
-procedures the constitution does not carry. Six additions, each already proven in this
-repo:</p>
+<h2>4. Рекомендации тестовых скилов для vvv-claude-kit</h2>
+<p>Сегодня у кита один тестовый скил (<code>building-testable-apps</code>, семь правил)
+— корректный как конституция, но проект изобрёл конкретные операционные процедуры,
+которых конституция не несёт. Шесть добавлений, каждое уже доказано в этом репо:</p>
 <table>
-  <tr><th>Skill</th><th>What it instructs (one screen)</th><th>Proven by</th></tr>
-  <tr><td><code>headless-text-rpc</code></td><td>For any stateful app: expose every
-  interactive capability as a capability-first text RPC; same reducer for test actions
-  and UI; boundary-arg coercion in exactly one place; new state needs an RPC case before
-  markup.</td><td>45 capabilities / 106 cases; the keystone of layers 5, 8, 10 — the
-  pattern behind the whole headless-first rewrite</td></tr>
-  <tr><td><code>golden-rebaseline</code></td><td>Read diff % first; <code>--update-goldens</code>
-  only for intended changes with a written per-state before/after note; 0.000 % diffs
-  mean logic moved, not pixels. Re-baseline note is part of the task's acceptance.</td>
-  <td>9 documented re-baselines, zero silent ones since the harness took over</td></tr>
-  <tr><td><code>live-check</code></td><td>At milestone end: drive the real window via the
-  driver; numbers-only assertions; no retries on batches that mutate; add the milestone's
-  named checks permanently (accumulate, never replace).</td><td>14 named checks; caught
-  the per-probe walk + idle-CPU spin offline tests missed</td></tr>
-  <tr><td><code>dual-path-oracle</code></td><td>Every non-obvious optimization ships a
-  naive reference (in the same PR) + <code>*_matches_the_naive_reference</code> test kept
-  permanently; benchmark before/after recorded in BENCHMARKS.md.</td><td>3 algorithms
-  oracled; the 2× visibility speedup shipped with proof</td></tr>
-  <tr><td><code>design-oracle</code></td><td>Every design frame gets a <code>?show=</code>
-  variant + PAIRS entry the day it is approved; run the oracle before closing any visual
-  task; keep the frame count ≥ the design's element count.</td><td>The 3-pair v1; directly
-  addresses the P9 mock-approval churn mode</td></tr>
-  <tr><td><code>benchmark-gates</code></td><td>Scoped criterion runs vs <code>--baseline
-  prev</code>; no performance claim without a BENCHMARKS.md row; suites must skip cleanly
-  when the corpus is absent (CI safety).</td><td>154→75.7 ms exists as a table row today,
-  with no gate — next optimization lacks a tripwire</td></tr>
+  <tr><th>Скил</th><th>Что предписывает (один экран)</th><th>Доказано</th></tr>
+  <tr><td><code>headless-text-rpc</code></td><td>Для любого stateful-приложения:
+  выставить каждую интерактивную способность как capability-first text RPC; один и тот же
+  reducer для тестовых действий и UI; коарсция boundary-args ровно в одном месте;
+  новое состояние требует RPC-кейс до разметки.</td><td>45 capabilities / 106 кейсов;
+  ключевой камень слоёв 5, 8, 10 — паттерн всего headless-переписывания</td></tr>
+  <tr><td><code>golden-rebaseline</code></td><td>Сначала прочитать diff %;
+  <code>--update-goldens</code> только для задуманных изменений с записанным
+  before/after по каждому стейту; 0.000 % диффов означает, что сдвинулась логика.
+  Заметка ребазлайна — часть acceptance задачи.</td><td>9 документированных ребазлайнов,
+  ноль тихих с тех пор, как харнесс принял обязанность</td></tr>
+  <tr><td><code>live-check</code></td><td>По завершении milestone: вести реальное окно
+  через драйвер; только числовые ассерты; никаких повторов на мутирующих батчах;
+  добавить именованные проверки milestone навсегда (накапливать, не заменять).</td>
+  <td>14 названных проверок; поймали per-probe обход + idle-CPU спин, недостижимые
+  офлайн-тестами</td></tr>
+  <tr><td><code>dual-path-oracle</code></td><td>Каждая неочевидная оптимизация везёт
+  наивную reference (в том же PR) + <code>*_matches_the_naive_reference</code> тест,
+  удерживаемый навсегда; benchmark before/after записывается в BENCHMARKS.md.</td>
+  <td>3 алгоритма оракулены; 2× разгон visibility уехал с доказательством</td></tr>
+  <tr><td><code>design-oracle</code></td><td>Каждый дизайн-фрейм получает
+  <code>?show=</code>-вариант + PAIRS-запись в день апрува; запускать оракул перед
+  закрытием любой визуальной задачи; держать количество фреймов ≥ числа элементов
+  дизайна.</td><td>Первая версия с 3 парами; прямо закрывает churn-режим P9 mock-апрува</td></tr>
+  <tr><td><code>benchmark-gates</code></td><td>Scoped criterion-прогоны против
+  <code>--baseline prev</code>; без perf-клейма без строки BENCHMARKS.md; наборы должны
+  чисто пропускаться при отсутствии корпуса (CI-safety).</td><td>154→75.7 мс сегодня как
+  строка таблицы, без гейта — следующая оптимизация будет без tripwire</td></tr>
 </table>
-<p>Also worth a small edition to the existing <code>building-testable-apps</code>: a
-pointer line "before closing any code task, run the one scoped gate (module test file);
-full workspace suite once before commit" (rule 7's gate schedule) — today that scheduling
-lives only in CLAUDE.md and is not in any skill the kit itself carries.</p>
+<p>Также стоит небольшое издание к существующему <code>building-testable-apps</code>:
+строка-указатель «перед закрытием любой кодовой задачи прогнать один точечный гейт
+(файл модуля); полный воркспейс — один раз перед коммитом» (расписание гейтов из
+правила 7) — сегодня оно живёт только в CLAUDE.md и не вписано ни в один скил самого
+кита.</p>
 
-<h2>5. Recommended testing workflow with AI agents</h2>
+<h2>5. Рекомендуемый тестовый воркфлоу с ИИ-агентами</h2>
 <ol>
-  <li><strong>Agent writes the test first</strong> (TDD is in agent-brief): failing test
-  → implementation → green module test. The test file is the agent's primary deliverable
-  alongside the module.</li>
-  <li><strong>Layer map per task type:</strong> pure logic → layers 1/3/6; UI state →
-  5 (add a capability + uiConsole case); UI look → 8 (state generator + golden first, then
-  implementation); cross-milestone regression → 10 (add a named check, keep old ones).</li>
-  <li><strong>Close a task only with its stated layer's evidence in the agent report</strong>
-  — command outputs, not "all green" (mistakes P3).</li>
-  <li><strong>Milestone closure = live check</strong> (rule 5): the driver runs, its 14+
-  named checks are green, new checks from this milestone are added before the bead closes.</li>
-  <li><strong>Before a release:</strong> full gates + goldens + the design oracle +
-  benchmark comparison vs the previous baseline — one script, run locally, then tag
-  (mistakes P2's mechanism).</li>
-  <li><strong>Guard the two weak spots proactively:</strong> parser proptest land-glass
-  (one-time effort) and the additive live-check list (habit) — both prevent regression
-  classes the current strong layers cannot see.</li>
+  <li><strong>Агент пишет тест первым</strong> (TDD в agent-brief): падающий тест →
+  имплементация → зелёный модульный тест. Тестовый файл — главный деливерабл агента
+  наравне с модулем.</li>
+  <li><strong>Карта слоёв по типу задачи:</strong> чистая логика → слои 1/3/6; UI-состояние
+  → 5 (добавить capability + uiConsole-кейс); UI-облик → 8 (генератор стейта + golden
+  первым, потом имплементация); кросс-milestone регресс → 10 (добавить именованный чек,
+  сохранить старые).</li>
+  <li><strong>Закрывать задачу только с доказательствами её назначенного слоя</strong>
+  в отчёте агента — выводы команд, а не «всё зелёное» (ошибки P3).</li>
+  <li><strong>Закрытие milestone = live check</strong> (правило 5): драйвер запущен,
+  его 14+ named-чеков зелёные, новые чеки milestone добавлены до закрытия бисеса.</li>
+  <li><strong>Перед релизом:</strong> полные гейты + goldens + дизайн-оракул + сравнение
+  бенчмарков против предыдущего базлайна — один скрипт, запущенный локально, затем тег
+  (механизм P2).</li>
+  <li><strong>Проактивно закрыть два слабых места:</strong> parser proptest (одноразовое
+  усилие) и аддитивный список live-check (привычка) — оба предотвращают классы регрессов,
+  которые текущие сильные слои видеть не смогут.</li>
 </ol>
-<p class="est">Method: static enumeration (no suites were run for this report); counts
-from files and case definitions; verdicts cross-checked against the project's own bug
-records — which layers actually caught which classes, per <code>bd</code> memories,
-PIPELINE and the session transcripts.</p>
+<p class="est">Методология: статическая инвентаризация (наборы не запускались ради
+отчёта); счётчики из файлов и определений кейсов; вердикты сверены с собственными
+bug-записями проекта — какие слои какие классы реально ловили, по bd-воспоминаниям,
+PIPELINE и транскриптам сессий.</p>

@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Token Usage Analysis</title>
+<title>Анализ расхода токенов</title>
 <style>
   :root { color-scheme: light dark;
     --bg: #fafaf7; --fg: #1c1d22; --muted: #6d6e76; --panel: #ffffff; --line: #e3e2da;
@@ -45,184 +45,196 @@
   .t-mech { background: var(--warn-soft); color: var(--warn); }
 </style>
 
-<h1>Token Usage Analysis — all sessions, 2026-11-22 → 2026-11-25</h1>
-<p>Data source: the machine-readable usage records inside all 15 Claude Code session
-transcripts for this project (52 transcripts including 37 subagent sessions; 4,849 API
-responses). Companion reports: <a href="report-02-agent-mistakes.html">agent mistakes</a>,
-<a href="report-03-testing.html">testing inventory</a>. Underlying table:
-<code>docs/notes/report-data-tokens.md</code>.</p>
+<h1>Анализ расхода токенов — все сессии, 2026-11-22 → 2026-11-25</h1>
+<p>Источник данных: машиночитаемые записи usage внутри всех 15 транскриптов сессий
+Claude Code по этому проекту (52 транскрипта, включая 37 сессий субагентов; 4 849
+ответов API). Сопутствующие отчёты: <a href="report-02-agent-mistakes.html">ошибки при
+работе с агентом</a>, <a href="report-03-testing.html">инвентаризация тестирования</a>.
+Исходная таблица: <code>docs/notes/report-data-tokens.md</code>.</p>
 
-<div class="warn"><strong>Backend caveat:</strong> the runs execute on a GLM backend whose
-transcripts never report cache-creation tokens (<code>cache_creation = 0</code> in all
-4,849 responses), so fresh <code>input</code> is abnormally high and may absorb what a
-Claude backend would book as cache writes. Treat the input/cache split as an estimate;
-the ordering-by-session is robust.</div>
+<div class="warn"><strong>Оговорка о бэкенде:</strong> запуски идут на GLM-бэкенде, в
+транскриптах которого никогда не отражаются токены записи кэша
+(<code>cache_creation = 0</code> во всех 4 849 ответах), поэтому свежий
+<code>input</code> аномально высок и, возможно, впитывает трафик, который бэкенд Claude
+записал бы как запись кэша. Деление input/cache считайте оценочным; порядок сессий по
+стоимости устойчив.</div>
 
 <div class="cards">
-  <div class="card"><b>332 M</b><span>weighted cost units (est.)</span></div>
-  <div class="card"><b>281.8 M</b><span>fresh input tokens</span></div>
-  <div class="card"><b>456.3 M</b><span>context-replay (cache-read) tokens</span></div>
-  <div class="card"><b>0.97 M</b><span>output tokens (0.3 %)</span></div>
-  <div class="card"><b>191 k</b><span>tokens read per assistant response (avg)</span></div>
+  <div class="card"><b>332 M</b><span>взвешенных юнитов стоимости (оценка)</span></div>
+  <div class="card"><b>281,8 M</b><span>токенов свежего input</span></div>
+  <div class="card"><b>456,3 M</b><span>токенов повторного чтения контекста (cache-read)</span></div>
+  <div class="card"><b>0,97 M</b><span>токенов output (0,3 %)</span></div>
+  <div class="card"><b>191 k</b><span>токенов читается на один ответ (в среднем)</span></div>
 </div>
 
-<p>Weighting used (state-once, then divide): <code>1× input + 1.25× cache-write + 0.1×
-cache-read + 5× output</code>. Output is negligible: <strong>this project's cost is
-100 % input-side</strong> — how much text gets re-read, not how much code gets written.</p>
+<p>Веса (заданы один раз): <code>1× input + 1.25× cache-write + 0.1× cache-read + 5×
+output</code>. Output пренебрежим: <strong>стоимость проекта почти на 100 % лежит на
+стороне input</strong> — важен объём перечитываемого текста, а не написанного кода.</p>
 
-<h2>1. Where the 332 M went — by session</h2>
+<h2>1. Куда ушли 332 M — по сессиям</h2>
 <table>
-  <tr><th>#</th><th>Session</th><th>Date</th><th>Hours</th><th class="n">Turns</th><th class="n">Cost (M, est.)</th><th>What it was</th></tr>
-  <tr><td>1</td><td><code>9785223c</code></td><td>11-23→24</td><td class="n">8.7</td><td class="n">561</td><td class="n">80.2</td><td>v0.3 scaffold → rewrite: engine, UI, table, levels/filters</td></tr>
-  <tr><td>2</td><td><code>3de36a6d</code></td><td>11-24</td><td class="n">15.3</td><td class="n">463</td><td class="n">44.7</td><td>the same rewrite continued (16 subagents, 1,393 subagent turns)</td></tr>
-  <tr><td>3</td><td><code>405193b3</code></td><td>11-25</td><td class="n">0.9</td><td class="n">233</td><td class="n">37.8</td><td>UI/design iteration, Playwright-heavy (233 turns in 0.9 h = highest burn rate)</td></tr>
-  <tr><td>4</td><td><code>f3da036d</code></td><td>11-25</td><td class="n">1.7</td><td class="n">346</td><td class="n">28.5</td><td>release v0.3.0 + golden re-baseline (the same golden PNG re-read 6×)</td></tr>
-  <tr><td>5</td><td><code>0203913a</code></td><td>11-24→25</td><td class="n">7.7</td><td class="n">345</td><td class="n">24.1</td><td>cmdline chain + settings</td></tr>
-  <tr><td>6</td><td><code>b3c8e200</code></td><td>11-25</td><td class="n">1.1</td><td class="n">326</td><td class="n">18.5</td><td>selection/table work — 326 turns in 1.1 h after /clear</td></tr>
-  <tr><td>7–11</td><td>5 sessions</td><td>11-23→25</td><td class="n">5.6</td><td class="n">731</td><td class="n">20.7</td><td>column-resize, categories, UI polish, docs, this report's mining</td></tr>
-  <tr><td>12–15</td><td>4 sessions</td><td>—</td><td class="n">≈0.3</td><td class="n">30</td><td class="n">0.5</td><td>short pokes / aborted start (<code>b06a7fff</code>: 0 responses)</td></tr>
+  <tr><th>#</th><th>Сессия</th><th>Дата</th><th>Часов</th><th class="n">Ходов</th><th class="n">Стоимость (M, оценка)</th><th>Что это было</th></tr>
+  <tr><td>1</td><td><code>9785223c</code></td><td>11-23→24</td><td class="n">8.7</td><td class="n">561</td><td class="n">80.2</td><td>каркас v0.3 → переписывание: движок, UI, таблица, уровни/фильтры</td></tr>
+  <tr><td>2</td><td><code>3de36a6d</code></td><td>11-24</td><td class="n">15.3</td><td class="n">463</td><td class="n">44.7</td><td>то же переписывание, продолжение (16 субагентов, 1 393 их хода)</td></tr>
+  <tr><td>3</td><td><code>405193b3</code></td><td>11-25</td><td class="n">0.9</td><td class="n">233</td><td class="n">37.8</td><td>итерации UI/дизайна, много Playwright (233 хода за 0.9 ч — максимальная скорость сжигания)</td></tr>
+  <tr><td>4</td><td><code>f3da036d</code></td><td>11-25</td><td class="n">1.7</td><td class="n">346</td><td class="n">28.5</td><td>релиз v0.3.0 + перебаз golden (один и тот же golden PNG перечитан 6×)</td></tr>
+  <tr><td>5</td><td><code>0203913a</code></td><td>11-24→25</td><td class="n">7.7</td><td class="n">345</td><td class="n">24.1</td><td>цепочка cmdline + settings</td></tr>
+  <tr><td>6</td><td><code>b3c8e200</code></td><td>11-25</td><td class="n">1.1</td><td class="n">326</td><td class="n">18.5</td><td>selection/таблица — 326 ходов за 1.1 ч сразу после /clear</td></tr>
+  <tr><td>7–11</td><td>5 сессий</td><td>11-23→25</td><td class="n">5.6</td><td class="n">731</td><td class="n">20.7</td><td>column-resize, categories, полировка UI, документация, майнинг для этого отчёта</td></tr>
+  <tr><td>12–15</td><td>4 сессии</td><td>—</td><td class="n">≈0.3</td><td class="n">30</td><td class="n">0.5</td><td>короткие «потрогать» / прерванный старт (<code>b06a7fff</code>: 0 ответов)</td></tr>
 </table>
-<p>Top-3 sessions carry <strong>49 %</strong> of the total, top-5 carry <strong>74 %</strong>.
-The pattern is not "many small chats": it is a handful of marathon sessions whose every
-turn re-pays the whole visible conversation. The two most expensive hours ever spent are
-<code>405193b3</code> and <code>c5dcb43a</code> (~40 M weighted units per hour each —
-short sessions doing image-heavy UI iteration).</p>
+<p>Топ-3 сессии уносят <strong>49 %</strong> всей стоимости, топ-5 — <strong>74 %</strong>.
+Картина не «много маленьких чатов»: это горсть марафонских сессий, в которых каждый ход
+заново платит за весь видимый разговор. Два самых дорогих часа в истории —
+<code>405193b3</code> и <code>c5dcb43a</code> (~40 M взвешенных юнитов в час каждый —
+короткие сессии плотной UI-итерации со скриншотами).</p>
 
-<h2>2. Main conversation vs subagents</h2>
+<h2>2. Основной разговор против субагентов</h2>
 <table>
-  <tr><th>Slice</th><th class="n">Turns</th><th class="n">Input</th><th class="n">Replay</th><th class="n">Cost share</th></tr>
-  <tr><td>Coordinator sessions</td><td class="n">2,957</td><td class="n">227.2 M</td><td class="n">338.2 M</td><td class="n">79.3 %</td></tr>
-  <tr><td>Subagents</td><td class="n">1,892</td><td class="n">54.6 M</td><td class="n">118.1 M</td><td class="n">20.7 %</td></tr>
+  <tr><th>Срез</th><th class="n">Ходы</th><th class="n">Input</th><th class="n">Replay</th><th class="n">Доля стоимости</th></tr>
+  <tr><td>Координаторские сессии</td><td class="n">2,957</td><td class="n">227.2 M</td><td class="n">338.2 M</td><td class="n">79.3 %</td></tr>
+  <tr><td>Субагенты</td><td class="n">1,892</td><td class="n">54.6 M</td><td class="n">118.1 M</td><td class="n">20.7 %</td></tr>
 </table>
-<p>Subagents produced ~2× the work per turn (258 vs 163 output tokens/turn) at ⅕ of the
-billshare — the delegation rule already in CLAUDE.md 7 is the right one. But the
-biggest single subagent (<code>3de36a6d</code>, 233 turns for a UI task) cost 15.8 M
-weighted units — more than four entire mid-size sessions. Delegation absorbs noise only
-if the agent is capped; agent 7 in the mistakes report (<a href="report-02-agent-mistakes.html">runaway agents</a>)
-shows what happens when it is not: ~2.65 M subagent units on 11-24 alone, five days'
-worth of "budget" burned after the token rules were written.</p>
+<p>Субагенты выдают ~2× работы за ход (258 против 163 output-токенов на ход) за пятую
+часть доли по счёту — правило делегирования из CLAUDE.md 7 правильное. Но крупнейший
+единичный субагент (<code>3de36a6d</code>, 233 хода по UI-задаче) стоил 15.8 M взвешенных
+юнитов — больше, чем четыре целые средние сессии. Делегация впитывает шум только когда
+агент ограничен: что происходит иначе, показал паттерн 7 в отчёте об ошибках
+(<a href="report-02-agent-mistakes.html">убегающие агенты</a>) — ~2.65 M субагентских
+юнитов за один 11-24, пятикратно больше «бюджета», на котором был написан токен-отчёт.</p>
 
-<h2>3. The five appetite drivers, sized</h2>
-<div class="barrow"><span class="lbl">Fresh input re-sent every turn (context not served from cache)</span><div class="bar" style="width:100%"></div><span class="amt">84.8 %·281.8 M</span></div>
-<div class="barrow"><span class="lbl">Conversation replay, paid per turn by long sessions</span><div class="bar" style="width:33%;background:var(--muted)"></div><span class="amt">13.7 %·456.3 M</span></div>
-<div class="barrow"><span class="lbl">Image reads as pixel data (26 results, 14.5 MB)</span><div class="bar" style="width:5%;background:var(--muted)"></div><span class="amt">~1.5 %·4–6 M</span></div>
-<div class="barrow"><span class="lbl">Degenerate tool loops (359 wasted calls)</span><div class="bar" style="width:4%;background:var(--bad)"></div><span class="amt">~1 %·lost calls</span></div>
-<div class="barrow"><span class="lbl">Output tokens (everything written)</span><div class="bar" style="width:3%;background:var(--muted)"></div><span class="amt">1.5 %·0.97 M</span></div>
+<h2>3. Пять драйверов аппетита, в цифрах</h2>
+<div class="barrow"><span class="lbl">Свежий input, отправляемый заново каждый ход (контекст не кэшируется)</span><div class="bar" style="width:100%"></div><span class="amt">84.8 %·281.8 M</span></div>
+<div class="barrow"><span class="lbl">Повторное чтение разговора, платимое за каждый ход длинными сессиями</span><div class="bar" style="width:33%;background:var(--muted)"></div><span class="amt">13.7 %·456.3 M</span></div>
+<div class="barrow"><span class="lbl">Чтение картинок как пиксельных данных (26 результатов, 14.5 МБ)</span><div class="bar" style="width:5%;background:var(--muted)"></div><span class="amt">~1.5 %·4–6 M</span></div>
+<div class="barrow"><span class="lbl">Деградировавшие циклы инструментов (359 потерянных вызовов)</span><div class="bar" style="width:4%;background:var(--bad)"></div><span class="amt">~1 %·потерянные вызовы</span></div>
+<div class="barrow"><span class="lbl">Output-токены (всё написанное)</span><div class="bar" style="width:3%;background:var(--muted)"></div><span class="amt">1.5 %·0.97 M</span></div>
 
 <ul>
-  <li><strong>Fresh input dominates</strong> (95 k tokens/turn average, 153 k worst).
-  On this backend every turn re-reads the whole context at full price. Cutting context
-  size (shorter sessions, leaner system prompt, fewer loaded skills) is worth ~8× vs
-  the same tokens served from cache — it is the one lever that matters most.</li>
-  <li><strong>Replay tail</strong> is the second lever: <code>9785223c</code> averaged
-  161 k replay tokens per turn because the visible conversation grew for 9 hours with
-  screenshots and 100-line file reads in it. CLAUDE.md 7's "end turn at checkpoints"
-  exists because of exactly this session's shape.</li>
-  <li><strong>Images:</strong> 58 Read calls on PNG/JPG, 14.5 MB of base64 in results;
-  <code>f3da036d</code> read the same golden PNG six times (1.67 MB), <code>405193b3</code>
-  spent 4.8 MB in one session on screenshots and goldens. Full-window shots at
-  2800×1800 are the most expensive single reads in the history.</li>
-  <li><strong>Degenerate loops:</strong> 359 calls were part of 3-or-more-repeat
-  consecutive runs (10.9 % of all main-conversation tool calls). Worst: 24 consecutive
-  edits of <code>FUNCTIONAL_SPEC.html</code>, 27× the identical live-check bash wrapper,
-  14× a python3-heredoc edit of <code>live_check.mjs</code>, 7× heredoc fights against
-  a design script, 13× the identical <code>git show</code>. The driver.rs heredoc fight
-  that produced CLAUDE.md 7's ban is one entry in a wider pattern: every long
-  same-tool run ends the same way — with a wholesale rewrite of the file.</li>
-  <li><strong>Gates:</strong> ~397 vitest/cargo/build/e2e/clippy bash calls in the
-  coordinator, 117 in <code>9785223c</code> alone (48 cargo, 29 build, 28 vitest,
-  10 clippy) — several identical back-to-back. Scoped-gate discipline (run one module's
-  file while iterating) is paying off but was applied late in long sessions.</li>
-  <li><strong>Recurring background noise:</strong> the beads export diff (20–33 KB)
-  appeared as a large tool result in 7 of 15 sessions — an avoidable fixed cost of
-  every <code>bd sync</code>-touching command; the agent-brief, once written, dropped
-  agent prompts from ~1 k tokens to ~30 lines and is the best-verified saving on record.</li>
+  <li><strong>Свежий input доминирует</strong> (в среднем 95 k токенов/ход, максимум
+  153 k). На этом бэкенде каждый ход перечитывает весь контекст по полной цене. Сокращение
+  контекста (короче сессии, меньше системный промпт, меньше загруженных скилов) в ~8 раз
+  выгоднее, чем те же токенты из кэша — это главный рычаг.</li>
+  <li><strong>«Хвост повтора»</strong> — второй рычаг: <code>9785223c</code> в среднем
+  платила 161 k replay-токенов за ход, потому что видимый разговор рос 9 часов со
+  скриншотами и 100-строчными чтениями файлов внутри. Правило «заканчивать ход на
+  чекпойнтах» (CLAUDE.md 7) написано ровно из-за формы этой сессии.</li>
+  <li><strong>Картинки:</strong> 58 вызовов Read на PNG/JPG, 14.5 МБ base64 в результатах;
+  <code>f3da036d</code> перечитала один и тот же golden PNG шесть раз (1.67 МБ),
+  <code>405193b3</code> потратила 4.8 МБ в одной сессии на скриншоты и goldens.
+  Полнооконные снимки 2800×1800 — самые дорогие одиночные чтения в истории.</li>
+  <li><strong>Деградировавшие циклы:</strong> 359 вызовов входили в серии из трёх и более
+  подряд идущих повторов (10.9 % всех инструментальных вызовов координатора). Худшие:
+  24 подряд правки <code>FUNCTIONAL_SPEC.html</code>, 27× идентичная bash-обёртка
+  live-check, 14× python3-heredoc правки <code>live_check.mjs</code>, 7× heredoc-борьба
+  с дизайн-скриптом, 13× идентичный <code>git show</code>. Бой с heredoc вокруг
+  driver.rs, породивший запрет в CLAUDE.md 7, — один элемент более широкого паттерна:
+  каждая длинная серия одним инструментом заканчивается одинаково — полной перезаписью
+  файла.</li>
+  <li><strong>Гейты:</strong> ~397 bash-вызовов vitest/cargo/build/e2e/clippy в
+  координаторе, из них 117 в <code>9785223c</code> (48 cargo, 29 build, 28 vitest,
+  10 clippy) — несколько идентичных подряд. Дисциплина точечных гейтов (при итерации —
+  один файл модуля) работает, но применялась поздно в длинных сессиях.</li>
+  <li><strong>Постоянный фоновый шум:</strong> диф экспорта beads (20–33 КБ) появлялся
+  как крупный результат инструмента в 7 из 15 сессий — избегаемая фиксированная цена
+  каждой команды, трогающей <code>bd sync</code>; agent-brief, однажды написанный,
+  снизил промпты агентов с ~1 k токенов до ~30 строк и остаётся лучшим подтверждённым
+  экономией на сегодня.</li>
 </ul>
 
-<h2>4. Recommendations to cut consumption</h2>
-<h3>Already on the books (keep enforcing)</h3>
-<p><span class="tag t-exists">CLAUDE.md 7</span>Short turns at milestones · agent prompts
-point at <code>docs/notes/agent-brief.md</code> · numbers instead of screenshots ·
-scoped gates between steps · cap agents · no heredoc edits. Each of the six has a
-measured failure in this data set; each also has a measured success (the 40–60 k band
-of well-briefed module agents). They are written as prose, and the mistakes report shows
-prose decays in long sessions — treat them as the fallback, mechanisms as the default
-(next section).</p>
-<h3>New, in order of expected effect</h3>
+<h2>4. Рекомендации по сокращению расхода</h2>
+<h3>Уже в правилах (продолжать применять)</h3>
+<p><span class="tag t-exists">CLAUDE.md 7</span>Короткие ходы на чекпойнтах · промпты
+агентов указывают на <code>docs/notes/agent-brief.md</code> · числа вместо скриншотов ·
+точечные гейты между шагами · капать агентов · никаких heredoc-правок. У каждого из
+шести пунктов в этих данных есть измеренный провал; у каждого — и измеренный успех
+(диапазон 40–60 k у хорошо проинструктированных модульных агентов). Они записаны как
+проза, а отчёт об ошибках показывает, что проза выветривается в длинных сессиях, —
+считайте их запасом, а механизмы — дефолтом (раздел ниже).</p>
+<h3>Новые, по ожидаемому эффекту</h3>
 <ol>
-  <li><strong>Keep the coordinator conversation small at all times.</strong> This is the
-  85 %-driver. Practically: /clear or a fresh session at every task boundary; a task is
-  a bead id, and the coordinator reads the bead + the returning summary, not the files;
-  large reads (full files, docs, transcripts) belong in agents. A mid-size coordinator
-  conversation of ~40 turns at 95 k input costs ~4 M units per turn-set; the same work
-  relaunched per milestone would cost a fraction.</li>
-  <li><strong>Never re-read a file for one detail.</strong> The dominant avoidable Read
-  pattern is same-file 3–6× reads (ipc.rs ×3, golden loaded.png ×6, uiConsole.ts ×4).
-  Rule for the coordinator: read a file once, keep the relevant block in the plan
-  (bead description), and delegate all later looks at that file to the agent that owns
-  the change.</li>
-  <li><strong>Kill loops mechanically at the third identical failure.</strong> The 359
-  lost calls are mostly 20–50-minute loops that a "rewrite the file wholesale" would
-  have ended in 2 calls. This is the one rule worth a hook, not prose: a post-tool-use
-  guard that flags the third consecutive same-tool call and forces an alternative
-  route. See the mistakes report — three of top loss drivers are loop-shaped.</li>
-  <li><strong>Pictures are for visual acceptance only</strong> (already rule 4) — the
-  data adds: also never re-read the same golden twice; the diff % already answers
-  "did it change", and the harness's text diffs answer more than a second read.</li>
-  <li><strong>Trim the fixed background cost.</strong> Suppress the 20–33 KB beads
-  export diff from appearing in coordinator context (redirect <code>bd</code> export
-  noise to agents or set the export to run at session close); keep the coordinator's
-  system-prompt side small (fewer auto-loaded skills per session; the kit's
-  <code>using-skills</code> hook adds a full rule text to every session — make that
-  hook 5 lines, not a full skill text).</li>
-  <li><strong>Batch gates at natural boundaries</strong> — the ~397 gate calls include
-  several full-workspace reruns less than an hour apart. The checkpoint-commit pattern
-  pairs with a fixed one-shot "full gate before commit" (rule 9), and scoped
-  single-file gates everywhere else.</li>
+  <li><strong>Держать разговор координатора малым всегда.</strong> Это 85 %-й драйвер.
+  Практически: /clear или новая сессия на каждой границе задачи; задача — это id бисеса,
+  координатор читает бисес и возвращённое резюме, а не файлы; крупные чтения (целые
+  файлы, документация, транскрипты) — в агенты. Средний координаторский разговор ~40
+  ходов при 95 k input обходится в ~4 M юнитов; та же работа с перезапуском на
+  каждый чекпойнт стоила бы малую долю.</li>
+  <li><strong>Никогда не перечитывать файл ради одной детали.</strong> Доминирующий
+  избегаемый Read-паттерн — 3–6 чтений того же файла (ipc.rs ×3, golden loaded.png ×6,
+  uiConsole.ts ×4). Правило для координатора: файл читается один раз, нужный блок
+  фиксируется в плане (описание бисеса), все последующие взгляды на файл делегируются
+  агенту, владеющему изменением.</li>
+  <li><strong>Рубить циклы механически на третьей идентичной ошибке.</strong> 359
+  потерянных вызовов — это в основном циклы по 20–50 минут, которые «полная перезапись
+  файла» закончила бы за 2 вызова. Именно правило, которое стоит хука, а не прозы:
+  post-tool-use-страж, помечающий третий подряд вызов того же инструмента и требующий
+  смены маршрута. См. отчёт об ошибках — три из верхних драйверов потерь имеют форму
+  циклов.</li>
+  <li><strong>Картинки — только для визуальной приемки</strong> (уже правило 4); данные
+  добавляют: и никогда не перечитывать один и тот же golden дважды; проценты диффа уже
+  отвечают «изменилось ли», а текстовые диффы харнесса отвечают больше, чем повторное
+  чтение.</li>
+  <li><strong>Подрезать фиксированную фоновую стоимость.</strong> Убрать диф экспорта
+  beads на 20–33 КБ из контекста координатора (перенаправить шум <code>bd</code> в
+  агентов или выставлять экспорт на закрытии сессии); держать малой системную часть
+  координатора (меньше автозагружаемых скилов на сессию; хук <code>using-skills</code>
+  кита добавляет полный текст правила в каждую сессию — сделайте этот хук на 5 строк,
+  а не полный текст).</li>
+  <li><strong>Батчить гейты на естественных границах</strong> — среди ~397 гейт-вызовов
+  есть повторные полные прогоны воркспейса с интервалом меньше часа. Паттерн
+  чекпойнт-коммит сочетается с фиксированным одноразовым «полный гейт перед коммитом»
+  (правило 9), а везде иначе — точечные однофайловые гейты.</li>
 </ol>
 
-<h2>5. What to add to vvv-claude-kit for token economy</h2>
-<p>The project's own history is the best argument: the only interventions that
-permanently changed behavior were <em>mechanisms</em> (the <code>bd prime</code> hook,
-<code>agent-brief.md</code>, <code>live_check.mjs</code>), not prose rules. Kit items,
-in cost-effect order:</p>
+<h2>5. Что дописать в vvv-claude-kit ради экономики токенов</h2>
+<p>Собственная история проекта — лучший аргумент: навсегда изменили поведение только
+<em>механизмы</em> (хук <code>bd prime</code>, <code>agent-brief.md</code>,
+<code>live_check.mjs</code>), а не прозаические правила. Пункты для кита, по убыванию
+эффективности на потраченный доллар:</p>
 <table>
-  <tr><th>Item</th><th>Form</th><th>What it does</th><th>Evidence</th></tr>
-  <tr><td><code>token-budget</code></td><td>skill + prompt template</td><td>Every agent
-  prompt carries a hard line: "budget ≤ X tool calls / ~120k tokens; if you approach it,
-  checkpoint (bd update --notes) and stop." Template lives in one file, prompt = pointers only.</td><td>628k/578k/385k/361k runaway agents after rules existed; 5× regression</td></tr>
-  <tr><td><code>loop-breaker</code></td><td>hook (post-tool-use)</td><td>Count consecutive
-  same-tool/same-target calls; on the 3rd, refuse and tell the agent to change approach
-  (rewrite whole file via Write, run a scoped gate, or spawn an agent).</td><td>359 lost calls; heredoc and doc-edit chains</td></tr>
-  <tr><td><code>agent-brief</code> (generalized)</td><td>skill</td><td>Standing rule +
-  template for <code>docs/notes/agent-brief.md</code>: layer rules, partition, style,
-  traps, and the pointer-only prompt format. New projects get the brief in session 1.</td><td>Prompt size ~1 k → ~30 lines; best-verified saving</td></tr>
-  <tr><td><code>gate-scheduler</code></td><td>skill (short)</td><td>One table: iterate →
-  scoped single-module test; milestone/commit → full workspace + clippy + e2e, once.
-  Forbids two full runs within one checkpoint; forbids gate reruns without a code change.</td><td>117 gate calls in one session; several identical repeats</td></tr>
-  <tr><td><code>visual-check-budget</code></td><td>addition to ui-development</td><td>Read
-  at most one image per decision; never the same image twice for the same question;
-  element-scope shots over full-window; diff %/text results over pixels.</td><td>58 PNG reads, 14.5 MB; one golden read 6×</td></tr>
-  <tr><td><code>session-shape</code></td><td>skill</td><td>Coordinator-side discipline:
-  /clear at task boundaries, coordinator reads results not files, replay tail grows
-  quadratically — a rule the kit can state in 10 lines because it applies to every project.</td><td>332 M total, top-3 = 49 %; 95 k fresh input/turn</td></tr>
+  <tr><th>Пункт</th><th>Форма</th><th>Что делает</th><th>Доказательство</th></tr>
+  <tr><td><code>token-budget</code></td><td>скил + шаблон промпта</td><td>Каждый промпт
+  агента несёт жёсткую строку: «бюджет ≤ X вызовов / ~120k токенов; при приближении —
+  чекпойнт (<code>bd update --notes</code>) и стоп». Шаблон живёт в одном файле, промпт —
+  только указатели.</td><td>убегающие агенты 628k/578k/385k/361k после появления правил; падение 5×</td></tr>
+  <tr><td><code>loop-breaker</code></td><td>хук (post-tool-use)</td><td>Считает подряд
+  идущие вызовы того же инструмента/цели; на третьем отказывает и требует смену
+  маршрута (перезаписать файл целиком через Write, точечный гейт, или делегировать
+  агенту).</td><td>359 потерянных вызовов; цепочки heredoc и док-правок</td></tr>
+  <tr><td><code>agent-brief</code> (обобщённый)</td><td>скил</td><td>Постоянное правило +
+  шаблон <code>docs/notes/agent-brief.md</code>: покоёвые правила, разбиение файлов,
+  стиль, ловушки и формат промпта-указателя. Новые проекты получают brief в первой
+  сессии.</td><td>Промпт ~1 k → ~30 строк; лучшая подтверждённая экономия</td></tr>
+  <tr><td><code>gate-scheduler</code></td><td>скил (короткий)</td><td>Одна таблица:
+  итерация → точечный тест модуля; чекпойнт/коммит → весь воркспейс + clippy + e2e,
+  один раз. Запрещает два полных прогона внутри одного чекпойнта; повтор гейта без
+  изменения кода.</td><td>117 гейт-вызовов в одной сессии; несколько идентичных подряд</td></tr>
+  <tr><td><code>visual-check-budget</code></td><td>дополнение к ui-development</td><td>Не
+  более одной картинки на решение; никогда не перечитывать ту же картинку для того же
+  вопроса; снимки по объёму элемента вместо полного окна; проценты диффа и текстовые
+  результаты вместо пикселей.</td><td>58 чтений PNG, 14.5 МБ; один golden перечитан 6×</td></tr>
+  <tr><td><code>session-shape</code></td><td>скил</td><td>Дисциплина координатора:
+  /clear на границах задач, координатор читает результаты, а не файлы, хвост повтора
+  растёт квадратично — кит может сказать это в 10 строках, правило переносимо на любой
+  проект.</td><td>332 M всего; топ-3 = 49 %; 95 k свежего input за ход</td></tr>
 </table>
 
-<h2>6. Recommended way of working with agents (this project, next 30 days)</h2>
+<h2>6. Рекомендуемый способ работы с агентами (этот проект, ближайшие 30 дней)</h2>
 <ol>
-  <li>Coordinator: task boundary → /clear → <code>bd ready</code> → claim → read bead +
-  brief + spec section (one screen max) → spawn agent with pointer-prompt + budget →
-  receive summary → run the one scoped gate needed to trust it → close bead → commit →
-  end turn.</li>
-  <li>Agents get: bead id, agent-brief pointer, ≤3 files, the exact gate commands, the
-  token budget line, and the checkpoint instruction. Nothing else inline.</li>
-  <li>Two gates maximum per coordinator turn; visual checks via <code>npm run e2e</code>
-  diff percentages and the design oracle, images only when a human decision is needed.</li>
-  <li>Keep the 40–60 k agent band as the target; treat any agent > ~100 M raw tokens
-  as a process bug: stop it, capture its notes from <code>bd update</code>, decompose
-  the bead.</li>
+  <li>Координатор: граница задачи → /clear → <code>bd ready</code> → claim → прочитать
+  бисес + brief + раздел спеки (максимум один экран) → запуск агента с промптом-указателем
+  и бюджетом → получить резюме → прогнать один точечный гейт, чтобы поверить → закрыть
+  бисес → коммит → закончить ход.</li>
+  <li>Агенты получают: id бисеса, указатель на agent-brief, ≤3 файлов, точные команды
+  гейтов, строку бюджета токенов и инструкцию чекпойнта. Больше ничего inline.</li>
+  <li>Максимум два гейта за ход координатора; визуальные проверки через проценты диффа
+  <code>npm run e2e</code> и дизайн-оракул; картинки — только когда нужно человеческое
+  решение.</li>
+  <li>Держать целевой диапазон агента 40–60 k; любой агент &gt; ~100 k сырых токенов —
+  процессный баг: остановить, забрать его заметки из <code>bd update</code>, разрезать
+  бисес.</li>
 </ol>
-<p class="est">Method notes: usage figures come straight from transcript
-<code>message.usage</code>; session-to-bead attribution is from conversation content;
-backend-weight caveat as shown. The mining draft with the full 15-session tables and
-the tool-call profile is <code>docs/notes/report-data-tokens.md</code>.</p>
+<p class="est">Методология: цифры usage взяты прямо из <code>message.usage</code>
+транскриптов; привязка сессий к задачам — по содержимому разговоров; оговорка о весах
+бэкенда — выше. Черновик майнинга с полными таблицами по 15 сессиям и профилем вызовов
+инструментов — <code>docs/notes/report-data-tokens.md</code>.</p>

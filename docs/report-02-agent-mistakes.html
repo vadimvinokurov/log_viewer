@@ -1,19 +1,22 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Agent Session Mistake Review</title>
+<title>Обзор ошибок сессий с агентом</title>
 <style>
   :root { color-scheme: light dark;
     --bg: #fafaf7; --fg: #1c1d22; --muted: #6d6e76; --panel: #ffffff; --line: #e3e2da;
     --accent: #6d28a9; --accent-soft: #f1ebf7; --bad: #b3261e; --bad-soft: #fbe9e6;
-    --good: #22683a; --good-soft: #e8f2ec; --owner: #155e75; --owner-soft: #e7f2f5; }
+    --good: #22683a; --good-soft: #e8f2ec; --owner: #155e75; --owner-soft: #e7f2f5;
+    --warn: #9a5b00; --warn-soft: #fdf3e0; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark;
     --bg: #17181c; --fg: #e6e6e9; --muted: #9a9ba3; --panel: #1f2026; --line: #34353d;
     --accent: #c49aec; --accent-soft: #2a1638; --bad: #e8837c; --bad-soft: #3a1a17;
-    --good: #7ccb99; --good-soft: #14301f; --owner: #6fc3dd; --owner-soft: #10333f; } }
+    --good: #7ccb99; --good-soft: #14301f; --owner: #6fc3dd; --owner-soft: #10333f;
+    --warn: #e2b163; --warn-soft: #38290e; } }
   :root[data-theme="dark"] { color-scheme: dark;
     --bg: #17181c; --fg: #e6e6e9; --muted: #9a9ba3; --panel: #1f2026; --line: #34353d;
     --accent: #c49aec; --accent-soft: #2a1638; --bad: #e8837c; --bad-soft: #3a1a17;
-    --good: #7ccb99; --good-soft: #14301f; --owner: #6fc3dd; --owner-soft: #10333f; }
+    --good: #7ccb99; --good-soft: #14301f; --owner: #6fc3dd; --owner-soft: #10333f;
+    --warn: #e2b163; --warn-soft: #38290e; }
   body { font: 400 14px/1.55 system-ui, sans-serif; max-width: 940px; margin: 0 auto;
     padding: 28px max(16px, env(safe-area-inset-left, 0px)) 60px max(16px, env(safe-area-inset-right, 0px));
     background: var(--bg); color: var(--fg); }
@@ -42,272 +45,288 @@
   .who.shared { background: var(--line); color: var(--muted); }
   .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; margin-right: 4px; white-space: nowrap; }
   .t-exists { background: var(--good-soft); color: var(--good); }
-  .t-new { background: var(--warn-soft, #fdf3e0); color: var(--warn, #9a5b00); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .t-new { background: var(--accent-soft); color: var(--accent); } }
-  :root[data-theme="dark"] .t-new { background: var(--accent-soft); color: var(--accent); }
+  .t-new { background: var(--warn-soft); color: var(--warn); }
   .quote { color: var(--muted); font-style: italic; }
   .fix { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
 </style>
 
-<h1>Agent Session Mistake Review — 2026-11-22 → 2026-11-25</h1>
-<p>13 recurring mistake patterns mined from all 15 sessions (249 owner messages read in
-context), cross-checked against the 16 persistent <code>bd</code> memories, CLAUDE.md
-rules 1–9 and <code>docs/PIPELINE.md</code>. Patterns already answered by a rule are
-marked <span class="tag t-exists">exists</span>; genuinely new recommendations carry
-<span class="tag t-new">new</span>. Companion reports:
-<a href="report-01-token-usage.html">token usage</a> ·
-<a href="report-03-testing.html">testing inventory</a>.
-Full evidence draft: <code>docs/notes/report-data-mistakes.md</code>.</p>
+<h1>Обзор ошибок при работе с ИИ-агентом — 2026-11-22 → 2026-11-25</h1>
+<p>13 повторяющихся паттернов ошибок, добытых из всех 15 сессий (в контексте прочитано
+249 сообщений владельца), сверены с 16 постоянными воспоминаниями <code>bd</code>,
+правилами CLAUDE.md 1–9 и <code>docs/PIPELINE.md</code>. Паттерны, на которые уже есть
+правило, помечены <span class="tag t-exists">есть</span>; действительно новые
+рекомендации — <span class="tag t-new">новое</span>. Сопутствующие отчёты:
+<a href="report-01-token-usage.html">токены</a> ·
+<a href="report-03-testing.html">инвентаризация тестирования</a>.
+Полный черновик с доказательствами: <code>docs/notes/report-data-mistakes.md</code>.</p>
 
 <div class="cards">
-  <div class="card"><b>13</b><span>recurring mistake patterns</span></div>
-  <div class="card"><b>16</b><span>429/usage-limit kills of live runs</span></div>
-  <div class="card"><b>3</b><span>release re-tags caused by missed gates</span></div>
-  <div class="card"><b>2.65 M</b><span>subagent tokens burned by uncapped agents in one day</span></div>
+  <div class="card"><b>13</b><span>повторяющихся паттернов ошибок</span></div>
+  <div class="card"><b>16</b><span>убийств запущенных работ лимитами 429</span></div>
+  <div class="card"><b>3</b><span>перетега релизов из-за пропущенных гейтов</span></div>
+  <div class="card"><b>2.65 M</b><span>субагентских токенов сожжено незакапанными агентами за один день</span></div>
 </div>
 
-<div class="fix"><strong>The one meta-finding.</strong> Prose rules decay within a day;
-mechanisms stick. The agent-brief, the <code>bd prime</code> hook and
-<code>live_check.mjs</code> changed behavior permanently; five written rules
-(heredoc ban, agent caps, skill invocation) were each violated again within 24 hours.
-Every recommendation below is therefore stated as a mechanism — a hook, a script, or a
-spawn-prompt field — with the rule text only as a fallback.</div>
+<div class="fix"><strong>Главный мета-вывод.</strong> Прозаические правила выветриваются
+за сутки; механизмы остаются. Agent-brief, хук <code>bd prime</code> и
+<code>live_check.mjs</code> изменили поведение навсегда; пять написанных правил
+(запрет heredoc, капы агентов, вызов скилов) каждое нарушалось снова в течение 24 часов.
+Поэтому каждая рекомендация ниже сформулирована как механизм — хук, скрипт или поле
+spawn-промпта, — а текст правила только как запасной вариант.</div>
 
-<h2>Pattern catalog</h2>
-
-<div class="pat agent-side">
-<h3>P7 · Runaway agents — the largest single bucket <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> after the token rules landed (11-24 morning) agent sizes
-multiplied 5×: 628 k / 578 k / 385 k / 361 k / 327 k tokens vs the 44–85 k band of the
-previous day. One UI agent spent 21+ minutes monitoring its own background benchmark
-run, paying its full context every poll round. ≈2.65 M subagent tokens on 11-24 alone.
-<strong>Cause:</strong> no cap in the spawn prompt; waiting/monitoring parked inside a
-long-lived agent. <strong>Cost:</strong> the biggest billable bucket in the project.</p>
-<p class="fix"><span class="tag t-exists">exists</span> rule 7 ("cap and checkpoint agents")
-— failed as prose.
-<span class="tag t-new">new</span> (a) an explicit budget line <em>in every spawn prompt</em>
-("≤ ~120k tokens / ≤ 60 tool calls; at the cap → checkpoint via <code>bd update --notes</code>
-and stop"); (b) monitoring background jobs is the coordinator's job, never a parked agent.</p>
-</div>
+<h2>Каталог паттернов</h2>
 
 <div class="pat agent-side">
-<h3>P1 · Token-budget blindness until the 429 kill <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> 16 usage-limit kills across three sessions; two agents died
-mid-task at &lt;20 k partial spend; on 11-25 a weekly limit froze the session and the
-owner poked it six times <span class="quote">«продолжи»</span> before anything answered.
-<strong>Cause:</strong> checkpoints were taken at milestones, never <em>before</em> the
-most expensive steps (full gates, benchmarks) — exactly where a kill hurts most.</p>
-<p class="fix"><span class="tag t-exists">exists</span> rule 7 (checkpoint agents).
-<span class="tag t-new">new</span> checkpoint-before-long-gate: before any full workspace
-gate / benchmark / big e2e run, post a <code>bd update --notes</code> checkpoint and
-announce the expected duration. A stop with no resume note is a bug class of its own
-(see P8).</p>
+<h3>P7 · Убегающие агенты — крупнейший отдельный паттерн <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> после появления токен-правил (утро 11-24) размеры агентов
+выросли 5×: 628 k / 578 k / 385 k / 361 k / 327 k токенов против диапазона 44–85 k
+в предыдущий день. Один UI-агент 21+ минут наблюдал за собственным фоновым запуском
+бенчмарка, платя весь свой контекст за каждый опрос. ≈2.65 M субагентских токенов
+только за 11-24. <strong>Причина:</strong> в промпте не было капы; ожидание/мониторинг
+припаркованы внутри долгоживущего агента. <strong>Цена:</strong> крупнейшая биллинговая
+корзина проекта.</p>
+<p class="fix"><span class="tag t-exists">есть</span> правило 7 («ограничивать агентов и ставить
+чекпойнты») — сработало как проза.
+<span class="tag t-new">новое</span> (a) явная строка бюджета <em>в каждом spawn-промпте</em>
+(«≤ ~120k токенов / ≤ 60 вызовов; у лимита → чекпойнт через <code>bd update --notes</code>
+и стоп»); (b) мониторинг фоновых задач — работа координатора, никогда не долгоживущего
+агента.</p>
 </div>
 
 <div class="pat agent-side">
-<h3>P5 · Debugging by shell-escaping into files <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> the driver.rs heredoc fight (5–6 failed python-heredoc rounds,
-"tens of thousands of tokens", Write tool solved it first try); the same pattern resurfaced
-even after rule 7 — a broken macOS <code>sed -i</code> and 14 consecutive heredoc edits of
-<code>live_check.mjs</code> on 11-24/25. <strong>Cause:</strong> habit; rule text alone
-failed twice.</p>
-<p class="fix"><span class="tag t-exists">exists</span> rule 7 bullet + agent-brief trap.
-<span class="tag t-new">new</span> a PostToolUse hook counting Bash-based file mutations
-(<code>sed -i</code>, heredoc redirects, <code>perl -pi</code>, <code>tee file</code>) and
-blocking the third with "use Edit/Write / rewrite the file". This is the cheapest
-mechanical win in the kit.</p>
+<h3>P1 · Слепота к токен-бюджету до убийства 429 <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> 16 убийств по лимитам в трёх сессиях; два агента умерли
+посреди задачи с &lt;20 k частичных расходов; 11-25 недельный лимит заморозил сессию,
+и владелец шесть раз тыкал её <span class="quote">«продолжи»</span>, прежде чем что-то
+ответило. <strong>Причина:</strong> чекпойнты ставились на рубежах, никогда
+<em>перед</em> самыми дорогими шагами (полные гейты, бенчмарки) — ровно там, где убийство
+болит сильнее всего.</p>
+<p class="fix"><span class="tag t-exists">есть</span> правило 7 (кап и чекпойнты агентов).
+<span class="tag t-new">новое</span> чекпойнт-перед-долгим-гейтом: перед любым полным
+гейтом воркспейса / бенчмарком / большим прогоном e2e — <code>bd update --notes</code>
+и объявление ожидаемой длительности. Стоп без заметки о возобновлении — отдельный класс
+багов (см. P8).</p>
 </div>
 
 <div class="pat agent-side">
-<h3>P2 · Late verification — CI catching what local gates missed <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> v0.2.0 (11-25 07:16): tag pushed, CI's <code>tsc -b</code> caught
-two type errors vitest cannot see (esbuild strips types) because the local gates ran with a
-stale <code>tsbuildinfo</code> cache and no fresh <code>tsc -b</code>. v0.1.0 had been
-re-tagged twice the night before (golden anti-aliasing nondeterminism; missing GTK libs on
-ubuntu). <strong>Cause:</strong> agent ran an approximate subset of the gates and treated
-green vitest as type coverage.</p>
-<p class="fix"><span class="tag t-exists">exists</span> rule 9 + PIPELINE §6a.
-<span class="tag t-new">new</span> <code>scripts/release_gates.sh</code> that runs the exact
-CI sequence (wiping <code>tsbuildinfo</code> first) as the only sanctioned path to a tag,
-plus a pre-push hook verifying the script's last green run is newer than the tag commit.</p>
+<h3>P5 · Отладка путём shell-эскейпа в файлы <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> борьба с driver.rs (5–6 безуспешных раундов python-heredoc,
+«десятки тысяч токенов», инструмент Write решил с первого раза); тот же паттерн
+всплыл снова уже после правила 7 — сломанный macOS <code>sed -i</code> и 14 подряд
+heredoc-правок <code>live_check.mjs</code> 11-24/25. <strong>Причина:</strong> привычка;
+один только текст правила дважды не сработал.</p>
+<p class="fix"><span class="tag t-exists">есть</span> пункт правила 7 + ловушка в
+agent-brief.
+<span class="tag t-new">новое</span> postToolUse-хук, считающий Bash-мутации файлов
+(<code>sed -i</code>, heredoc-редиректы, <code>perl -pi</code>, <code>tee file</code>)
+и блокирующий третью с текстом «используй Edit/Write / перезапиши файл». Самый дешёвый
+механический выигрыш в ките.</p>
 </div>
 
 <div class="pat agent-side">
-<h3>P4 · Debugging by narration instead of measurement <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> the e2e suite stalled; the first response was a confident
-explanation <span class="quote">«это не виснет, а медленно работает»</span>. One timestamp
-check later: the suite took <strong>14 seconds</strong> and state 33 blocked on a
-never-resolving <code>downloadAndInstall</code> promise. The e1/e3/e6 live-check plateau
-was narrated as "scroll behavior" for two rounds before the per-probe counts walk was
-proven the cause. <strong>Cause:</strong> theory before evidence.</p>
-<p class="fix"><span class="tag t-exists">exists</span> <code>superpowers:systematic-debugging</code>.
-<span class="tag t-new">new</span> hard clause: when a run exceeds its expected duration
-2×, the first action is a timed observation (timestamps, progress markers) — no cost
-claim without the number. Extended "numbers instead of screenshots" to durations.</p>
+<h3>P2 · Поздняя верификация — CI ловит то, что пропустили локально <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> v0.2.0 (11-25 07:16): тег отправлен, CI-прогон <code>tsc -b</code>
+поймал две ошибки типов, которые vitest видеть не может (esbuild срезает типы), потому
+что локальные гейты прошли со стейл <code>tsbuildinfo</code>-кэшем и без свежего
+<code>tsc -b</code>. v0.1.0 накануне уже перетегивалась дважды (антиалиасинг- nondeterminism
+golden; недостающие GTK-библиотеки на ubuntu). <strong>Причина:</strong> агент прогонял
+приблизительное подмножество гейтов и считал зелёный vitest покрытием типов.</p>
+<p class="fix"><span class="tag t-exists">есть</span> правило 9 + PIPELINE §6a.
+<span class="tag t-new">новое</span> <code>scripts/release_gates.sh</code>, запускающий
+точную CI-последовательность (сначала стирание <code>tsbuildinfo</code>), — единственный
+санкционированный путь к тегу, плюс pre-push хук, проверяющий, что последний зелёный
+прогон скрипта новее коммита тега.</p>
 </div>
 
 <div class="pat agent-side">
-<h3>P6 · Agent prompt bloat — spec semantics paid 9+ times <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> early prompts restated spec sections inline and pointed at 4–6
-"read-first" files; each agent re-decoded conventions independently (that duplication is
-also where the case-insensitive import bug class came from). <strong>Fix already
-delivered:</strong> <code>docs/notes/agent-brief.md</code> — prompts dropped ~1 k tokens →
-~30 lines, and this is the best-verified saving on record.</p>
-<p class="fix"><span class="tag t-exists">exists</span> rule 7 + agent-brief.
-<span class="tag t-new">new</span> kit skill "shared-agent-brief": template (where truth
-lives / hard constraints / conventions / spawn contract / known traps) + the smell test
-"a spawn prompt longer than ~15 lines means missing context goes into the brief, not the
-prompt".</p>
+<h3>P4 · Отладка наррацией вместо измерения <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> набор e2e застрял; первый ответ — уверенное объяснение
+<span class="quote">«это не висит, а медленно работает»</span>. Одна проверка таймстампов
+позже: старый набор занимал <strong>14 секунд</strong>, а state 33 навечно блокировался
+на не-разрешающемся промисе <code>downloadAndInstall</code>. Плато e1/e3/e6 live-check
+два раунда трактовалось как «поведение скролла», прежде чем был доказан пер-пробный
+обход counts. <strong>Причина:</strong> теория до доказательств.</p>
+<p class="fix"><span class="tag t-exists">есть</span> <code>superpowers:systematic-debugging</code>.
+<span class="tag t-new">новое</span> жёсткий пункт: когда прогон превышает ожидаемую
+длительность в 2×, первым действием является замер с таймстампами (маркеры прогресса),
+никогда объяснение; без числа недопустимы объяснения «это просто медленно».
+Расширение «чисел вместо скриншотов» на длительности.
+Расширение «чисел вместо скриншотов» до длительности.</p>
+</div>
+
+<div class="pat agent-side">
+<h3>P6 · Разбухание промптов агентов — спека декодирована 9+ раз <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> ранние промпты пересказывали семантику спеки inline и
+указывали на 4–6 файлов «прочти первым»; каждый агент сам заново декодировал конвенции
+(это дублирование также породило класс бага с импортами разного регистра).
+<strong>Исправление уже доставлено:</strong> <code>docs/notes/agent-brief.md</code> —
+промпты сжались с ~1 k токенов до ~30 строк, и это лучшая подтверждённая экономия на
+сегодня.</p>
+<p class="fix"><span class="tag t-exists">есть</span> правило 7 + agent-brief.
+<span class="tag t-new">новое</span> скил кита «общий-Agent-Brief»: шаблон (где правда /
+жёсткие ограничения / конвенции / spawn-контракт / ловушки) + smell-тест «spawn-промпт
+длиннее ~15 строк означает, что недостающий контекст идёт в brief, а не в промпт».</p>
 </div>
 
 <div class="pat shared">
-<h3>P8 · Dead air — silent stops and empty replies <span class="who shared">shared</span></h3>
-<p><strong>What:</strong> after limit kills the session looked like a hang —
-<span class="quote">«чет встал агент походу», «чет висло все»</span>; two literal empty
-"no response" turns answered the owner's poke; the owner instructed
-<span class="quote">«ты продолжай работу, не останавливайся»</span> against an agent that
-had stopped early. <strong>Cause:</strong> stops without a user-visible status line.
-<strong>Note:</strong> this is also a coordinator behavior — every stop needs one line:
-done / waiting on X (id) / resumable at bead Y.</p>
-<p class="fix"><span class="tag t-new">new</span> kit rule: status-on-stop for every agent
-and the coordinator; a silent stop is reopened immediately. Cheap, high owner-trust value.</p>
+<h3>P8 · Мёртвый эфир — немые остановки и пустые ответы <span class="who shared">общая</span></h3>
+<p><strong>Что:</strong> после лимитных убийств сессия выглядела подвешенной —
+<span class="quote">«чет встал агент походу», «чет висло все»</span>; два буквальных
+пустых ответа «no response» на пинг владельца; собственное распоряжение
+<span class="quote">«ты продолжай работу, не останавливайся пока не закончишь»</span>
+против агента, остановившегося раньше. <strong>Причина:</strong> остановки без
+видимой пользователю статус-строки. <strong>Примечание:</strong> это координаторское
+поведение — каждая остановка имеет одну строку: сделано / жду X (id) / возобновится на
+бисесе Y.</p>
+<p class="fix"><span class="tag t-new">новое</span> правило кита: статус-при-стопе для
+каждого агента и координатора; немая остановка немедленно переоткрывается. Дёшево,
+высокая ценность для доверия владельца.</p>
 </div>
 
 <div class="pat shared">
-<h3>P3 · Trusting completion claims without artifacts <span class="who shared">shared</span></h3>
-<p><strong>What:</strong> agents reported "all gates green" while the milestone live check
-failed in the real window three runs in a row (viewport anchoring, traced to the per-probe
-counts walk); the spec's "6.4M lines" figure lived in docs until the first benchmark
-measured 1,294,246. <strong>Cause:</strong> green tests treated as completion; verbal
-status accepted.</p>
-<p class="fix"><span class="tag t-exists">exists</span> rules 4–5, bd acceptance = commands.
-<span class="tag t-new">new</span> spawn template field: every done-claim carries gate
-<em>outputs</em> (command, counts, exit codes); a bare "all green" counts as not reporting.</p>
+<h3>P3 · Доверие заявлениям о завершении без артефактов <span class="who shared">общая</span></h3>
+<p><strong>Что:</strong> агенты отчитывались «все гейты зелёные», в то время как
+milestone live check три прогона подряд проваливался в реальном окне (viewport
+anchoring, позже найдено: per-probe обход counts); оценка спеки «6.4M строк» жила в
+доках, пока первый бенчмарк не измерил 1,294,246. <strong>Причина:</strong> зелёные
+тесты отождествлялись с завершением.</p>
+<p class="fix"><span class="tag t-exists">есть</span> правила 4–5, bd acceptance = команды.
+<span class="tag t-new">новое</span> поле spawn-шаблона: каждое «done» несёт
+<em>результаты</em> гейтов (команда, счётчики, коды выхода); голое «всё зелёное»
+приравнивается к не-отчёту.</p>
 </div>
 
 <div class="pat owner-side">
-<h3>P9 · Requirement churn around design taste <span class="who owner">owner</span></h3>
-<p><strong>What:</strong> &gt;20 screenshot-driven micro-corrections in ~1.5 h
-(11-25 morning), including reverts within a minute
-(<span class="quote">«добавь отступ перед C» → «не, верни как было»</span>). Porting to the
-app raced mock approval (<span class="quote">«Стой, еще рано. Я еще не согласовал макет»</span>).
-The per-category counters were built per spec, then cut end-to-end
-(<span class="quote">«уберем счетчик логов… не нужно считать и тратить perf»</span>) — and
-the same counts walk turned out to be both an idle-CPU spin and the live-check plateau
-(one unvalidated feature → a build, two debugging beads, a rollback in commit
-<code>0d880c8</code>). Early spec also carried Qt-specific wording before any stack
-decision (<span class="quote">«причем тут QT поиск? Убери QT специфику»</span>).</p>
-<p class="fix"><span class="tag t-exists">exists</span> brainstorming for pipeline decisions.
-<span class="tag t-new">new</span> (a) a mock-approval gate: taste feedback converges on
-the mock only; explicit approval before any app-side port; never re-edit a reverted change
-without a fresh ask. (b) a spec cost-flag rule: any criterion whose cost scales per-row
-or per-probe gets a perf estimate flag before implementing. (c) no implementation stack
-words in a spec before <code>STACK.md</code> decides it. (Owner-side too: batch design
-feedback as one review round instead of streaming corrections.)</p>
+<h3>P9 · Текучесть требований вокруг дизайна <span class="who owner">владелец</span></h3>
+<p><strong>Что:</strong> &gt;20 микроправок по скриншотам за ~1.5 ч (утро 11-25),
+включая откат в течение минуты (<span class="quote">«добавь отступ перед C» → «не, верни
+как было»</span>). Портинг в приложение гонял согласование макета
+(<span class="quote">«Стой, еще рано. Я еще не согласовал макет»</span>).
+Счётчики по категориям были построены по спеке, затем обрезаны
+(<span class="quote">«уберем счетчик логов… не нужно считать и тратить perf»</span>) — и
+тот же обход counts оказался и CPU-спином, и плато live-check (одна непроверенная
+фича → сборка, два отладочных бис, откат в коммите <code>0d880c8</code>). Ранняя спека
+несла QT-специфику до всякого решения стека (<span class="quote">«а причем тут QT поиск?
+Убери QT специфику»</span>).</p>
+<p class="fix"><span class="tag t-exists">есть</span> brainstorming для пайплайна.
+<span class="tag t-new">новое</span> (a) гейт согласования макета: фидбэк вкуса
+собирается ТОЛЬКО на макете; до явного согласования — никакого апп-порта; никогда
+не переправлять откат без нового вопроса. (b) правило cost-flag спеки: любой критерий,
+стоимость которого масштабируется per-ряд/per-проб, помечен владельцу с perf-оценкой до
+имплементации. (c) никакие слова стек-имплементации в спеке до решения
+<code>STACK.md</code>. (И от владельца: батчить фидбэк одним раундом обзора, а не
+стримить.)</p>
 </div>
 
 <div class="pat agent-side">
-<h3>P10 · cwd and environment traps — silent wrong-context runs <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> JS gates run from the repo root silently test the wrong
-environment (a paid rerun; rule 7's origin); Tauri's <code>beforeDevCommand</code> cwd
-broke <code>--prefix ui</code> during scaffold; live runs lost <code>headless.ts</code> and
-<code>PIPELINE.md</code> to drifted cwd with "No such file or directory".</p>
-<p class="fix"><span class="tag t-exists">exists</span> rule 7 bullet + agent-brief trap.
-<span class="tag t-new">new</span> hook: on Bash failing with "No such file or directory"
-for a project-internal path, echo <code>pwd</code> and the path resolution — makes the
-whole class self-diagnosing.</p>
+<h3>P10 · cwd- и окруженческие ловушки — тихие прогоны в неправильном контексте <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> JS-гейты из корня репо тихо тестировали неверную среду
+(повторный прогон; пункт правила 7); <code>beforeDevCommand</code> Tauri сломал
+<code>--prefix ui</code> в момент scaffold; live-прогоны теряли <code>headless.ts</code>
+и <code>PIPELINE.md</code> по причине дрейфа cwd с «No such file or directory».</p>
+<p class="fix"><span class="tag t-exists">есть</span> пункт правила 7 + ловушка в
+agent-brief.
+<span class="tag t-new">новое</span> хук: на Bash-неудачу с «No such file or directory»
+по проектному пути печатать <code>pwd</code> и путь разрешения — делает весь класс
+самодиагностируемым.</p>
 </div>
 
 <div class="pat agent-side">
-<h3>P11 · Toolchain differs from the agent's belief (silent hazards) <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> two incidents of one shape, both paid before being documented:
-(a) macOS case-insensitive FS resolves <code>./FiltersTab</code> to
-<code>filtersTab.ts</code> → undefined component; (b) vitest proves nothing about TS types
-because esbuild strips them (the v0.2.0 root cause). Neither has a canary test.</p>
-<p class="fix"><span class="tag t-new">new</span> kit rule: every load-bearing "X works"
-assumption (module resolution, type stripping, cache freshness) gets a 1-line canary gate
-on day one, before code relies on it.</p>
+<h3>P11 · Тулчейн расходится с убеждением агента (тихие опасные зоны) <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> два эпизода одного типа, оба оплачены до того, как
+задокументированы: (a) macOS case-insensitive FS резолвит <code>./FiltersTab</code> в
+<code>filtersTab.ts</code> → undefined-компонент; (b) vitest ничего не доказывает о
+типах TS, потому что esbuild срезает их (первопричина v0.2.0). Ни у одного нет
+canary-теста.</p>
+<p class="fix"><span class="tag t-new">новое</span> правило кита: каждое нагруженное
+допущение «X работает» (module resolution, type stripping, свежесть кэша) получает
+1-строчный canary-гейт в первый день, до того как код начнёт полагаться на него.</p>
 </div>
 
 <div class="pat agent-side">
-<h3>P12 · Skills not triggering — the owner had to ask twice <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> 11-23, the owner asked twice in one session whether the mandated
-skills were used (<span class="quote">«А ты пользовался /vvv-claude-kit:building-testable-apps?», «почему ты не пользуешься благами…»</span>),
-then hand-distilled skill rules into CLAUDE.md. One evening of visual acceptance was lost
-to non-triggering descriptions.</p>
-<p class="fix"><span class="tag t-exists">exists</span> rule 3.
-<span class="tag t-new">new</span> mechanical trigger, replicating the <code>bd prime</code>
-SessionStart hook: inject a 3-line reminder whenever the task touches <code>ui/</code> or
-a new-feature bead. The owner-asked-twice signal means description text will not trigger —
-only hooks will.</p>
+<h3>P12 · Скилы не триггерятся — владелец спросил дважды <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> 11-23 владелец дважды за одну сессию спросил, используются ли
+предписанные скилы (<span class="quote">«А ты пользовался /vvv-claude-kit:building-testable-apps?», «почему ты не пользуешься благами…»</span>),
+затем вручную дистиллировал правила скилов в CLAUDE.md. Один вечер визуальной приемки
+был потерян из-за несрабатывания описаний.</p>
+<p class="fix"><span class="tag t-exists">есть</span> правило 3.
+<span class="tag t-new">новое</span> механический триггер, копия хука <code>bd prime</code>:
+инджект 3-строчного напоминания всегда, когда задача касается <code>ui/</code> или
+бисес новой фичи. Сигнал «владелец спросил дважды» означает: описание-текст не сработает,
+сработает только хук.</p>
 </div>
 
 <div class="pat agent-side">
-<h3>P13 · Delegation and harness failures <span class="who agent">agent</span></h3>
-<p><strong>What:</strong> 9 spawn failures on a nonexistent model override
-(<code>model_not_found</code>), one wasted review run; the first CI gate failed on runner
-differences (ubuntu GTK/webkit dev libs); one subagent answered the coordinator in Chinese
-— the language rule never made it into spawn prompts.</p>
-<p class="fix"><span class="tag t-new">new</span> delegation rules for the kit: pin only
-verified-available model names; one-line owner-language clause in every spawn prompt;
-first-run any new CI workflow on a throwaway tag before a release rides on it.</p>
+<h3>P13 · Delegation и харнесс-отказы <span class="who agent">агент</span></h3>
+<p><strong>Что:</strong> 9 отказов спавна на несуществующем override модели
+(<code>model_not_found</code>), один потраченный обзорный прогон; первый CI-гейт
+провалился из-за различий раннера (ubuntu GTK/webkit dev libs); один субагент ответил
+координатору по-китайски — правило языка не дошло до spawn-промптов.</p>
+<p class="fix"><span class="tag t-new">новое</span> правила делегации для кита: пиновать
+только проверенно-доступные имена моделей; однострочный пункт языка владельца в каждом
+spawn-промпте; первый запуск любого нового CI-воркфлоу на одноразовой ветке/теге до того,
+прежде чем вешать на него релизный тег.</p>
 </div>
 
-<h2>Owner-side vs agent-side, at a glance</h2>
+<h2>Владелец против агента, одним взглядом</h2>
 <table>
-  <tr><th>Side</th><th>Patterns</th><th>What closes them</th></tr>
-  <tr><td>Owner-side</td><td>P9 (churn, approvals in hindsight), part of P8 (poking dead sessions), part of P1 (no burn-rate visibility)</td><td>Batched design feedback on the mock; mock-approval gate; a visible burn-rate/status surface</td></tr>
-  <tr><td>Agent-side</td><td>P7, P1, P5, P2, P4, P6, P10, P11, P12, P13</td><td>Mechanisms below — prose has been tried and failed</td></tr>
-  <tr><td>Shared</td><td>P3, P8</td><td>Gate outputs as the only accepted "done"; status-on-stop both sides</td></tr>
+  <tr><th>Сторона</th><th>Паттерны</th><th>Что их закрывает</th></tr>
+  <tr><td>Владелец</td><td>P9 (churn, апрувы задним числом), часть P8 (тыканье мёртвых сессий), часть P1 (нет видимости burn-rate)</td><td>Батчированный фидбэк дизайна по макету; гейт mock-апрува; видимая поверхность burn-rate/статуса</td></tr>
+  <tr><td>Агент</td><td>P7, P1, P5, P2, P4, P6, P10, P11, P12, P13</td><td>Механизмы ниже — проза уже пробована-и-провалилась</td></tr>
+  <tr><td>Общая</td><td>P3, P8</td><td>Гейт-аутпуты как единственно принимаемое «done»; статус-при-стопе с обеих сторон</td></tr>
 </table>
 
-<h2>What the owner did right (worth keeping)</h2>
+<h2>Что владелец сделал правильно (стоит сохранить)</h2>
 <ul>
-  <li><strong>Delegating rule-writing back to the agent</strong>
+  <li><strong>Делегирование написания правил обратно агенту</strong>
   (<span class="quote">«не следуй прямо тем правилам, что я описал — реши сам, как лучше»</span>,
-  11-24) produced the agent-brief — the single highest-leverage transferable practice of
-  the period.</li>
-  <li><strong>Fast, dated feedback loops:</strong> every major rule (rules 4, 7, 8, 9)
-  was written within hours of the failure it answers, with the incident recorded
-  (PIPELINE §6a) — the repo can reconstruct why each rule exists.</li>
-  <li><strong>Demanding evidence instead of status:</strong> the live-check norm and the
-  "gates on the tagged commit" rule both came from owner escalation.</li>
+  11-24) породило agent-brief — единственную трансферируемую практику высшего рычага за
+  этот период.</li>
+  <li><strong>Быстрые, датированные петли фидбэка:</strong> каждое крупное правило
+  (правила 4, 7, 8, 9) было написано в течение часов после провала, с записанным
+  инцидентом (PIPELINE §6a) — репо может восстановить, почему существует каждое правило.</li>
+  <li><strong>Требование доказательств вместо статуса:</strong> норма live-check и
+  «гейты на закоммиченном теге» — обе от эскалации владельца.</li>
 </ul>
 
-<h2>Recommended mechanisms for vvv-claude-kit (build in this order)</h2>
+<h2>Рекомендуемые механизмы для vvv-claude-kit (порядок сборки)</h2>
 <table>
-  <tr><th>#</th><th>Mechanism</th><th>Type</th><th>Closes</th><th>Evidence</th></tr>
-  <tr><td>1</td><td>Spawn-contract template: budget line + checkpoint instruction + status-on-stop + language clause + gate-outputs reporting</td><td>skill</td><td>P7, P8, P3, P13</td><td>~2.7 M tokens of uncapped agents; 6 empty/silent stops</td></tr>
-  <tr><td>2</td><td>Bash-file-edit blocker: 3rd Bash-based mutation refused, points at Edit/Write</td><td>PostToolUse hook</td><td>P5</td><td>recurring heredoc fights, two rule failures</td></tr>
-  <tr><td>3</td><td>Skill-trigger injection: kit reminders injected by hook on ui/ or new-feature paths</td><td>SessionStart/PostToolUse hook</td><td>P12</td><td>owner asked twice</td></tr>
-  <tr><td>4</td><td><code>release_gates.sh</code> + tag-push precheck</td><td>script + PreToolUse hook</td><td>P2, P11</td><td>3 re-tags in one release day</td></tr>
-  <tr><td>5</td><td>Checkpoint-before-long-gate rule + announce</td><td>skill</td><td>P1</td><td>16 limit kills mid-gate</td></tr>
-  <tr><td>6</td><td>Measure-first debugging clause + duration watch</td><td>skill</td><td>P4</td><td>10-min narration stall vs a 14 s truth</td></tr>
-  <tr><td>7</td><td>Mock-approval gate + spec cost-flags + no-stack-in-spec</td><td>ui-development/spec additions</td><td>P9</td><td>one feature built then cut end-to-end</td></tr>
+  <tr><th>#</th><th>Механизм</th><th>Тип</th><th>Закрывает</th><th>Доказательство</th></tr>
+  <tr><td>1</td><td>Шаблон spawn-контракта: строка бюджета + инструкция чекпойнта +
+  статус-при-стопе + пункт языка + отчёт гейт-выходами</td><td>скил</td><td>P7, P8, P3, P13</td><td>~2.7 M токенов незакапанных агентов; 6 пустых/немых остановок</td></tr>
+  <tr><td>2</td><td>Блокиратор файловых правок через Bash: третья Bash-мутация
+  отклоняется с указанием Edit/Write</td><td>PostToolUse-хук</td><td>P5</td><td>повторяющиеся heredoc-борьбы, два провала правила</td></tr>
+  <tr><td>3</td><td>Инжект-хук триггера скилов: напоминания кита по хукам на ui/ или
+  пути новых фич</td><td>SessionStart/PostToolUse-хук</td><td>P12</td><td>владелец спросил дважды</td></tr>
+  <tr><td>4</td><td><code>release_gates.sh</code> + precheck тег-пуша</td><td>скрипт + PreToolUse-хук</td><td>P2, P11</td><td>3 перетега за один релизный день</td></tr>
+  <tr><td>5</td><td>Правило чекпойнта-перед-долгим-гейтом + объявление</td><td>скил</td><td>P1</td><td>16 лимитных убийств посреди гейта</td></tr>
+  <tr><td>6</td><td>measure-first пункт отладки + duration watch</td><td>скил</td><td>P4</td><td>10-минутный стенд наррации против правды в 14 с</td></tr>
+  <tr><td>7</td><td>Гейт mock-апрува + cost-флаги спеки + никакого стека в спеке</td><td>дополнения к ui-development/spec</td><td>P9</td><td>фича построена-и-вырезана end-to-end</td></tr>
 </table>
 
-<h2>Recommended working mode with AI agents (going forward)</h2>
+<h2>Рекомендуемый режим работы с ИИ-агентами (вперёд)</h2>
 <ol>
-  <li><strong>Every spawn prompt contains five fixed fields:</strong> bead id + brief
-  pointer; ≤3 files; exact gate commands; the token/call cap; the checkpoint + status
-  reporting contract. Anything longer signals missing context — write it into the brief
-  or the bead, not the next prompt.</li>
-  <li><strong>Done = outputs.</strong> Accept an agent's report only with gate outputs
-  attached; run the one scoped gate yourself to spot-check before closing the bead.</li>
-  <li><strong>Design feedback in batches on the mock;</strong> app port starts only on
-  explicit mock approval (one review round instead of 20 streaming corrections — the
-  1.5-hour churn session cost more than the whole release-pipeline day).</li>
-  <li><strong>Never let an agent wait on background work;</strong> monitoring is the
-  coordinator's job or a foreground <code>Monitor</code> — an agent polling for 20 minutes
-  pays its whole context per round for zero output.</li>
-  <li><strong>Watch for the 429 pattern:</strong> if a session or agent is entering a
-  full gate or benchmark, it checkpoints first. After any silent stop, the coordinator
-  posts a one-line resume status before anything else.</li>
-  <li><strong>Any repeated correction is a mechanism candidate.</strong> When the same
-  correction appears the second time (heredoc, skill-trigger, green claims), stop writing
-  rules and write the hook/script — this report's meta-finding.</li>
+  <li><strong>Каждый spawn-промпт содержит пять фиксированных полей:</strong> id бисеса +
+  указатель brief; ≤3 файлов; точные команды гейтов; капа токенов/вызовов; контракт
+  чекпойнта + контракт отчёта статуса. Что-то длиннее — сигнал недостающего контекста: пишите
+  это в brief или бисес, а не в следующий промпт.</li>
+  <li><strong>Done = аутпуты.</strong> Принимать отчёт агента только с приложенными
+  гейт-аутпутами; прогнать один точечный гейт самому для спот-чека перед закрытием
+  бисеса.</li>
+  <li><strong>Фидбэк дизайна в батчах по макету;</strong> апп-порт стартует только по
+  явному mock-апруву (один раунд обзора вместо 20 стрим-коррекций — 1.5-часовая churn-сессия
+  стоила больше всего релизно-пайплайнового дня).</li>
+  <li><strong>Никогда не позволять агенту ждать фоновую работу;</strong> мониторинг —
+  работа координатора или foreground <code>Monitor</code> — агент, полирующий 20 минут,
+  платит весь контекст за каждый раунд при нулевом выходе.</li>
+  <li><strong>Смотреть за паттерном 429:</strong> при входе сессии или агента в полный
+  гейт или бенчмарк — сначала чекпойнт. После любой немой остановки координатор сперва
+  постит однострочный resume-статус.</li>
+  <li><strong>Любая повторная коррекция — кандидат в механизм.</strong> Когда та же
+  коррекция появляется второй раз (heredoc, skill-триггер, зелёные клеймы), прекращать
+  писать правила и писать хук/скрипт — мета-вывод этого отчёта.</li>
 </ol>
-<p class="est">Method: patterns mined from transcripts (249 owner messages), cross-checked
-against bd memories and rules; every "what happened" entry above is backed by dates and
-bead ids in <code>docs/notes/report-data-mistakes.md</code>. Owner quotes are kept
-verbatim (transliterated as recorded) as evidence.</p>
+<p class="est">Методология: паттерны добыты из транскриптов (249 сообщений владельца),
+сверены с воспоминаниями bd и правилами; каждое «что случилось» выше подкреплено датами
+и id бисесов в <code>docs/notes/report-data-mistakes.md</code>. Цитаты владельца
+сохранены дословно как доказательства.</p>
