@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appReducer,
   clampPanelWidth,
+  defaultExpanded,
   expandedForToggleAll,
   fileTitle,
   formatBytes,
@@ -359,16 +360,14 @@ describe("side panel slice (rhl.2, §10.1)", () => {
     expect(s2.panel.expanded).toEqual(["db"]);
   });
 
-  it("load-success resets expansion to the loaded file's top-level paths", () => {
+  it("load-success resets expansion: collapsed start — only the All root expanded (owner request 2026-11-25)", () => {
     const s = loadedWithCategories({ categories: [
       { path: "app/main/db" },
       { path: "app/harness" },
       { path: "db/pool" },
       { path: "uncategorized" },
     ] });
-    // All (the synthetic root) is expanded too so its top-level children
-    // stay visible (2026-11-25: All is a foldable parent of the roots).
-    expect(s.panel.expanded).toEqual(["", "app", "db", "uncategorized"]);
+    expect(s.panel.expanded).toEqual([""]);
     expect(s.panel.open).toBe(true);
     expect(s.panel.tab).toBe("categories");
   });
@@ -389,6 +388,18 @@ describe("side panel slice (rhl.2, §10.1)", () => {
     const s1 = appReducer(expandedAgain, { kind: "visibility", snapshot: snapshot() });
     // visibility rebuild keeps it
     expect(s1.panel.expanded).toEqual(["app"]);
+  });
+
+  it("defaultExpanded: start collapsed — only the All root expands, top-level rows collapsed (owner request 2026-11-25)", () => {
+    const flat = [
+      { path: "app" },
+      { path: "app/main/db" },
+      { path: "db/pool" },
+      { path: "uncategorized" },
+    ];
+    expect(defaultExpanded(flat)).toEqual([""]);
+    // an empty file keeps the empty set
+    expect(defaultExpanded([])).toEqual([]);
   });
 
   it("expandedForToggleAll: expand installs every tree path incl. prefix paths", () => {

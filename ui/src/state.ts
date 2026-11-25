@@ -208,20 +208,12 @@ export function initialPanelState(): PanelState {
   return { open: true, tab: "categories", width: PANEL_DEFAULT_WIDTH, search: "", expanded: [] };
 }
 
-/** Expansion default at load: the synthetic All root (2026-11-25: All is a
- *  foldable parent of the top level) plus the root-level paths (no "/"),
- *  sorted, deduped — top-level nodes expanded, children collapsed (bead rhl.2
- *  spec interpretation). An empty file keeps the empty set. */
+/** Expansion default at load: only the synthetic All root (2026-11-25: All is
+ *  a foldable parent of the top level). Everything starts collapsed (owner
+ *  request 2026-11-25) — the All row is visible, every category row collapsed.
+ *  An empty file keeps the empty set. */
 export function defaultExpanded(categories: readonly { path: string }[]): string[] {
-  if (categories.length === 0) {
-    return [];
-  }
-  const roots = new Set<string>([""]);
-  for (const { path } of categories) {
-    const i = path.indexOf("/");
-    roots.add(i === -1 ? path : path.slice(0, i));
-  }
-  return [...roots].sort();
+  return categories.length === 0 ? [] : [""];
 }
 
 /** expand/collapse-all targets straight from the flat list (§10 action 5):

@@ -582,14 +582,10 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     expect(expanded).toEqual([""]);
   });
 
-  it("load resets the expansion to the new file's root-level paths", async () => {
-    const { console_ } = await freshConsole(categoryStub());
-    await console_.load("/tmp/log.txt");
-    await console_.expandAllCategories(true);
-    expect(console_.getSnapshot().panel.expanded.length).toBeGreaterThan(3);
+  it("load resets the expansion to collapsed start — only the All root expanded (owner request 2026-11-25)", async () => {
     const { console_: fresh } = await freshConsole(categoryStub());
-    const snap = await fresh.load("/tmp/log.txt");
-    expect(snap.panel.expanded).toEqual(["", "app", "db", "uncategorized"]);
+    const snap = await fresh.load("/log.txt");
+    expect(snap.panel.expanded).toEqual([""]);
   });
 
   it("toggleCategory(off) drives the propagateToggle differential through ONE bulk call and refetches", async () => {
