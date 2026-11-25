@@ -41,6 +41,31 @@ function removeStub(): void {
 
 afterEach(removeStub);
 
+describe("loadFile normalization", () => {
+  it("normalizes the LoadResult, including the byte size for the file slot", async () => {
+    installStub({
+      ...emptyRaw(),
+      loadFile: async () => ({
+        format: "plain",
+        line_count: 1_294_246,
+        size_bytes: 883_091_968,
+        categories: [],
+        levels: [],
+        load_ms: 685,
+      }),
+    });
+    const result = await ipc().loadFile("service.log");
+    expect(result).toEqual({
+      format: "plain",
+      lineCount: 1_294_246,
+      sizeBytes: 883_091_968,
+      categories: [],
+      levels: [],
+      loadMs: 685,
+    });
+  });
+});
+
 describe("visibilitySnapshot normalization", () => {
   it("renames the RAW fields to the camelCase UI shape", async () => {
     installStub({ ...emptyRaw(), visibilitySnapshot: async () => RAW_SNAPSHOT });

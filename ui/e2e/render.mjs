@@ -48,7 +48,7 @@ const STUB = `(function () {
   window.__ipcStub = {
     async pickFile() { return "/tmp/synthetic.log"; },
     async loadFile() {
-      return { format: "plain", line_count: 60000, categories: [], levels: [], load_ms: 3 };
+      return { format: "plain", line_count: 60000, size_bytes: 883_091_968, categories: [], levels: [], load_ms: 3 };
     },
     async getRows(offset, limit) {
       const rows = [];

@@ -77,6 +77,9 @@ pub struct LoadResult {
   /// Detected format: "ksiva" or "plain" (§3).
   pub format: String,
   pub line_count: u32,
+  /// Byte size of the backing file (UI file slot: "name · size"); u32 like
+  /// the other scalar fields of the DTO (specta forbids u64), saturating.
+  pub size_bytes: u32,
   pub categories: Vec<CategoryCount>,
   pub levels: Vec<LevelCount>,
   /// Load time in milliseconds (diagnostics; §16 monitoring).
@@ -114,6 +117,7 @@ pub fn to_load_result(model: &FileModel, load_ms: u32) -> LoadResult {
   LoadResult {
     format: format_name(model.format()).to_owned(),
     line_count: model.line_count() as u32,
+    size_bytes: model.size().min(u32::MAX.into()) as u32,
     categories: model
       .categories()
       .map(|(path, count)| CategoryCount {
@@ -1245,6 +1249,8 @@ mod tests {
     assert_eq!(result.format, "ksiva");
     assert_eq!(result.line_count, 2);
     assert_eq!(result.load_ms, 7);
+    // UI file slot "name · size": byte size arrives with the load result.
+    assert_eq!(result.size_bytes, 95);
     assert_eq!(
       result
         .categories

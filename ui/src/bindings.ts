@@ -196,6 +196,11 @@ export type LoadResult = {
 	/**  Detected format: "ksiva" or "plain" (§3). */
 	format: string,
 	line_count: number,
+	/**
+	 *  Byte size of the backing file (UI file slot: "name · size"); u32 like
+	 *  the other scalar fields of the DTO (specta forbids u64), saturating.
+	 */
+	size_bytes: number,
 	categories: CategoryCount[],
 	levels: LevelCount[],
 	/**  Load time in milliseconds (diagnostics; §16 monitoring). */

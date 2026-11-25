@@ -60,7 +60,8 @@ export function CmdLine(props: CmdLineProps): ReactElement {
 
   return (
     <span className="cmd" data-testid="cmdline">
-      <span className="dot">:</span>
+      {/* No static ':' prompt (2026-11-25 decision, UI design page): the
+          user types it themselves; an empty field shows only the placeholder. */}
       <input
         ref={inputRef}
         value={command.value}

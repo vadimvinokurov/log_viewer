@@ -8,7 +8,7 @@ import { ipc } from "./ipcClient";
 import { installHeadlessConsole } from "./headless";
 import { LogTable } from "./LogTable";
 import { LevelBar } from "./LevelBar.tsx";
-import { levelBarState } from "./state";
+import { levelBarState, formatBytes } from "./state";
 import { buildTree } from "./categories";
 import { SidePanel, usePanelHotkey } from "./SidePanel.tsx";
 import { CategoriesTab } from "./CategoriesTab.tsx";
@@ -280,7 +280,12 @@ export default function App() {
         )}
       </div>
       <footer className="bottom-bar">
-        <span className="file-name">{state.file?.name}</span>
+        {/* File slot per the UI design titlebar: "name · size" — no format
+            /line-count/load-time status here (2026-11-25 owner decision:
+            the bottom bar never prints that status). */}
+        <span className="file-name">
+          {state.file ? `${state.file.name} · ${formatBytes(state.file.load.sizeBytes)}` : null}
+        </span>
         <button className="bar-btn" onClick={openDialogAndLoad} disabled={busy}>
           Open
         </button>
@@ -297,12 +302,6 @@ export default function App() {
           onRecall={(dir) => console_.recallCommandHistory(dir)}
         />
         {busy && <span className="status">{status}</span>}
-        {state.file && !busy && (
-          <span className="status">
-            {state.file.name} · {state.file.load.format} ·{" "}
-            {state.file.load.lineCount.toLocaleString("en-US")} lines · {state.file.load.loadMs} ms
-          </span>
-        )}
         {state.error && <span className="error">{state.error}</span>}
         {/* §11: the six-level toggle bar on the right side of the bottom bar;
             hidden until the first visibility snapshot arrives. */}

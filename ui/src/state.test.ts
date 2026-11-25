@@ -3,6 +3,7 @@ import {
   appReducer,
   clampPanelWidth,
   expandedForToggleAll,
+  formatBytes,
   initialPanelState,
   levelBarState,
   type AppState,
@@ -10,10 +11,27 @@ import {
   initialAppState,
 } from "./state";
 
+describe("formatBytes (file slot «name · size» per UI design)", () => {
+  it("keeps small files in bytes", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(512)).toBe("512 B");
+  });
+
+  it("rounds KB/MB to whole units (decimal, like the mock «842 MB»)", () => {
+    expect(formatBytes(1_500)).toBe("2 KB");
+    expect(formatBytes(685_000)).toBe("685 KB");
+    expect(formatBytes(883_091_968)).toBe("883 MB");
+  });
+
+  it("switches to GB with one decimal", () => {
+    expect(formatBytes(1_294_000_000)).toBe("1.3 GB");
+  });
+});
+
 function loadedState(): AppState {
   return appReducer(initialAppState(), {
     kind: "load-success",
-    load: { format: "plain", lineCount: 2, categories: [], levels: [], loadMs: 5 },
+    load: { format: "plain", lineCount: 2, categories: [], levels: [], loadMs: 5, sizeBytes: 883 },
     fileName: "log.txt",
   });
 }
@@ -60,7 +78,7 @@ describe("open/load pipeline (n4y.2, §2)", () => {
       appReducer(initialAppState(), { kind: "load-request", path: "/tmp/log.txt" }),
       {
         kind: "load-success",
-        load: { format: "plain", lineCount: 2, categories: [], levels: [], loadMs: 5 },
+        load: { format: "plain", lineCount: 2, categories: [], levels: [], loadMs: 5, sizeBytes: 883 },
         fileName: "log.txt",
       },
     );
@@ -111,7 +129,7 @@ describe("open/load pipeline (n4y.2, §2)", () => {
 });
 
 describe("row selection state (§4, qt7.2)", () => {
-  const base = { format: "plain", lineCount: 20, categories: [], levels: [], loadMs: 5 };
+  const base = { format: "plain", lineCount: 20, categories: [], levels: [], loadMs: 5, sizeBytes: 883 };
 
   it("starts with an empty selection", () => {
     expect(initialAppState().selection).toEqual({ selected: [], anchor: null });
@@ -215,7 +233,7 @@ describe("visibility state (§7, dsq.3)", () => {
     const s1 = appReducer(s0, { kind: "load-request", path: "/next.txt" });
     const s2 = appReducer(s1, {
       kind: "load-success",
-      load: { format: "plain", lineCount: 100, categories: [], levels: [], loadMs: 5 },
+      load: { format: "plain", lineCount: 100, categories: [], levels: [], loadMs: 5, sizeBytes: 883 },
       fileName: "next.txt",
     });
     expect(s2.visibility).toBeNull();
@@ -350,7 +368,7 @@ describe("side panel slice (rhl.2, §10.1)", () => {
     });
     const loaded = appReducer(s0, {
       kind: "load-success",
-      load: { format: "plain", lineCount: 0, categories: [], levels: [], loadMs: 1 },
+      load: { format: "plain", lineCount: 0, categories: [], levels: [], loadMs: 1, sizeBytes: 883 },
       fileName: "x.log",
     });
     // file reload resets expansion
@@ -393,6 +411,7 @@ function loadedWithCategories(overrides: { categories?: { path: string; count: n
       categories: overrides.categories ?? [],
       levels: [],
       loadMs: 5,
+      sizeBytes: 883,
     },
     fileName: "log.txt",
   });

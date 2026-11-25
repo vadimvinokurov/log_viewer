@@ -27,17 +27,19 @@ function baseProps(overrides: Partial<CmdLineProps> = {}): CmdLineProps {
 }
 
 describe("CmdLine (bead 7rf.1, §13)", () => {
-  it("renders the .cmd markup: dot, input with the §11.1 placeholder and value from the store", () => {
+  it("renders the .cmd markup: input with the §11.1 placeholder and value from the store (no static prompt — the user types ':' themselves)", () => {
     const { container } = render(
-      createElement(CmdLine, baseProps({ command: cmdlineState({ value: ":f x" }) })),
+      createElement(CmdLine, baseProps({ command: cmdlineState({ value: "" }) })),
     );
     const bar = container.querySelector(".cmd");
     expect(bar).not.toBeNull();
-    expect(bar?.querySelector(".dot")?.textContent).toBe(":");
+    // 2026-11-25 decision (owner, UI design page): no pre-filled ':' prompt —
+    // the user types it themselves, an empty field is empty.
+    expect(bar?.querySelector(".dot")).toBeNull();
     const input = bar?.querySelector<HTMLInputElement>("input");
     expect(input).not.toBeNull();
     expect(input?.placeholder).toBe(":type command...");
-    expect(input?.value).toBe(":f x");
+    expect(input?.value).toBe("");
     expect(input?.getAttribute("aria-label")).toBe("Command line");
   });
 

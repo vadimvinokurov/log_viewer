@@ -246,7 +246,6 @@
     font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace;
   }
   .cmd:focus-within { border-color: var(--accent); }
-  .cmd .dot { color: var(--accent); margin-right: 2px; }
   .cmd input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; }
 
   .levels { display: flex; gap: 4px; }
@@ -413,7 +412,7 @@
       <div class="bbar">
         <span class="btn" role="button" tabindex="0">Open</span>
         <span class="btn" role="button" tabindex="0">Reload</span>
-        <span class="cmd"><span class="dot">:</span><span style="flex:1"></span></span>
+        <span class="cmd"><span style="flex:1"></span></span>
         <div class="levels">
           <span class="lv crt"><i></i><span>CRITICAL</span><span class="n">3</span></span>
           <span class="lv err"><i></i><span>ERROR</span><span class="n">172</span></span>
@@ -468,7 +467,7 @@
       <div class="bbar">
         <span class="btn" role="button" tabindex="0">Open</span>
         <span class="btn" role="button" tabindex="0">Reload</span>
-        <span class="cmd"><span class="dot">:</span><span style="flex:1"></span></span>
+        <span class="cmd"><span style="flex:1"></span></span>
         <div class="levels">
           <span class="lv crt"><i></i><span>CRITICAL</span><span class="n">3</span></span>
           <span class="lv err"><i></i><span>ERROR</span><span class="n">172</span></span>
@@ -565,7 +564,7 @@
     <div>
       <h3>Command line — <kbd>:</kbd> focuses from the table (§13)</h3>
       <div class="floatbox" style="justify-content:center;border:1px dashed var(--border-strong);border-radius:12px;min-height:96px;background:var(--chrome)">
-        <div class="cmd" style="width:min(480px,100%)"><span class="dot">:</span><span style="color:var(--ink)">hs timeout</span><span style="width:1.5px;height:15px;background:var(--accent);margin-left:1px"></span></div>
+        <div class="cmd" style="width:min(480px,100%)"><span style="color:var(--ink)">:hs timeout</span><span style="width:1.5px;height:15px;background:var(--accent);margin-left:1px"></span></div>
       </div>
     </div>
     <div>

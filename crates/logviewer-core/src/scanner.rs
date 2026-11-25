@@ -32,6 +32,12 @@ impl Scanner {
     self.offsets.len()
   }
 
+  /// Byte length of the backing data (file size; travels in the load result
+  /// so the UI file slot can show "name · size" without re-reading the path).
+  pub fn size(&self) -> u64 {
+    self.data.len() as u64
+  }
+
   /// Raw bytes of 1-based line `i`, without the trailing `\n` / `\r\n`.
   pub fn raw_line(&self, i: usize) -> &[u8] {
     assert!(i >= 1 && i <= self.line_count(), "line index out of range");

@@ -83,6 +83,7 @@ export interface IpcClient {
 function fromBindings(load: {
   format: string;
   line_count: number;
+  size_bytes: number;
   categories: { path: string; count: number }[];
   levels: { level: string; count: number }[];
   load_ms: number;
@@ -90,6 +91,7 @@ function fromBindings(load: {
   return {
     format: load.format,
     lineCount: load.line_count,
+    sizeBytes: load.size_bytes,
     categories: load.categories,
     levels: load.levels,
     loadMs: load.load_ms,

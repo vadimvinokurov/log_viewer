@@ -174,7 +174,7 @@ body {
 }
 
 /* §13 command line (UI design bbar mock + "Command line" component study):
-   flat input between Reload and the status area, ':' dot in the accent. */
+   flat input between Reload and the status area; the user types ':' themselves. */
 .cmd {
   flex: 1;
   min-width: 0;
@@ -193,11 +193,6 @@ body {
 
 .cmd:focus-within {
   border-color: var(--accent);
-}
-
-.cmd .dot {
-  color: var(--accent);
-  margin-right: 2px;
 }
 
 .cmd input {

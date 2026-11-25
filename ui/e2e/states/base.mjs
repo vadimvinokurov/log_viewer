@@ -122,7 +122,7 @@ export const STUB = `(function () {
     async pickFile() { return "/tmp/synthetic.log"; },
     async loadFile() {
       pins.length = 0; // §2.1: a reload clears ALL pins — highlights survive
-      return { format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 3 };
+      return { format: "plain", line_count: LINE_COUNT, size_bytes: 883_091_968, categories: [], levels: [], load_ms: 3 };
     },
     async getRows(offset, limit) {
       const rows = [];

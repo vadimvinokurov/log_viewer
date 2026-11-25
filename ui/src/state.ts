@@ -15,9 +15,20 @@ import type { HighlightItem } from "./highlights";
 export interface LoadInfo {
   format: string;
   lineCount: number;
+  /** Byte size of the backing file (UI file slot: "name · size"). */
+  sizeBytes: number;
   categories: { path: string; count: number }[];
   levels: { level: string; count: number }[];
   loadMs: number;
+}
+
+/** Humanized byte size for the file slot ("name · size" per the UI design):
+ *  decimal units, whole KB/MB like the mock «842 MB», one decimal in GB. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1000) return `${bytes} B`;
+  if (bytes < 1_000_000) return `${Math.round(bytes / 1000)} KB`;
+  if (bytes < 1_000_000_000) return `${Math.round(bytes / 1_000_000)} MB`;
+  return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
 }
 
 /** One level entry of the visibility snapshot (camelCase, §7/§11). */

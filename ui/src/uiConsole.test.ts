@@ -56,7 +56,7 @@ function visibilityStub(options: { failMutation?: string } = {}): RawIpc {
     ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
-      format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+      format: "plain", line_count: 12, size_bytes: 883, categories: [], levels: [], load_ms: 1,
     }),
     getRows: async () => [],
     addFilter: async (mode: string, pattern: string) => {
@@ -184,7 +184,7 @@ function sequenceStub(options: { failMutation?: string } = {}): SequenceStub {
     ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
-      format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
+      format: "plain", line_count: LINE_COUNT, size_bytes: 883, categories: [], levels: [], load_ms: 1,
     }),
     getRows: async (offset: number, limit: number): Promise<RowDto[]> => {
       getRowsCalls++;
@@ -474,7 +474,7 @@ function categoryStub() {
     ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
-      format: "plain", line_count: 100,
+      format: "plain", line_count: 100, size_bytes: 883,
       categories: CATEGORIES, levels: [], load_ms: 1,
     }),
     getRows: async () => [],
@@ -688,7 +688,7 @@ function searchStub(): SearchStub {
     ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
-      format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
+      format: "plain", line_count: LINE_COUNT, size_bytes: 883, categories: [], levels: [], load_ms: 1,
     }),
     getRows: async (offset: number, limit: number): Promise<RowDto[]> => {
       const rows: RowDto[] = [];
@@ -1059,7 +1059,7 @@ function deferredSearchStub(): DeferredSearchStub {
     ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
-      format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
+      format: "plain", line_count: LINE_COUNT, size_bytes: 883, categories: [], levels: [], load_ms: 1,
     }),
     getRows: async () => [],
     addFilter: async () => null,
@@ -1254,7 +1254,7 @@ function categoryBurstStub(): BurstStub {
     ...highlightNoops(),
     pickFile: async () => null,
     loadFile: async () => ({
-      format: "plain", line_count: 10,
+      format: "plain", line_count: 10, size_bytes: 883,
       categories: [{ path: "a", count: 5 }, { path: "b", count: 5 }],
       levels: [], load_ms: 1,
     }),
@@ -1394,7 +1394,7 @@ describe("pin selection actions (q1f.1, §12)", () => {
       ...highlightNoops(),
       pickFile: async () => null,
       loadFile: async () => ({
-        format: "plain", line_count: LINE_COUNT, categories: [], levels: [], load_ms: 1,
+        format: "plain", line_count: LINE_COUNT, size_bytes: 883, categories: [], levels: [], load_ms: 1,
       }),
       getRows: async (offset: number, limit: number): Promise<RowDto[]> => {
         const rows: RowDto[] = [];
@@ -1683,7 +1683,7 @@ function loadStub(options: {
   return {
     pickFile: async () => null,
     loadFile: async () => ({
-      format: "plain", line_count: 42,
+      format: "plain", line_count: 42, size_bytes: 883,
       categories: [{ path: "app/db", count: 42 }], levels: [], load_ms: 1,
     }),
     getRows: async () => [],
@@ -1828,7 +1828,7 @@ describe("console command line (bead 7rf.1, §13/§13.1)", () => {
       historyGetCalls: () => getCalls,
       pickFile: async () => null,
       loadFile: async () => ({
-        format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+        format: "plain", line_count: 12, size_bytes: 883, categories: [], levels: [], load_ms: 1,
       }),
       getRows: async () => [],
       addFilter: async (mode: string, pattern: string) => {
@@ -2057,7 +2057,7 @@ describe("persistent command history (bead 7rf.2, §13.2)", () => {
     return {
       pickFile: async () => null,
       loadFile: async () => ({
-        format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+        format: "plain", line_count: 12, size_bytes: 883, categories: [], levels: [], load_ms: 1,
       }),
       getRows: async () => [],
       addFilter: async (mode: string, pattern: string) => {
@@ -2211,7 +2211,7 @@ describe("console command line live-round (bead 7rf.1, §13.1 branches + error l
       addFilterCalls: () => added,
       pickFile: async () => null,
       loadFile: async () => ({
-        format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+        format: "plain", line_count: 12, size_bytes: 883, categories: [], levels: [], load_ms: 1,
       }),
       getRows: async () => [],
       addFilter: async (mode: string, pattern: string) => {
@@ -2322,7 +2322,7 @@ describe("last open dir persistence (bead vk9.2, §2/§15)", () => {
       loadFile: async () => {
         if (options.failLoad) throw new Error("load failed");
         return {
-          format: "plain", line_count: 12, categories: [], levels: [], load_ms: 1,
+          format: "plain", line_count: 12, size_bytes: 883, categories: [], levels: [], load_ms: 1,
         };
       },
       getRows: async () => [],

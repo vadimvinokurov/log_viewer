@@ -30,6 +30,8 @@ pub struct FileModel {
   categories: BTreeMap<String, u64>,
   /// Row count per level, in LEVELS order.
   levels: [u64; 6],
+  /// Byte size of the backing file (UI file slot: "name · size").
+  size: u64,
 }
 
 pub struct LoadStats {
@@ -42,6 +44,7 @@ impl FileModel {
     let t0 = Instant::now();
     let scanner = Scanner::open(path)?;
     let format = scanner.format();
+    let size = scanner.size();
     let max = scanner.line_count();
     let rows: Vec<Row> = (1..=max)
       .map(|i| crate::parser::parse(format, line_no(i), scanner.raw_line(i)))
@@ -58,7 +61,7 @@ impl FileModel {
       levels[level_index(row.level)] += 1;
     }
     Ok((
-      FileModel { format, rows, categories, levels },
+      FileModel { format, rows, categories, levels, size },
       LoadStats { elapsed: t0.elapsed() },
     ))
   }
@@ -69,6 +72,11 @@ impl FileModel {
 
   pub fn line_count(&self) -> u64 {
     self.rows.len() as u64
+  }
+
+  /// Byte size of the backing file (UI file slot: "name · size").
+  pub fn size(&self) -> u64 {
+    self.size
   }
 
   pub fn row(&self, i: usize) -> Option<&Row> {
@@ -114,6 +122,16 @@ mod tests {
     let path = std::env::temp_dir().join(name);
     std::fs::write(&path, data).unwrap();
     path
+  }
+
+  #[test]
+  fn size_is_the_file_byte_length() {
+    let data = b"2024-01-01T10:00:00.000 app/main LOG_MSG a\n2024-01-01T10:00:01.000 app/main LOG_MSG b\n";
+    let path = temp_file("lv_ws_size.log", data);
+    let (model, _) = FileModel::load_path(&path).unwrap();
+    // Mock contract (UI design): the file slot shows "name · 842 MB" — the
+    // byte size travels from the load, not a re-read of the path.
+    assert_eq!(model.size(), data.len() as u64);
   }
 
   #[test]
