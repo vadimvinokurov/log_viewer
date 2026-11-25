@@ -39,8 +39,24 @@ jobs:
       # captured by this project's mac Chrome; linux fonts differ), so the
       # golden gate runs in the macOS build job, not here.
 
+  goldens:
+    # Visual goldens are platform-render-dependent: the golden PNGs were
+    # captured by this project's mac Chrome, so the golden gate runs on the
+    # same platform (linux fonts differ; windows is not the capture platform).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix ui
+      - name: ui visual goldens
+        run: |
+          npm --prefix ui run build
+          npm --prefix ui run e2e
+
   build:
-    needs: gate
+    needs: [gate, goldens]
     strategy:
       fail-fast: false
       matrix:
@@ -67,10 +83,6 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --prefix ui
-      - name: ui visual goldens (same platform the goldens were captured on)
-        run: |
-          npm --prefix ui run build
-          npm --prefix ui run e2e
       - name: tag must equal the tauri.conf.json version
         run: |
           tag="${{ github.ref_name }}"
