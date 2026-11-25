@@ -16,7 +16,7 @@ export const commands = {
 	 *  A window of the VISIBLE row sequence (§4, §7): `offset` indexes the rows
 	 *  passing the combined §7 rule, not raw line numbers. The visible-line list
 	 *  is cached in the shell state and invalidated on every visibility mutation
-	 *  and on file load (contract docs/notes/visibility-bridge.md). Returns []
+	 *  and on file load (fixed RAW IPC contract). Returns []
 	 *  while no file is loaded.
 	 */
 	getRows: (offset: number, limit: number, options?: InvokeOptions) => __TAURI_INVOKE<RowDto_Serialize[]>("get_rows", { offset, limit }, options),
@@ -96,7 +96,7 @@ export const commands = {
 	setCategoriesBulk: (disable: string[], enable: string[], options?: InvokeOptions) => __TAURI_INVOKE<null>("set_categories_bulk", { disable, enable }, options),
 	/**
 	 *  The single read command of the visibility bridge: shape in
-	 *  docs/notes/visibility-bridge.md (RAW; normalizes only in ipcClient.ts).
+	 *  RAW IPC shapes; normalizes only in ipcClient.ts.
 	 */
 	visibilitySnapshot: (options?: InvokeOptions) => __TAURI_INVOKE<VisibilitySnapshotDto_Serialize>("visibility_snapshot", undefined, options),
 	/**

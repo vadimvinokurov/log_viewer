@@ -8,7 +8,7 @@ import { type HighlightItem } from "./highlights";
 import type { LoadInfo, SearchMatches, VisibilityState } from "./state";
 
 /** Raw IPC contracts, exactly as the backend returns them
- *  (docs/notes/visibility-bridge.md). */
+ *  (fixed RAW IPC contracts). */
 export interface RawIpc {
   /** Native file-open dialog; null when the user cancels (§2). */
   pickFile(lastDir: string): Promise<string | null>;

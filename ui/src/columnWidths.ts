@@ -1,5 +1,4 @@
-//! Pure column-widths logic for the resizable table (§4; design
-//! docs/superpowers/specs/2026-11-25-column-resize-design.md). No viewport,
+//! Pure column-widths logic for the resizable table (§4). No viewport,
 //! DOM or React imports: the reducer (state.ts), the console (uiConsole.ts)
 //! and the table (LogTable.tsx) all consume this module.
 

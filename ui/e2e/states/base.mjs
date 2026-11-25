@@ -3,7 +3,7 @@
 // Deterministic synthetic data only (never test_logs contents).
 
 // The IPC stub mirrors the RAW shapes of the visibility bridge contract
-// (docs/notes/visibility-bridge.md): snake_case commands/payloads, an
+// (fixed RAW IPC contract): snake_case commands/payloads, an
 // in-memory visibility model, and get_rows serving the visible sequence.
 export const STUB = `(function () {
   const LEVEL_CYCLE = ["msg", "error", "warning", "debug", "trace", "critical", "msg", "msg"];
@@ -36,7 +36,7 @@ export const STUB = `(function () {
   const passesFilters = (n) => filters.every((f) => filterMatches(f, n));
   // §12: pins are rules (p/pr/ps/pn N); pinned rows stay visible overriding
   // filters/levels/categories (§7). Broad pins match the raw line text;
-  // simple pins are the Rust-side engine - not approximated (q1f1-design).
+  // simple pins are the Rust-side engine - not approximated.
   const rawOf = (n) => "raw " + n;
   const pinCovers = (n) =>
     pins.some((p) => {
@@ -161,7 +161,7 @@ export const STUB = `(function () {
     // §13 rmf (bead 7rf.1): the wholesale clear for the :rmf command.
     async clearFilters() { filters.length = 0; return null; },
     // §9 highlights (exx.2): the rotation counter continues across removals
-    // (core behavior, bead exx2-design); an unknown mode throws like the
+    // (core behavior, bead exx.2); an unknown mode throws like the
     // backend Err; a non-numeric lineno keeps a never-matching rule slot.
     async addHighlight(mode, pattern) {
       const KNOWN = ["plain", "regex", "simple", "lineno"];

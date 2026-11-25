@@ -148,7 +148,7 @@ pub fn to_row_dto(row: &logviewer_core::parser::Row) -> RowDto {
 }
 
 // ------------------------------------------------------- visibility bridge
-// Contract: docs/notes/visibility-bridge.md (RAW shapes; normalization to UI
+// Contract: RAW IPC shapes (fixed in bead log_viewer2-dsq.3; normalization to UI
 // shapes lives only in ui/src/ipcClient.ts).
 
 /// One text criterion of the snapshot (filter or pin). `id` = index in the
@@ -1054,7 +1054,7 @@ pub(crate) fn load_file_inner(
 /// A window of the VISIBLE row sequence (§4, §7): `offset` indexes the rows
 /// passing the combined §7 rule, not raw line numbers. The visible-line list
 /// is cached in the shell state and invalidated on every visibility mutation
-/// and on file load (contract docs/notes/visibility-bridge.md). Returns []
+/// and on file load (fixed RAW IPC contract). Returns []
 /// while no file is loaded.
 #[tauri::command]
 #[specta::specta]
@@ -1182,7 +1182,7 @@ pub async fn set_categories_bulk(
 }
 
 /// The single read command of the visibility bridge: shape in
-/// docs/notes/visibility-bridge.md (RAW; normalizes only in ipcClient.ts).
+/// RAW IPC shapes; normalizes only in ipcClient.ts.
 #[tauri::command]
 #[specta::specta]
 pub async fn visibility_snapshot(
@@ -1367,7 +1367,7 @@ fn history_roundtrip_and_persistence() {
   assert_eq!(guard.settings().history_size, 100);
 }
 // ---------------------------------------------------------- visibility
-  // bridge tests (docs/notes/visibility-bridge.md). They drive the inner
+  // bridge tests. They drive the inner
   // state functions directly: tauri::State cannot be built outside an app.
 
   /// The mixed log, format A (KSIVA); 1-based lines:

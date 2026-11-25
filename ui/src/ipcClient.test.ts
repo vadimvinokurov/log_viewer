@@ -1,5 +1,5 @@
 //! ipcClient tests (dsq.3): a stub mirroring the RAW IPC shapes
-//! (docs/notes/visibility-bridge.md) drives the adapter; the UI must see
+//! (fixed RAW IPC contract) drives the adapter; the UI must see
 //! normalized camelCase shapes and nothing else (single normalization point).
 
 import { afterEach, describe, expect, it } from "vitest";

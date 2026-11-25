@@ -40,7 +40,7 @@ describe("exactPinIdsCovering (menu Unpin targets)", () => {
     expect(exactPinIdsCovering(PINS, [9])).toEqual([]); // pin 3 disabled
     expect(exactPinIdsCovering(PINS, [])).toEqual([]);
     // Broad pins never appear: the menu never removes a rule matching an
-    // unknown number of rows (q1f1-design).
+    // unknown number of rows.
     expect(exactPinIdsCovering([PINS[1] as PinItem], [7])).toEqual([]);
   });
 });

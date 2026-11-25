@@ -29,7 +29,7 @@ export interface SelectedRow {
   raw: string;
 }
 
-/** Menu availability result (q1f1-design, §4 interpretation): Pin is
+/** Menu availability result, §4 interpretation): Pin is
  *  available while at least one selected row is NOT pinned, Unpin when at
  *  least one IS; exactPinIds names the exact-row pins covering the
  *  selection (Unpin removes only those). */
@@ -51,7 +51,7 @@ function active(pins: readonly PinItem[]): PinItem[] {
  *    an invalid regex covers nothing (backend contract for patterns).
  *  - simple: NOT evaluated UI-side (the simple engine is Rust-side) - it
  *    neither pins a row for the menu nor enables Unpin (documented
- *    limitation, q1f1-design). */
+ *    limitation). */
 function pinCoversRow(pin: PinItem, selected: SelectedRow): boolean {
   if (pin.mode === "lineno") {
     return /^\d+$/.test(pin.pattern.trim()) && Number(pin.pattern.trim()) === selected.line;
@@ -93,7 +93,7 @@ export function exactPinIdsCovering(
   return [...ids];
 }
 
-/** §4 menu presence over the current selection (q1f1-design): evaluates the
+/** §4 menu presence over the current selection : evaluates the
  *  snapshot's pin list UI-side against the selected rows. */
 export function pinMenuState(
   pins: readonly PinItem[],

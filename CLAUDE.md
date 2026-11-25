@@ -25,7 +25,7 @@
    comments, commits, issues, etc. — in English. Exception: `docs/FUNCTIONAL_SPEC.html`
    stays Russian (see rule 2).
 
-7. **Token economy.** (Owner's feedback, 2026-11-24 — based on `docs/token-usage-report.html`; the coordinator pays the whole visible conversation every turn, so size of turns and of agent prompts is the main lever.)
+7. **Token economy.** (Owner's feedback, 2026-11-24 — based on `docs/report-01-token-usage.html`; the coordinator pays the whole visible conversation every turn, so size of turns and of agent prompts is the main lever.)
    - **Short turns, milestones as checkpoints.** End a turn at a committed milestone instead of continuing through several milestones in one turn; long turns grow a replay tail that is paid again on every turn. Commit per milestone (with the owner's approval) also makes usage-limit interruptions harmless.
    - **Agent prompts point at a shared brief.** Write `docs/notes/agent-brief.md` once (per-layer rules, file-partition conventions, style, gates, known traps — e.g. the case-insensitive import trap) and keep it current; agent prompts reference it + the one bead id instead of restating spec semantics inline (they were paid 9+ times across agents).
    - **Never debug by shell-escaping into files.** A second failed `sed`/heredoc edit → stop and rewrite the whole file (or the affected block) with the Write/Edit tools; each extra quoting round-trip costs a full read+edit cycle (the `driver.rs` fight cost tens of thousands of tokens).

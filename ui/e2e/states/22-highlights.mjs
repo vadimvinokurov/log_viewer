@@ -1,4 +1,4 @@
-// exx.2 states: §9 highlights (docs/notes/exx2-design.md, goldens list).
+// exx.2 states: §9 highlights (exx.2 bead, goldens list).
 // Each state loads through the headless console against the base stub
 // (which now mirrors the RAW highlight commands + byte-offset spans) and
 // puts the panel on the Highlights tab where the tab participates.

@@ -1,5 +1,4 @@
-//! Pure widths logic for the resizable table columns (§4; design
-//! docs/superpowers/specs/2026-11-25-column-resize-design.md).
+//! Pure widths logic for the resizable table columns (§4).
 
 import { describe, expect, it } from "vitest";
 import {

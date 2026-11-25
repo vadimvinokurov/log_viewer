@@ -55,7 +55,7 @@ export interface VisibilityLevel {
 }
 
 /**
- * Normalized visibility snapshot (docs/notes/visibility-bridge.md contract;
+ * Normalized visibility snapshot (fixed RAW IPC contract;
  * normalization happens only in ipcClient.ts). Filters/pins reuse the
  * FiltersTab item shape so the panel renders straight from state.
  */
