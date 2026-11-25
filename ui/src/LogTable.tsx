@@ -9,7 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChunkPlanner, type RowDto } from "./table";
+import {
+  ChunkPlanner,
+  type RowDto,
+  type StampedRow,
+} from "./table";
 import { missingRanges, messageCopyText, rawCopyText } from "./selection";
 import type { SelectionState } from "./selection";
 import type { PinItem } from "./pins";
@@ -88,7 +92,11 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
 ) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const plannerRef = useRef(new ChunkPlanner());
-  const [rows, setRows] = useState<Map<number, RowDto>>(new Map());
+  /** The rows cache, visibility-stamped (design 2026-11-25-flicker): every
+   *  write stamps with the current visibility epoch; painted reads show any
+   *  epoch's entry (stale-while-revalidate), current-truth reads go through
+   *  ChunkPlanner.currentStamped. */
+  const [rows, setRows] = useState<Map<number, StampedRow>>(new Map());
   /** §9 (exx.2): the message spans per visible index, kept beside the row
    *  cache (the rows DTO is the table.ts shape, which is outside this
    *  task's file list — the spans travel through this parallel map and are
@@ -97,7 +105,7 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   const inFlightRef = useRef(false);
   // Live mirror of the rows cache for callbacks that must not re-create
   // across renders (the line probes below, §4 qt7.3).
-  const rowsRef = useRef<Map<number, RowDto>>(rows);
+  const rowsRef = useRef<Map<number, StampedRow>>(rows);
   useLayoutEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
@@ -117,8 +125,16 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   const pivotLineRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     const pivot = selection.anchor;
+    // Gated read (stale entries read as line null); the cache is emptied at
+    // every epoch bump today, so the gate matters only for refill races.
     pivotLineRef.current =
-      pivot === null ? null : rowsRef.current.get(pivot)?.line_no ?? null;
+      pivot === null
+        ? null
+        : ChunkPlanner.currentStamped(
+              rowsRef.current,
+              pivot,
+              epochsRef.current.visibility,
+            )?.row.line_no ?? null;
   }, [selection]);
   // Current epoch pair in a ref: the in-flight fetch loop cannot read the
   // effect closure for the freshest value once a newer effect has re-run.
@@ -208,13 +224,19 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     inFlightRef.current = false;
   }, [visibilityEpoch]);
 
-  /** Resolves a visible row's 1-based line_no by index: from the rows cache
-   *  or one get_rows(i, 1) probe; probes land in the rows cache (§4 qt7.3 -
-   *  they are valid for the current epoch, which cleared the cache). */
+  /** Resolves a visible row's 1-based line_no by index: a current-truth
+   *  (epoch-gated) cache read first, else one get_rows(i, 1) probe; probes
+   *  land in the rows cache stamped with the epoch at call time (§4 qt7.3). */
   const lineAt = useCallback(async (index: number): Promise<number | null> => {
-    const cached = rowsRef.current.get(index);
+    // Gated read: a stale-epoch entry is not current truth; the row is
+    // probed again (the probe result re-stamps it).
+    const cached = ChunkPlanner.currentStamped(
+      rowsRef.current,
+      index,
+      epochsRef.current.visibility,
+    );
     if (cached) {
-      return cached.line_no;
+      return cached.row.line_no;
     }
     const epochAtCall = { ...epochsRef.current };
     try {
@@ -225,13 +247,19 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
       }
       const dto = ChunkPlanner.toRow(raw);
       // Cache only while the epoch still matches the call's: a probe raced
-      // across an epoch bump resolved against the old sequence.
+      // across an epoch bump resolved against the old sequence. The probe's
+      // stamp is the epoch AT CALL TIME.
       if (
         epochAtCall.file === epochsRef.current.file &&
         epochAtCall.visibility === epochsRef.current.visibility
       ) {
         setRows((prev) =>
-          prev.has(index) ? prev : new Map(prev).set(index, dto),
+          prev.has(index)
+            ? prev
+            : new Map(prev).set(index, {
+                row: dto,
+                epoch: epochAtCall.visibility,
+              }),
         );
         // The probe's spans travel with it (exx.2; already JS indexes from
         // the ipc adapter's normalization).
@@ -298,13 +326,22 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     const pivot =
       pivotLineRef.current !== null &&
       selection.anchor !== null &&
-      rowsRef.current.get(selection.anchor)?.line_no === pivotLineRef.current
+      (ChunkPlanner.currentStamped(
+        rowsRef.current,
+        selection.anchor,
+        epochsRef.current.visibility,
+      )?.row.line_no ?? null) === pivotLineRef.current
         ? { index: selection.anchor, line: pivotLineRef.current }
         : null;
     anchorRef.current = anchorForChange(
       {
         index: first.index,
-        line: rowsRef.current.get(first.index)?.line_no ?? null,
+        line:
+          ChunkPlanner.currentStamped(
+            rowsRef.current,
+            first.index,
+            epochsRef.current.visibility,
+          )?.row.line_no ?? null,
       },
       pivot,
       viewport.scrollTop,
@@ -334,13 +371,20 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     return text;
   };
 
-  /** Visible rows by index for a set of indexes: the cache plus the missing
-   *  ranges fetched in one get_rows call each (shared by copy and the §4
-   *  menu's pin evaluation). */
+  /** Visible rows by index for a set of indexes (copy, §4 menu pin
+   *  evaluation): the cache's CURRENT-TRUTH entries (epoch-gated — a stale
+   *  entry is treated as missing, the fetched rows are fresh) plus the
+   *  missing ranges fetched in one get_rows call each. */
   const resolveRows = useCallback(
     async (indexes: number[]): Promise<Map<number, RowDto>> => {
-      const merged = new Map(rows);
-      for (const range of missingRanges(indexes, rowCount, new Set(rows.keys()))) {
+      const currentEpoch = epochsRef.current.visibility;
+      const merged = new Map<number, RowDto>();
+      for (const [index, entry] of rows.entries()) {
+        if (entry.epoch === currentEpoch) {
+          merged.set(index, entry.row);
+        }
+      }
+      for (const range of missingRanges(indexes, rowCount, new Set(merged.keys()))) {
         const chunk = await ipc().getRows(range.start, range.end - range.start);
         ChunkPlanner.fromChunk(chunk, range.start).forEach((row, idx) =>
           merged.set(idx, row),
@@ -466,9 +510,12 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
             }
             setRows((prev) => {
               const next = new Map(prev);
-              ChunkPlanner.fromChunk(chunk, range.start).forEach((row, idx) =>
-                next.set(idx, row),
-              );
+              // Fresh chunk under the current epoch: restamped entries.
+              ChunkPlanner.fromChunkStamped(
+                chunk,
+                range.start,
+                epochsRef.current.visibility,
+              ).forEach((entry, idx) => next.set(idx, entry));
               return next;
             });
             // The chunk's spans land beside the rows (exx.2): the adapter
@@ -694,7 +741,9 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
           )}
         </div>
         {virtualItems.map((vi) => {
-          const row = rows.get(vi.index);
+          // Painted read, deliberately UNGATED (stale-while-revalidate): the
+          // rendered row shows any epoch's entry until the fresh one lands.
+          const row = rows.get(vi.index)?.row;
           const selected = selection.selected.includes(vi.index);
           return (
             <div
