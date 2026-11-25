@@ -113,6 +113,10 @@ Claim tasks in the main session before spawning agents.
     `light-empty`, `light-loaded`, `light-panel-categories` — the harness now
     supports a per-state `colorScheme` override and the light palette gets its
     own rendered acceptance (the runner default stays dark).
+  - Addition 2026-11-25 (owner call on top of fe6, mock 97b7ed7): log rows
+    tightened 21px -> 18px; the single source is `ROW_HEIGHT_PX` (pinned by a
+    test, viewportAnchoring.test.ts) and the CSS `.row`/`.table-header` height
+    agree with it. All goldens re-baselined again.
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

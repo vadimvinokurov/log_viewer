@@ -6,7 +6,8 @@
 //! 1-row probes (get_rows(i, 1)) without new IPC shapes (contract dsq.3).
 //! Scroll-to-row centering (§8) reuses resolveLineIndex + anchorScrollTop.
 
-export const ROW_HEIGHT_PX = 23; // glyph height + 6 px (§4); lives here so
+export const ROW_HEIGHT_PX = 18; // 13px glyph + 3px breathing (mock 97b7ed7);
+// lives here so the virtualizer offsets and the CSS `.row` height agree —
 // this pure module may compute scroll offsets without importing the table.
 
 /** Resolves the 1-based line_no of visible row i (0-based), or null when the

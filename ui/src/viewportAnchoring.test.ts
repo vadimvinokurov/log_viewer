@@ -12,6 +12,14 @@ import {
   type LineAt,
 } from "./viewportAnchoring";
 
+/** The design pins the row height (mock 97b7ed7: 13px mono + 3px); the
+ *  virtualized offsets and the CSS `.row` heights must be one number. */
+describe("ROW_HEIGHT_PX", () => {
+  it("matches the 2026-11-25 mock decision: 18px rows", () => {
+    expect(ROW_HEIGHT_PX).toBe(18);
+  });
+});
+
 /** Visible line sequence 10, 20, 30 ... at one row per index. */
 function lineSequence(step: number): LineAt {
   return async (i: number) => (i < 0 ? null : (i + 1) * step);

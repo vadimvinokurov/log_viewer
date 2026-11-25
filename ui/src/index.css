@@ -241,9 +241,10 @@ body {
 .row {
   display: grid;
   align-items: center;
-  /* 21 px = the system-mono glyph height + 6, v1 parity (mock e5bf7e3). */
-  line-height: 21px;
-  height: 21px;
+  /* 18px rows: the ROW_HEIGHT_PX constant (viewportAnchoring.ts) — 13px
+     mono + 3px breathing, mock 97b7ed7. One number owns both. */
+  line-height: 18px;
+  height: 18px;
   white-space: pre;
 }
 
