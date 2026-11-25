@@ -416,21 +416,36 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   }, [selection, copy]);
 
   // Fetch chunks when the visible window moves (and after a chunk resolves).
-  // The loop is epoch-aware: a file or visibility epoch bump during an
-  // in-flight get_rows invalidates that chunk (it indexes the OLD sequence),
-  // so the result is discarded - otherwise stale rows pollute the fresh
-  // lines cache and the anchor's binary-search probes resolve off them.
+  // The loop is epoch-aware: an epoch bump during an in-flight get_rows
+  // invalidates that chunk (it indexes the OLD sequence), so the result is
+  // dropped - stale rows would otherwise pollute the fresh lines cache and
+  // the anchor's binary-search probes would resolve off them. All inputs
+  // (range, row count, epochs) read LIVE from refs and the virtualizer, not
+  // from an effect closure: an anchor-restore scroll jump mid-batch must not
+  // leave the new region unfetched (owner bug 2026-11-25: the in-flight
+  // batch's continuation planned the closure's stale range and the fresh
+  // viewport stayed blank until any scroll).
+  const rowCountRef = useRef(rowCount);
   useLayoutEffect(() => {
-    if (rowCount === 0) {
-      return;
-    }
-    const loadNext = () => {
-      if (!virtualItems.length || inFlightRef.current) {
+    rowCountRef.current = rowCount;
+  }, [rowCount]);
+  // A plan request that collided with an in-flight batch; the batch's
+  // finally consumes it (pending is always set WITH a live batch, so the
+  // retry always has a consumer).
+  const replanPendingRef = useRef(false);
+  useLayoutEffect(() => {
+    const planAndLoad = () => {
+      const items = virtualizer.getVirtualItems();
+      if (!items.length) {
         return;
       }
-      const first = virtualItems[0].index;
-      const last = virtualItems[virtualItems.length - 1].index;
-      const ranges = plannerRef.current.plan(first, last, rowCount);
+      if (inFlightRef.current) {
+        replanPendingRef.current = true;
+        return;
+      }
+      const first = items[0].index;
+      const last = items[items.length - 1].index;
+      const ranges = plannerRef.current.plan(first, last, rowCountRef.current);
       if (!ranges.length) {
         return;
       }
@@ -438,14 +453,15 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
       void (async () => {
         try {
           for (const range of ranges) {
+            const epochAtCall = { ...epochsRef.current };
             const chunk = await ipc().getRows(range.start, range.end - range.start);
+            // The epoch moved while this chunk was in flight: its indexes
+            // no longer address the current sequence. Drop it (the fresh
+            // epoch's effects re-plan their own chunks).
             if (
-              epochsRef.current.file !== fileEpoch ||
-              epochsRef.current.visibility !== visibilityEpoch
+              epochAtCall.file !== epochsRef.current.file ||
+              epochAtCall.visibility !== epochsRef.current.visibility
             ) {
-              // The epoch moved while this chunk was in flight: its indexes
-              // no longer address the current sequence. Drop it (the fresh
-              // epoch's fetch effect is already planning its own chunks).
               break;
             }
             setRows((prev) => {
@@ -467,19 +483,20 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
             plannerRef.current.markLoaded(range.start);
           }
         } catch {
+          // A failed chunk must not keep its planner inFlight slot forever:
+          // unmark so the next plan retries it; loaded ranges stay loaded.
           ranges.forEach((r) => plannerRef.current.markFailed(r.start));
         } finally {
           inFlightRef.current = false;
-          const stale =
-            epochsRef.current.file !== fileEpoch ||
-            epochsRef.current.visibility !== visibilityEpoch;
-          if (!stale) {
-            loadNext();
-          }
+          // Every batch end re-plans the LIVE range; a collision's pending
+          // request rides along (the retry is epoch-safe: the fetch validity
+          // is decided per chunk by the epochAtCall comparison above).
+          replanPendingRef.current = false;
+          planAndLoad();
         }
       })();
     };
-    loadNext();
+    planAndLoad();
     // Epochs are deps too: an equal-count file or visibility change resets
     // the planner above but keeps rowCount/virtualItems, so the refetch
     // would otherwise never trigger.
