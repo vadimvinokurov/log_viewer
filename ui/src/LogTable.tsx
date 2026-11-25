@@ -141,12 +141,15 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
 
   /** Drag one header border (design 2026-11-25-column-resize): listeners
    *  live on the WINDOW so a mouseup outside the webview still ends the
-   *  drag; mouseup commits the widths (fire-and-forget persist). */
+   *  drag; mouseup commits the widths (fire-and-forget persist). The drag
+   *  anchors on the VISIBLE (effective) width — review finding 2: for
+   *  Message, anchoring on the hidden user width builds a dead zone the
+   *  handle must grow out of before it visibly moves again. */
   const startResize = (key: ColumnKey, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const start = columnWidths[key];
+    const start = effective[key];
     const move = (ev: MouseEvent) =>
       onColumnSet(key, start + (ev.clientX - startX));
     const up = () => {

@@ -91,4 +91,57 @@ export default [
       await page.waitForTimeout(150);
     },
   },
+  {
+    name: "column-dragged",
+    async setup(page) {
+      await loadColumn(page);
+      // Review Focus 1, pinned for real: a genuine mouse drag on a header
+      // resizer must live-resize and stop when the button releases. The
+      // anchor is the VISIBLE (effective) handle — review finding 2: the
+      // Message dead-zone from anchoring on the hidden user width.
+      const start = await page.evaluate(() => {
+        const r = document.querySelector('[data-col-resizer="category"]').getBoundingClientRect();
+        return { x: Math.round(r.left) + 5, y: Math.round(r.top) + 10 };
+      });
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      for (let i = 1; i <= 6; i++) await page.mouse.move(start.x + i * 10, start.y);
+      await page.mouse.up();
+      await page.waitForFunction(
+        () => window.__headless.state().columnWidths.category === 210,
+      );
+      await page.waitForFunction(() => {
+        const v = document.querySelector(".table-scroll");
+        return v && v.scrollWidth <= v.clientWidth;
+      });
+      // The Message handle: parked below the remainder (user width 30),
+      // then dragged RIGHT from its visible position. The new width must
+      // exceed the remainder and open the horizontal overflow — anchoring
+      // on the hidden user width would make this a no-op. 1180 = the
+      // table viewport beside the 220-px panel; 1180 - 370 = 810 + 40.
+      await page.evaluate(() => window.__headless.setColumnWidth("message", 30));
+      const msg = await page.evaluate(() => {
+        const r = document.querySelector('[data-col-resizer="message"]').getBoundingClientRect();
+        return { x: Math.round(r.left) + 5, y: Math.round(r.top) + 10 };
+      });
+      await page.mouse.move(msg.x, msg.y);
+      await page.mouse.down();
+      for (let i = 1; i <= 4; i++) await page.mouse.move(msg.x + i * 10, msg.y);
+      await page.mouse.up();
+      await page.waitForFunction(() => {
+        const w = window.__headless.state().columnWidths;
+        const v = document.querySelector(".table-scroll");
+        return w.message === 850 && v && v.scrollWidth > v.clientWidth;
+      });
+      // Review Focus 1: mouseup ends the drag — widths freeze without a
+      // button down, and the release committed the widths.
+      await page.waitForFunction(
+        () =>
+          window.__columnCalls.length >= 1 &&
+          JSON.stringify(window.__columnCalls[window.__columnCalls.length - 1]) ===
+            JSON.stringify([50, 110, 210, 850]),
+      );
+      await page.waitForTimeout(150);
+    },
+  },
 ];

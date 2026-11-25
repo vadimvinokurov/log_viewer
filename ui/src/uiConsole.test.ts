@@ -2750,4 +2750,28 @@ describe("column-widths persistence (design 2026-11-25-column-resize)", () => {
     expect(() => console_.commitColumnWidths()).not.toThrow();
     await new Promise((r) => setTimeout(r, 5));
   });
+
+  // Review findings 1: the reset must persist ("save at the end of a drag
+  // / on reset", design 2026-11-25-column-resize).
+  it("a reset persists the reset widths (review finding 1)", async () => {
+    const stub = columnWidthsStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("log.txt"); // flush the construction's read attempt
+    console_.setColumnWidth("category", 250);
+    console_.commitColumnWidths();
+    await vi.waitFor(() => expect(stub.columnWidthsCalls()).toEqual([[50, 110, 250, 600]]));
+    console_.resetColumnWidth("category");
+    await vi.waitFor(() =>
+      expect(stub.columnWidthsCalls()).toEqual([[50, 110, 250, 600], [50, 110, 150, 600]]),
+    );
+  });
+
+  it("an unknown-key reset still commits nothing (review finding 1, boundary)", async () => {
+    const stub = columnWidthsStub();
+    const { console_ } = await freshConsole(stub);
+    await console_.load("log.txt");
+    console_.resetColumnWidth("nope");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(stub.columnWidthsCalls()).toEqual([]);
+  });
 });

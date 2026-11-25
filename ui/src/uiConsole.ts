@@ -965,14 +965,17 @@ class UiConsole {
     return this.getSnapshot();
   };
 
-  /** Double-click on the border: the key returns to its §4 default. */
+  /** Double-click on the border: the key returns to its §4 default — and
+   *  the RESET persists (design: "save at the end of a drag / on reset",
+   *  review finding 1: a memory-only reset silently rolled back on the
+   *  next start). Unknown keys change nothing and commit nothing. */
   resetColumnWidth = (key: string): ConsoleSnapshot => {
     const known = COLUMN_KEYS.find((candidate) => candidate === key);
     if (!known) {
       return this.getSnapshot();
     }
     this.dispatch({ kind: "column-reset", key: known as ColumnKey });
-    return this.getSnapshot();
+    return this.commitColumnWidths();
   };
 
   /** Drag end: the user widths persist fire-and-forget (best-effort, like
