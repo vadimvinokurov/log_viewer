@@ -201,6 +201,10 @@ class UiConsole {
   /** Auto-update slice (plan 2026-11-25); outside the reducer for the same
    *  reason as cmdline — updates.ts owns its pure transitions. */
   private update: UpdateState = initialUpdateState();
+  /** Monotonic probe token (final-review I-1): the constructor's auto probe
+   *  can outlive the check it raced; a stale promise's result — even a
+   *  failure — must never clobber a newer probe's state. */
+  private updateToken = 0;
 
   /** §13.2 (bead 7rf.2): the persistent history seeds the in-session
    *  cycle ONCE, at construction — fire-and-forget with catch, a failed
@@ -258,9 +262,13 @@ class UiConsole {
    *  when the startup probe hits an offline/404/transport error; MANUAL
    *  failures surface through the banner (Review Focus 3). */
   checkForUpdates = async (source: UpdateSource): Promise<ConsoleSnapshot> => {
+    const token = ++this.updateToken;
     this.setUpdate(reduceUpdate(this.update, { kind: "update-check-start", source }));
     try {
       const update = await updaterCommands().check();
+      if (token !== this.updateToken) {
+        return this.getSnapshot();
+      }
       this.setUpdate(
         reduceUpdate(
           this.update,
@@ -268,6 +276,9 @@ class UiConsole {
         ),
       );
     } catch (error) {
+      if (token !== this.updateToken) {
+        return this.getSnapshot();
+      }
       if (source === "manual") {
         this.setUpdate(
           reduceUpdate(this.update, {

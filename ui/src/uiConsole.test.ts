@@ -2558,3 +2558,64 @@ describe("update cmdline validation", () => {
     expect(resolveCommand(text, 10).ok).toBe(ok);
   });
 });
+
+describe("concurrent update checks (final review I-1): a stale probe never clobbers a live one", () => {
+  beforeEach(() => {
+    delete (window as unknown as Record<string, unknown>).__ipcStub;
+  });
+
+  /** Stub whose check() defers EVERY call; test code resolves calls FIFO:
+   *  settleAuto/settleManual drive the constructor probe and the manual call. */
+  function scriptedStub() {
+    const deferreds: Array<(v: unknown) => void> = [];
+    return {
+      calls: () => deferreds.length,
+      settleAuto: (payload: unknown) => deferreds[0]?.(payload),
+      settleManual: (payload: unknown) => deferreds[1]?.(payload),
+      check: async () => new Promise((resolve) => deferreds.push(resolve)),
+      downloadAndInstall: async () => undefined,
+      relaunch: async () => undefined,
+    };
+  }
+
+  async function fresh(stub: ReturnType<typeof scriptedStub>) {
+    const target = window as unknown as Record<string, unknown>;
+    target.__ipcStub = stub;
+    vi.resetModules();
+    const mod = await import("./uiConsole");
+    return { console_: mod.console_ as Console, stub };
+  }
+
+  it("scenario (a): stale auto null must not turn a manual check into uptodate", async () => {
+    const { console_, stub } = await fresh(scriptedStub());
+    const manual = console_.checkForUpdates("manual");
+    // re-arm happened (manual) while the auto probe is still deferred
+    expect(console_.getUpdate().phase).toBe("checking");
+    // the STALE auto probe resolves null (e.g. server hiccup)...
+    stub.settleAuto(null);
+    await new Promise((r) => setTimeout(r, 0));
+    // its answer must be dropped, not shown as "You're on the latest version."
+    expect(console_.getUpdate().phase).not.toBe("uptodate");
+    // the REAL manual result is offered later and must still apply
+    stub.settleManual({ version: "0.2.0", currentVersion: "0.1.0" });
+    await manual;
+    expect(console_.getUpdate()).toMatchObject({
+      phase: "available",
+      availableVersion: "0.2.0",
+    });
+  });
+
+  it("scenario (b): a stale auto failure must not erase an in-flight manual check", async () => {
+    const { console_, stub } = await fresh(scriptedStub());
+    const manual = console_.checkForUpdates("manual");
+    expect(console_.getUpdate().phase).toBe("checking");
+    // the stale auto probe FAILS
+    stub.settleAuto(new Error("boom"));
+    await new Promise((r) => setTimeout(r, 0));
+    // the manual check must still be live, not reset to a silent idle
+    expect(console_.getUpdate().phase).toBe("checking");
+    stub.settleManual({ version: "0.2.0", currentVersion: "0.1.0" });
+    await manual;
+    expect(console_.getUpdate().phase).toBe("available");
+  });
+});
