@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm --prefix ui run dev",
-    "beforeBuildCommand": "npm --prefix ui run build"
+    "beforeDevCommand": "npm run dev --prefix \"$(git rev-parse --show-toplevel)/ui\"",
+    "beforeBuildCommand": "npm run build --prefix \"$(git rev-parse --show-toplevel)/ui\""
   },
   "app": {
     "windows": [
