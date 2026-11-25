@@ -28,6 +28,7 @@ import {
   ROW_HEIGHT_PX,
   anchorForChange,
   anchorScrollTop,
+  anchorUnchanged,
   resolveLineIndex,
   type Anchor,
   type ViewportInfo,
@@ -99,12 +100,16 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   const [rows, setRows] = useState<Map<number, StampedRow>>(new Map());
   /** §9 (exx.2): the message spans per visible index, kept beside the row
    *  cache (the rows DTO is the table.ts shape, which is outside this
-   *  task's file list — the spans travel through this parallel map and are
-   *  reset with the rows at every epoch, exactly like the row cache). */
+   *  task's file list — the spans are overwritten per chunk/range together
+   *  with the rows, so a span entry and its row entry stay epoch-consistent
+   *  at every index). */
   const [spans, setSpans] = useState<Map<number, HighlightSpan[]>>(new Map());
   const inFlightRef = useRef(false);
   // Live mirror of the rows cache for callbacks that must not re-create
-  // across renders (the line probes below, §4 qt7.3).
+  // across renders (the line probes below, §4 qt7.3). The mirror tracks
+  // painted data of ANY epoch: entries survive epoch bumps (stale-while-
+  // revalidate, design 2026-11-25-flicker); current-truth readers gate via
+  // ChunkPlanner.currentStamped.
   const rowsRef = useRef<Map<number, StampedRow>>(rows);
   useLayoutEffect(() => {
     rowsRef.current = rows;
@@ -120,8 +125,8 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   const anchorRef = useRef<LiveAnchor | null>(null);
   // The pivot's 1-based line at selection time (§7 remap input): file line
   // numbers survive every visibility change, so this stays valid even while
-  // the rows cache is cleared and refilled mid-mutation — the capture reads
-  // the pivot line from here instead of a possibly-stale pivot INDEX.
+  // the rows cache refills mid-mutation — the capture reads the pivot line
+  // from here instead of a possibly-stale pivot INDEX.
   const pivotLineRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     const pivot = selection.anchor;
@@ -213,14 +218,15 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   }, [fileEpoch]);
 
   // Visibility change (§7): get_rows indexes the visible sequence, so the
-  // chunk cache and rows map refill; the anchor step below repositions the
+  // chunk cache is invalidated and the anchor step below repositions the
   // viewport. The signal is an epoch, not rowCount: equal-count changes must
-  // still refill.
+  // still refill. The maps are NOT wiped (design 2026-11-25-flicker):
+  // painted entries of the previous epoch keep the on-screen cells rendered
+  // while the fresh chunks load (stale-while-revalidate) — current-truth
+  // readers gate on the stamp, and each landed chunk overwrites exactly its
+  // index range with the new sequence's rows.
   useLayoutEffect(() => {
     plannerRef.current.reset();
-    rowsRef.current = new Map(); // mirror cleared with the state (see fileEpoch)
-    setRows(new Map());
-    setSpans(new Map());
     inFlightRef.current = false;
   }, [visibilityEpoch]);
 
@@ -253,13 +259,15 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
         epochAtCall.file === epochsRef.current.file &&
         epochAtCall.visibility === epochsRef.current.visibility
       ) {
+        // Stamp-aware overwrite (task-3 review finding): the fresh probe
+        // result ALWAYS installs, restamped with the call's epoch — a
+        // prev.has guard would leave a stale old-epoch entry in place
+        // forever (fresh result discarded, repeated re-fetch).
         setRows((prev) =>
-          prev.has(index)
-            ? prev
-            : new Map(prev).set(index, {
-                row: dto,
-                epoch: epochAtCall.visibility,
-              }),
+          new Map(prev).set(index, {
+            row: dto,
+            epoch: epochAtCall.visibility,
+          }),
         );
         // The probe's spans travel with it (exx.2; already JS indexes from
         // the ipc adapter's normalization).
@@ -285,6 +293,16 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
     }
     let cancelled = false;
     void (async () => {
+      // Skip-gate (design 2026-11-25-flicker): when the row at the captured
+      // anchor index still carries the anchor line, keeping scrollTop keeps
+      // the anchor row at its captured offset — no search, no probes beyond
+      // the one gate probe. An index past the new rowCount probes and gets
+      // null: the gate falls through to the full search below.
+      if (
+        anchorUnchanged(await lineAt(captured.index), captured.anchor.line)
+      ) {
+        return;
+      }
       const index = await resolveLineIndex(
         captured.anchor.line,
         rowCount,

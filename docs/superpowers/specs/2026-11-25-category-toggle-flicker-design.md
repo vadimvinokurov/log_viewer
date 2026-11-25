@@ -55,6 +55,12 @@ A visibility change (categories / filters / levels / pins / highlights — all s
 3. Anchor restore runs only when the anchor can actually move (visible composition / rowCount
    changed); when it runs, probes fetch windows (`get_rows(mid, 2K+1)`) instead of single rows to
    cut the sequential probe count.
+   *(Amendment, task 3, 2026-11-25: windowed probes superseded by the skip-gate
+   `anchorUnchanged(lineAt(captured.index), anchor.line)` — at most one probe instead of
+   ~log2(count) when the row at the captured index still carries the anchor line. Windowed
+   probing would complicate the shared `resolveLineIndex` search used by selection remap for
+   no further gain, since the gate already collapses the unchanged-composition case, which is
+   the owner's reported scenario, to a single probe.)*
 4. Level tint keeps deriving from painted row data, so it stays continuous through refill.
 
 ## Acceptance (headless-first, numbers not screenshots)

@@ -8,6 +8,7 @@ import {
   TABLE_HEADER_PX,
   anchorForChange,
   anchorScrollTop,
+  anchorUnchanged,
   captureAnchor,
   remapSelection,
   resolveLineIndex,
@@ -163,6 +164,25 @@ describe("anchorForChange (selection-anchored restore)", () => {
   it("an unknown top-row line with no usable pivot yields null (restore keeps scrollTop)", () => {
     const scrollTop = 100 * ROW_HEIGHT_PX - 300;
     expect(anchorForChange({ index: 100, line: null }, null, scrollTop, viewportPx)).toBeNull();
+  });
+});
+
+/** Task 3 (design 2026-11-25-flicker): the anchor-restore skip-gate —
+ *  when the row at the captured anchor index still carries the anchor line,
+ *  keeping scrollTop keeps the anchor row at its captured offset, so the
+ *  whole restore (and its ~log2(count) probe search) is skipped. */
+describe("anchorUnchanged (anchor-restore skip-gate)", () => {
+  it("true when the row at the captured index still carries the anchor line", () => {
+    expect(anchorUnchanged(105, 105)).toBe(true);
+  });
+
+  it("false when the line moved (composition changed at the anchor)", () => {
+    expect(anchorUnchanged(106, 105)).toBe(false);
+    expect(anchorUnchanged(104, 105)).toBe(false);
+  });
+
+  it("false when the line is unknown (null -> fall through to the full search)", () => {
+    expect(anchorUnchanged(null, 105)).toBe(false);
   });
 });
 

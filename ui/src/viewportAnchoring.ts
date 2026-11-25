@@ -81,11 +81,27 @@ export function anchorForChange(
 }
 
 /**
+ * The anchor-restore skip-gate (design 2026-11-25-flicker): true when the
+ * restore can be skipped entirely — the row at the captured anchor index
+ * still carries the anchor line, so keeping scrollTop keeps the anchor row
+ * at its captured offset (composition unchanged there). A null
+ * (row outside the sequence / not yet loaded) falls through to the full
+ * search: at most ONE probe replaces the previous ~log2(count) storm when
+ * nothing effectively moved.
+ */
+export function anchorUnchanged(
+  lineAtAnchorIndex: number | null,
+  anchorLine: number,
+): boolean {
+  return lineAtAnchorIndex === anchorLine;
+}
+
+/**
  * Binary search: the first 0-based visible index whose line_no >= `line`
  * (upper bound). The anchor row hidden by the change therefore lands on the
  * nearest still-visible line AFTER it ("nearest continuation"); only a line
  * beyond the last visible line resolves to null (the caller scrolls to the
- * bottom). Runs in ~log2(count) 1-row probes.
+ * bottom). Runs in ~log2(count) probes.
  */
 export async function resolveLineIndex(
   line: number,

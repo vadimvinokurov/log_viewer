@@ -1,10 +1,10 @@
-//! LogTable harness + baseline tests (design 2026-11-25-flicker, task 2).
-//! jsdom has no layout, so the harness feeds @tanstack/react-virtual what it
-//! reads: a ResizeObserver stub with manual notification (metrics do NOT flow
-//! without it — see task-2 report "adaptation") and defineProperty metrics on
-//! the .table-scroll element. IPC is mocked with deferred promises the tests
-//! resolve manually. The two tests pin CURRENT (pre-refactor) behavior; they
-//! run green before the stamped-cache refactor and must stay green after.
+//! LogTable harness + tests (design 2026-11-25-flicker). jsdom has no layout,
+//! so the harness feeds @tanstack/react-virtual what it reads: a ResizeObserver
+//! stub with manual notification (metrics do NOT flow without it — see task-2
+//! report "adaptation") and defineProperty metrics on the .table-scroll
+//! element. IPC is mocked with deferred promises the tests resolve manually.
+//! Task 2 landed the harness + two baseline pins; task 3 adds the visibility-
+//! epoch behavior tests (RED before the wipe removal, GREEN after).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
@@ -22,6 +22,8 @@ import type { SelectionState } from "./selection";
 interface PendingRequest {
   offset: number;
   limit: number;
+  /** Set by the test-side resolution helpers (settle helpers rely on it). */
+  resolved: boolean;
   resolve: (rows: RawRowDto[]) => void;
   reject: (error: unknown) => void;
 }
@@ -40,7 +42,13 @@ vi.mock("./ipcClient", () => ({
         resolveFn = res;
         rejectFn = rej;
       });
-      h.requests.push({ offset, limit, resolve: resolveFn, reject: rejectFn });
+      h.requests.push({
+        offset,
+        limit,
+        resolved: false,
+        resolve: resolveFn,
+        reject: rejectFn,
+      });
       return promise;
     },
   }),
@@ -48,7 +56,17 @@ vi.mock("./ipcClient", () => ({
 
 /** Test-side resolution of one recorded get_rows request. */
 function resolveRequest(request: PendingRequest, rows: RawRowDto[]): void {
+  request.resolved = true;
   request.resolve(rows);
+}
+
+/** First recorded request (the mount-time chunk fetch). */
+function firstRequest(): PendingRequest {
+  const request = h.requests[0];
+  if (!request) {
+    throw new Error("harness: no recorded request");
+  }
+  return request;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,26 +134,42 @@ const VIEWPORT_ROWS = 5;
 
 /** Renders the table, then stamps the .table-scroll element with the metrics
  *  the virtualizer reads (clientWidth/Height, scrollHeight, bounding rect)
- *  and fires the stubbed ResizeObservers so the item range is computed. */
-function mountTable(overrides?: {
+ *  and fires the stubbed ResizeObservers so the item range is computed.
+ *  `rerender` patches the epoch props (task-3 tests' driver). */
+interface TablePropsPatch {
   rowCount?: number;
+  fileEpoch?: number;
+  visibilityEpoch?: number;
   selection?: SelectionState;
-}): { ref: React.RefObject<LogTableHandle | null>; container: HTMLElement } {
+}
+
+function mountTable(overrides?: TablePropsPatch): {
+  ref: React.RefObject<LogTableHandle | null>;
+  container: HTMLElement;
+  rerender: (patch: TablePropsPatch) => void;
+} {
   const ref = createRef<LogTableHandle>();
-  const element = createElement(LogTable, {
+  const props = {
     rowCount: overrides?.rowCount ?? CHUNK_ROWS,
     fileEpoch: 1,
     visibilityEpoch: 1,
     selection: overrides?.selection ?? EMPTY_SELECTION,
-    pins: [],
-    columnWidths: DEFAULT_COLUMN_WIDTHS,
-    onColumnSet: vi.fn(),
-    onColumnCommit: vi.fn(),
-    onColumnReset: vi.fn(),
-    onRowClick: vi.fn(),
-    ref,
-  });
-  const rendered = render(element);
+  };
+  const tableElement = (p: typeof props) =>
+    createElement(LogTable, {
+      rowCount: p.rowCount,
+      fileEpoch: p.fileEpoch,
+      visibilityEpoch: p.visibilityEpoch,
+      selection: p.selection,
+      pins: [],
+      columnWidths: DEFAULT_COLUMN_WIDTHS,
+      onColumnSet: vi.fn(),
+      onColumnCommit: vi.fn(),
+      onColumnReset: vi.fn(),
+      onRowClick: vi.fn(),
+      ref,
+    });
+  const rendered = render(tableElement(props));
   const scroll = rendered.container.querySelector(".table-scroll");
   if (!(scroll instanceof HTMLElement)) {
     throw new Error("harness: .table-scroll not found");
@@ -172,7 +206,62 @@ function mountTable(overrides?: {
   act(() => {
     ResizeObserverStub.notifyAll();
   });
-  return { ref, container: rendered.container };
+  return {
+    ref,
+    container: rendered.container,
+    rerender: (patch: TablePropsPatch): void => {
+      Object.assign(props, patch);
+      rendered.rerender(tableElement(props));
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Settle helpers: deferred IPC + chained probes.
+// ---------------------------------------------------------------------------
+
+/** `.cell-line` texts of the painted rows, in paint order. */
+function cellLines(container: HTMLElement): string[] {
+  return Array.from(
+    container.querySelectorAll(".row .cell-line"),
+    (el) => el.textContent ?? "",
+  );
+}
+
+/** Settles the deferred requests while new ones appear (chained probes):
+ *  every unresolved request is answered with `lineFor`'s data —
+ *  index i (0-based visible index) -> 1-based line of the sequence the test
+ *  defines. Bounded passes; throws if requests never settle. */
+async function settleMatching(
+  lineFor: (index: number) => number,
+  matches: (r: PendingRequest) => boolean,
+): Promise<void> {
+  for (let pass = 0; pass < 100; pass++) {
+    const pending = h.requests.filter((r) => !r.resolved && matches(r));
+    if (pending.length === 0) {
+      return;
+    }
+    await act(async () => {
+      for (const request of pending) {
+        resolveRequest(request, chunkOf(lineFor(request.offset), request.limit));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+  throw new Error("harness: deferred requests never settled");
+}
+
+/** Resolves every still-in-flight request (chunk + probes). */
+async function settleAll(lineFor: (index: number) => number): Promise<void> {
+  await settleMatching(lineFor, () => true);
+}
+
+/** Resolves only single-row probe requests: chunk requests stay in flight,
+ *  so a test can count the anchor-search probes BEFORE the covering chunk
+ *  lands (with the chunk in cache, the search would hit it instead of
+ *  probing — see test 5). */
+async function settleProbes(lineFor: (index: number) => number): Promise<void> {
+  await settleMatching(lineFor, (r) => r.limit === 1);
 }
 
 beforeEach(() => {
@@ -229,5 +318,190 @@ describe("LogTable baseline behavior (task 2, design 2026-11-25-flicker)", () =>
     });
     const text = await copyPromise;
     expect(text).toBe("raw line 1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 3 (design 2026-11-25-flicker): visibility-epoch behavior. Sequences
+// are defined by lineFor mapping index (0-based visible index) -> 1-based
+// line; "epoch 2" below means one visibilityEpoch bump.
+// ---------------------------------------------------------------------------
+
+describe("LogTable through visibility bumps (task 3, design 2026-11-25-flicker)", () => {
+  /** The initial mount paints rowCount = 1000 rows of lines 1..1000; with a
+   *  5-row viewport + 10 overscan the painted slice is lines 1..15. */
+  const paintedSlice = (offset: number): string[] =>
+    Array.from({ length: VIEWPORT_ROWS + 10 }, (_, i) => String(offset + i + 1));
+
+  it("1. cells keep old text through a visibility bump until the new chunk lands", async () => {
+    const { container, rerender } = mountTable();
+    await act(async () => {
+      resolveRequest(firstRequest(), chunkOf(1, CHUNK_ROWS));
+    });
+    const painted = cellLines(container);
+    rerender({ visibilityEpoch: 2 });
+    // BEFORE the new chunks resolve: every painted cell still shows the old
+    // sequence (stale-while-revalidate). Under the pre-fix wipe these are "".
+    expect(cellLines(container)).toEqual(painted);
+    // The new sequence's chunks land: per-chunk overwrite repaints.
+    await settleAll((index) => index + 2);
+    expect(cellLines(container)).toEqual(paintedSlice(1));
+  });
+
+  it("2. two bumps with deferred chunks; epoch drop keeps painted rows", async () => {
+    const { container, rerender } = mountTable();
+    await act(async () => {
+      resolveRequest(firstRequest(), chunkOf(1, 1000));
+    });
+    const painted = cellLines(container);
+    rerender({ visibilityEpoch: 2 });
+    rerender({ visibilityEpoch: 3 });
+    // Epoch 2's chunk resolves after epoch 3 superseded it: the epoch stamp
+    // drops it — the painted old rows survive (the pre-fix wipe blanked).
+    const e2Chunk = h.requests.find((r) => !r.resolved && r.limit === CHUNK_ROWS);
+    if (!e2Chunk) {
+      throw new Error("harness: epoch-2 chunk request missing");
+    }
+    await act(async () => {
+      resolveRequest(e2Chunk, chunkOf(2, CHUNK_ROWS));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(cellLines(container)).toEqual(painted);
+    // The current epoch's chunk lands: per-chunk overwrite paints seq 3.
+    await settleAll((index) => 30 + index);
+    expect(cellLines(container)).toEqual(paintedSlice(29));
+  });
+
+  it("3. rowCount -> 0 rerender: no rows, no crash, viewport anchor null", async () => {
+    const { container, ref, rerender } = mountTable();
+    await act(async () => {
+      resolveRequest(firstRequest(), chunkOf(1, CHUNK_ROWS));
+    });
+    rerender({ rowCount: 0, visibilityEpoch: 2 });
+    expect(container.querySelectorAll(".row").length).toBe(0);
+    expect(ref.current?.viewport()).toEqual({
+      scrollTop: 0,
+      scrollLeft: 0,
+      anchor: null,
+      anchorOffsetPx: 0,
+    });
+    await settleProbes((index) => index + 2);
+    await settleAll((index) => index + 2);
+  });
+
+  it("4. anchor skip-gate keeps anchor + skips the probe storm", async () => {
+    const { rerender, ref } = mountTable();
+    await act(async () => {
+      resolveRequest(firstRequest(), chunkOf(1, CHUNK_ROWS));
+    });
+    const viewportBefore = ref.current?.viewport();
+    if (!viewportBefore) {
+      throw new Error("harness: no viewport info");
+    }
+    const start = h.requests.length;
+    rerender({ visibilityEpoch: 2 });
+    // Identical composition queued below — until then the painted rows and
+    // the captured anchor must survive the mid-refetch state untouched.
+    expect(ref.current?.viewport()).toEqual(viewportBefore);
+    await settleAll((index) => index + 1);
+    // Identical sequence landed: at most the one gate probe beyond the chunk
+    // refill; the pre-fix code binary-searched ~log2(count) probes per bump.
+    const duringTransition = h.requests.length - start;
+    expect(duringTransition).toBeLessThanOrEqual(2);
+    expect(ref.current?.viewport()).toEqual(viewportBefore);
+  });
+
+  it("5. anchor restore runs on equal-count composition change", async () => {
+    const { rerender, ref } = mountTable();
+    await act(async () => {
+      resolveRequest(firstRequest(), chunkOf(1, CHUNK_ROWS));
+    });
+    const start = h.requests.length;
+    rerender({ visibilityEpoch: 2 });
+    // Probes only (chunk held in flight): the gate falls through to the
+    // binary search, whose probe count is ~log2(count) — not the skip.
+    await settleProbes((index) => index + 2);
+    const probes = h.requests.slice(start).filter((r) => r.limit === 1);
+    expect(probes.length).toBeGreaterThanOrEqual(10); // ceil(log2(1001)) = 10
+    await settleAll((index) => index + 2);
+    // The search resolved the anchor onto the nearest continuation: the new
+    // row at the resolved index carries line 2 (chunk index 0, lineFor 0+2).
+    expect(ref.current?.viewport()?.anchor?.line).toBe(2);
+  });
+
+  it("8. probed stale index holds fresh truth (stamp-aware overwrite)", async () => {
+    const { rerender, ref } = mountTable();
+    await act(async () => {
+      resolveRequest(firstRequest(), chunkOf(1, CHUNK_ROWS));
+    });
+    // One visibility bump; the gate probe (and the search it triggers, the
+    // anchor line moved) lands FRESH current-epoch entries at the probed
+    // indexes while the covering chunk request is still in flight.
+    rerender({ visibilityEpoch: 2 });
+    await settleProbes((index) => index + 2);
+    // The fresh entry must have replaced the stale stamp-1 one...
+    const before = h.requests.length;
+    rerender({ selection: { selected: [0], anchor: 0 } });
+    const handle = ref.current;
+    if (!handle) {
+      throw new Error("harness: no LogTable handle");
+    }
+    // ...so an epoch-gated read (copy -> resolveRows) serves it with no
+    // re-fetch. Under the pre-fix prev.has guard the probe result was
+    // discarded — copy paid a fresh get_rows for the same index repeatedly.
+    const text = await handle.copy("raw");
+    expect(h.requests.length).toBe(before);
+    expect(text).toBe("raw line 2");
+  });
+
+  it("6. copy mid-refetch returns the new sequence", async () => {
+    const { rerender, ref } = mountTable({
+      selection: { selected: [0], anchor: 0 },
+    });
+    await act(async () => {
+      resolveRequest(firstRequest(), chunkOf(1, CHUNK_ROWS));
+    });
+    rerender({ visibilityEpoch: 2 });
+    const handle = ref.current;
+    if (!handle) {
+      throw new Error("harness: no LogTable handle");
+    }
+    let settled = false;
+    const copyPromise = handle.copy("raw").then((text) => {
+      settled = true;
+      return text;
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // Mid-refetch the copy-driven fetch is in flight: not resolved (and
+    // never to the old raw text — the copy path gates by epoch).
+    expect(settled).toBe(false);
+    const copyFetch = [...h.requests]
+      .reverse()
+      .find((r) => !r.resolved && r.limit === 1 && r.offset === 0);
+    if (!copyFetch) {
+      throw new Error("harness: copy-driven fetch missing");
+    }
+    await act(async () => {
+      resolveRequest(copyFetch, [aRawRow(2)]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await settleAll((index) => index + 2);
+    await expect(copyPromise).resolves.toBe("raw line 2");
+  });
+
+  it("7. fileEpoch bump still wipes the painted rows", async () => {
+    const { container, rerender } = mountTable();
+    await act(async () => {
+      resolveRequest(firstRequest(), chunkOf(1, CHUNK_ROWS));
+    });
+    rerender({ fileEpoch: 2 });
+    // A new file must never paint old-file rows: the wipe stays here.
+    expect(cellLines(container)).toEqual(
+      Array.from({ length: VIEWPORT_ROWS + 10 }, () => ""),
+    );
+    await settleAll((index) => index + 51);
+    expect(cellLines(container)).toEqual(paintedSlice(50));
   });
 });
