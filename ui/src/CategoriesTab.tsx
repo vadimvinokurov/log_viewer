@@ -64,11 +64,21 @@ function allCheck(flat: readonly { path: string }[], enabled: readonly string[])
 function checkbox(check: CheckState, onClick: () => void): ReactElement {
   const cls = check === "off" ? "cb" : check === "partial" ? "cb part" : "cb on";
   return (
-    <span
-      role="checkbox"
-      aria-checked={check === "on"}
+    <input
+      type="checkbox"
       className={cls}
       title={check}
+      checked={check === "on"}
+      /* readOnly: the checkbox is state-derived, never internally mutable —
+         clicks flow through onToggle (mock 1d80977: native checkboxes). */
+      readOnly
+      /* native indeterminate mark for the partially-enabled parents; the
+         className keeps "part" so tests keep the class-based API. */
+      ref={(el) => {
+        if (el) {
+          el.indeterminate = check === "partial";
+        }
+      }}
       onClick={onClick}
     />
   );
@@ -169,7 +179,7 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
           {/* native chevron glyph (2026-11-25 mock decision), not a text
               triangle: the mono "▾" read as a cramped box inside the 24px
               chrome button */}
-          <svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true">
+          <svg width={13} height={8} viewBox="0 0 9 6" aria-hidden="true">
             <path
               d="M1 1l3.5 3.5L8 1"
               fill="none"

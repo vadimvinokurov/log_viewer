@@ -104,6 +104,15 @@ Claim tasks in the main session before spawning agents.
     open persists the file's dirname — asserted as numbers through
     `window.__headless.state().settings.lastOpenDir`) with a fresh golden; no
     existing golden shifted (all diffs 0.000%).
+  - Addition 2026-11-25 (bead fe6, v1-parity restyle, mock commits b9931bb..e5bf7e3):
+    system fonts (IBM Plex Mono webfont dropped), `--table-bg` token (#f5f7fa light),
+    21px rows, 32px bottom bar with flat buttons, 280px panel, native tree
+    checkboxes, 16px twisties. ALL existing goldens re-baselined (every state
+    shifted: palette, metrics, fonts); `column-dragged` geometry recomputed for
+    the 280px panel (message 750/790 instead of 810/850). New states
+    `light-empty`, `light-loaded`, `light-panel-categories` — the harness now
+    supports a per-state `colorScheme` override and the light palette gets its
+    own rendered acceptance (the runner default stays dark).
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

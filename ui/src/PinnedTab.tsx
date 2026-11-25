@@ -45,7 +45,7 @@ const REMOVE: CSSProperties = {
   cursor: "pointer",
 };
 const LIST: CSSProperties = {
-  width: 220,
+  width: 280,
 };
 
 export function PinnedTab({ items, onToggle, onRemove }: PinnedTabProps): ReactElement {

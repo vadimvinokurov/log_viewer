@@ -529,7 +529,7 @@ describe("panel console actions (rhl.2, §10.1)", () => {
   it("the snapshot mirrors the panel slice", async () => {
     const { console_ } = await freshConsole(categoryStub());
     expect(console_.getSnapshot().panel).toEqual({
-      open: true, tab: "categories", width: 220, search: "", expanded: [],
+      open: true, tab: "categories", width: 280, search: "", expanded: [],
     });
   });
 

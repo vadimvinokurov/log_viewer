@@ -5,6 +5,9 @@
 
   --bg: #eef1f5;
   --surface: #ffffff;
+  /* The log table stands a step off white (2026-11-25 mock e5bf7e3) —
+     plain white hurts the eyes over a wall of rows. */
+  --table-bg: #f5f7fa;
   --chrome: #f3f5f8;
   --chrome-2: #e9edf2;
   --ink: #1b2531;
@@ -22,13 +25,14 @@
   --trace: #1d7a3f;
 
   --font-chrome: system-ui, sans-serif;
-  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0b1016;
     --surface: #141c24;
+    --table-bg: #141c24;
     --chrome: #101722;
     --chrome-2: #1a2430;
     --ink: #d7e0ea;
@@ -106,11 +110,11 @@ body {
 }
 
 .empty-big {
-  font-family: var(--font-data);
-  font-weight: 500;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--ink);
+  font-family: var(--font-chrome);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 .empty-small {
@@ -134,26 +138,26 @@ body {
   display: block;
 }
 
-/* Bottom bar, 38 px (UI design "Main window"). */
+/* Bottom bar, 32 px (2026-11-25 mock e5bf7e3, v1 parity). */
 .bottom-bar {
-  height: 38px;
+  height: 32px;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
+  gap: 8px;
+  padding: 0 8px;
   background: var(--chrome);
-  border-top: 1px solid var(--chrome-2);
+  border-top: 1px solid var(--border);
 }
 
 .bar-btn {
   font-family: var(--font-chrome);
   font-size: 12px;
   color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--chrome-2);
+  background: transparent;
+  border: none;
   border-radius: 6px;
-  padding: 4px 12px;
+  padding: 5px 8px;
 }
 
 .bar-btn:hover:not(:disabled) {
@@ -172,15 +176,15 @@ body {
   min-width: 0;
   display: flex;
   align-items: center;
-  height: 27px;
+  height: 24px;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface);
   color: var(--dim);
   font-family: var(--font-data);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .cmd:focus-within {
@@ -216,8 +220,8 @@ body {
   flex: 1;
   overflow: auto;
   font-family: var(--font-data);
-  font-size: 12.5px;
-  background: var(--surface);
+  font-size: 13px;
+  background: var(--table-bg);
   min-height: 0;
 }
 
@@ -237,8 +241,9 @@ body {
 .row {
   display: grid;
   align-items: center;
-  line-height: 23px;
-  height: 23px;
+  /* 21 px = the system-mono glyph height + 6, v1 parity (mock e5bf7e3). */
+  line-height: 21px;
+  height: 21px;
   white-space: pre;
 }
 
@@ -250,7 +255,8 @@ body {
   border-bottom: 1px solid var(--chrome-2);
   color: var(--muted);
   font-family: var(--font-chrome);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   user-select: none;
 }
 
@@ -279,15 +285,15 @@ body {
 /* Zebra striping on even rows only; faint, gone on hover/selection (design:
    "density over comfort... disappears on hover/selection"). */
 .row.zebra {
-  background: color-mix(in srgb, var(--chrome) 35%, var(--surface));
+  background: color-mix(in srgb, var(--chrome) 35%, var(--table-bg));
 }
 
 .row.zebra:hover {
-  background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface));
+  background: color-mix(in srgb, var(--chrome-2) 60%, var(--table-bg));
 }
 
 .row:hover {
-  background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface));
+  background: color-mix(in srgb, var(--chrome-2) 60%, var(--table-bg));
 }
 
 /* Selected row: the accent tint (design §s2 "row 12 is selected (accent
@@ -410,7 +416,7 @@ body {
 .tree {
   flex: 1 1 auto;
   padding: 10px 0 14px;
-  font: 500 12px/1.9 var(--font-data);
+  font: 400 13px/1.85 var(--font-chrome);
   overflow-y: auto;
 }
 
@@ -436,43 +442,23 @@ body {
 }
 
 .tree .row .tw {
-  width: 10px;
-  color: var(--dim);
-  font-size: 9px;
+  width: 16px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
   flex: none;
 }
 
-.tree .row .cb {
-  width: 12px;
-  height: 12px;
+/* Native checkboxes (mock 1d80977): the .cb class survives as a selector
+   hook; appearance comes from the system + accent-color. */
+.tree .row input.cb {
+  width: 16px;
+  height: 16px;
   flex: none;
-  border: 1.5px solid var(--border-strong);
-  border-radius: 3px;
-  background: var(--surface);
-  position: relative;
+  margin: 0;
+  padding: 0;
   cursor: pointer;
-}
-
-.tree .row .cb.on {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.tree .row .cb.on::after {
-  content: "";
-  position: absolute;
-  inset: 1.5px 2px;
-  border-left: 2px solid #fff;
-  border-bottom: 2px solid #fff;
-  transform: rotate(-50deg) translateY(-1px);
-}
-
-.tree .row .cb.part::after {
-  content: "";
-  position: absolute;
-  inset: 2.5px;
-  background: var(--accent);
-  border-radius: 1.5px;
+  accent-color: var(--accent);
 }
 
 .tree .row .nm {
@@ -508,40 +494,42 @@ body {
 .tree-search input {
   flex: 1 1 auto;
   min-width: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface);
+  border: none;
+  border-radius: 8px;
+  background: var(--chrome-2);
   color: var(--ink);
-  font: 400 11.5px/1 var(--font-chrome);
-  padding: 5px 8px;
+  font: 400 12px/1 var(--font-chrome);
+  padding: 6px 10px;
   outline: none;
 }
 
-/* Native push-button (2026-11-25 mock decision): hairline ring, soft drop
-   shadow, barely-there gradient fill; pressed = inset ring. */
+.tree-search input:focus {
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Flat filled toggle, 26x26 radius 8 (2026-11-25 mock d1db2e1/1d80977). */
 .fold {
   flex: none;
-  width: 25px;
-  height: 25px;
+  width: 26px;
+  height: 26px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
-  background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--chrome) 60%, var(--surface)));
-  box-shadow: 0 0 0 0.5px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.12);
+  color: var(--ink);
+  background: var(--chrome-2);
   cursor: pointer;
 }
 
 .fold:hover {
-  color: var(--ink);
-  background: var(--surface);
+  background: var(--chrome-2);
+  filter: brightness(0.96);
 }
 
 .fold:active {
-  background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface));
-  box-shadow: 0 0 0 0.5px var(--border-strong) inset;
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
 }
 
 .side-note {
@@ -588,8 +576,8 @@ body {
 }
 .findbar .field {
   min-width: 150px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--bg); color: var(--ink);
-  font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace;
+  background: var(--bg); color: var(--ink); white-space: nowrap;
+  font: 400 12px/1 var(--font-data);
   outline: none;
 }
 .findbar .cnt { font-variant-numeric: tabular-nums; white-space: nowrap; }

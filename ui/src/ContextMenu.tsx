@@ -114,5 +114,5 @@ const CM_STYLE = `
 .lvc-cm div:hover { background: var(--lvc-accent-tint); }
 .lvc-cm div.lvc-cm-dim { color: var(--dim); }
 .lvc-cm .lvc-cm-sep { height: 1px; padding: 0; margin: 4px 2px; background: var(--lvc-border); border-radius: 0; }
-.lvc-cm .lvc-cm-key { color: var(--dim); font: 500 11px/1.9 "IBM Plex Mono", monospace; }
+.lvc-cm .lvc-cm-key { color: var(--dim); font: 500 11px/1.9 var(--font-data); }
 `;

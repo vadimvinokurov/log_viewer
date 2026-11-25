@@ -190,11 +190,12 @@ export function initialSearchState(): SearchState {
   return { open: false, mode: null, query: "", positions: [], current: null };
 }
 
-/** Spec interpretation (bead rhl.2): the panel stands open, 220 px
- * (docs/UI_DESIGN.html "Main window"), bounds 180-480 px. */
+/** Spec interpretation (bead rhl.2, restyled 2026-11-25 mock e5bf7e3): the
+ *  panel stands open, 280 px (logs UI_DESIGN mock, v1 splitter parity),
+ *  bounds 180-480 px. */
 export const PANEL_MIN_WIDTH = 180;
 export const PANEL_MAX_WIDTH = 480;
-export const PANEL_DEFAULT_WIDTH = 220;
+export const PANEL_DEFAULT_WIDTH = 280;
 
 export function clampPanelWidth(px: number): number {
   if (px < PANEL_MIN_WIDTH) {

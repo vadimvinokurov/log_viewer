@@ -117,8 +117,8 @@ export default [
       // The Message handle: parked below the remainder (user width 30),
       // then dragged RIGHT from its visible position. The new width must
       // exceed the remainder and open the horizontal overflow — anchoring
-      // on the hidden user width would make this a no-op. 1180 = the
-      // table viewport beside the 220-px panel; 1180 - 370 = 810 + 40.
+      // on the hidden user width would make this a no-op. 1120 = the
+      // table viewport beside the 280-px panel; 1120 - 370 = 750 + 40.
       await page.evaluate(() => window.__headless.setColumnWidth("message", 30));
       const msg = await page.evaluate(() => {
         const r = document.querySelector('[data-col-resizer="message"]').getBoundingClientRect();
@@ -131,7 +131,7 @@ export default [
       await page.waitForFunction(() => {
         const w = window.__headless.state().columnWidths;
         const v = document.querySelector(".table-scroll");
-        return w.message === 850 && v && v.scrollWidth > v.clientWidth;
+        return w.message === 790 && v && v.scrollWidth > v.clientWidth;
       });
       // Review Focus 1: mouseup ends the drag — widths freeze without a
       // button down, and the release committed the widths.
@@ -139,7 +139,7 @@ export default [
         () =>
           window.__columnCalls.length >= 1 &&
           JSON.stringify(window.__columnCalls[window.__columnCalls.length - 1]) ===
-            JSON.stringify([50, 110, 210, 850]),
+            JSON.stringify([50, 110, 210, 790]),
       );
       await page.waitForTimeout(150);
     },

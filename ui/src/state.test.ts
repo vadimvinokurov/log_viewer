@@ -313,9 +313,9 @@ describe("levelBarState (§11 mapping)", () => {
 });
 
 describe("side panel slice (rhl.2, §10.1)", () => {
-  it("panel defaults: open, categories tab, 220 px, empty search, nothing expanded", () => {
+  it("panel defaults: open, categories tab, 280 px, empty search, nothing expanded", () => {
     const p = initialPanelState();
-    expect(p).toEqual({ open: true, tab: "categories", width: 220, search: "", expanded: [] });
+    expect(p).toEqual({ open: true, tab: "categories", width: 280, search: "", expanded: [] });
   });
 
   it("panel-toggle flips open without touching the rest", () => {
@@ -325,7 +325,7 @@ describe("side panel slice (rhl.2, §10.1)", () => {
     expect(s1.panel.open).toBe(true);
     // Ctrl+B only toggles: tab, width, search, expansion survive.
     expect(s1.panel.tab).toBe("categories");
-    expect(s1.panel.width).toBe(220);
+    expect(s1.panel.width).toBe(280);
   });
 
   it("panel-tab switches the active tab", () => {

@@ -74,6 +74,26 @@ describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
     expect(container.querySelectorAll(".row.off")).toHaveLength(0);
   });
 
+  it("checkboxes are native inputs (mock 1d80977): checked lives on the element", () => {
+    const { container } = render(createElement(CategoriesTab, baseProps()));
+    const on = container.querySelector<HTMLInputElement>('[data-path="app/main/db"] .cb');
+    expect(on?.tagName).toBe("INPUT");
+    expect(on?.type).toBe("checkbox");
+    expect(on?.checked).toBe(true);
+  });
+
+  it("the partially-whitelisted parent sets the native indeterminate state", () => {
+    const { container } = render(
+      createElement(CategoriesTab, baseProps({ enabled: ["app", "app/main", "app/main/db"] })),
+    );
+    const part = container.querySelector<HTMLInputElement>('[data-path="app"] .cb');
+    expect(part?.indeterminate).toBe(true);
+    const plain = container.querySelector<HTMLInputElement>('[data-path="app/main/db"] .cb');
+    expect(plain?.indeterminate).toBe(false);
+    const off = container.querySelector<HTMLInputElement>('[data-path="uncategorized"] .cb');
+    expect(off?.checked).toBe(false);
+  });
+
   it("tri-state: present parent with an unchecked child renders part", () => {
     const { container } = render(
       createElement(CategoriesTab, baseProps({ enabled: ["app", "app/main", "app/main/db"] })),

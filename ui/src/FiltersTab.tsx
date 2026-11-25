@@ -46,10 +46,10 @@ const REMOVE: CSSProperties = {
   font: "inherit",
   cursor: "pointer",
 };
-/* The side panel is a fixed 220-px column (docs/UI_DESIGN.html "Main
-   window"); command text ellipsis-clips against that width. */
+/* The side panel is a fixed 280-px column (2026-11-25 mock e5bf7e3, v1
+   splitter parity); command text ellipsis-clips against that width. */
 const LIST: CSSProperties = {
-  width: 220,
+  width: 280,
 };
 
 export function FiltersTab({ items, onToggle, onRemove }: FiltersTabProps): ReactElement {

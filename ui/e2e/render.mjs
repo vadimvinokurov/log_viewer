@@ -116,6 +116,9 @@ for (const state of STATES) {
     // Every state reloads the page so it cannot depend on earlier states;
     // goto resolves before React effects, so wait for the console first.
     await page.goto(state.url ?? server.url);
+    // A state may pin light theme (2026-11-25 restyle changed the light
+    // palette); dark stays the default so the older goldens keep applying.
+    await page.emulateMedia({ colorScheme: state.colorScheme ?? "dark" });
     await page.waitForFunction(() => typeof window.__headless === "object" && window.__headless !== null);
     await state.setup(page);
     const shot = await page.screenshot({ type: "png" });
