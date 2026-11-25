@@ -361,10 +361,10 @@ describe("side panel slice (rhl.2, §10.1)", () => {
 
   it("load-success resets expansion to the loaded file's top-level paths", () => {
     const s = loadedWithCategories({ categories: [
-      { path: "app/main/db", count: 1 },
-      { path: "app/harness", count: 1 },
-      { path: "db/pool", count: 1 },
-      { path: "uncategorized", count: 1 },
+      { path: "app/main/db" },
+      { path: "app/harness" },
+      { path: "db/pool" },
+      { path: "uncategorized" },
     ] });
     expect(s.panel.expanded).toEqual(["app", "db", "uncategorized"]);
     expect(s.panel.open).toBe(true);
@@ -391,8 +391,8 @@ describe("side panel slice (rhl.2, §10.1)", () => {
 
   it("expandedForToggleAll: expand installs every tree path incl. prefix paths", () => {
     const flat = [
-      { path: "app/main/db", count: 1 },
-      { path: "db/pool", count: 1 },
+      { path: "app/main/db" },
+      { path: "db/pool" },
     ];
     expect(expandedForToggleAll(flat, true)).toEqual([
       "app", "app/main", "app/main/db", "db", "db/pool",
@@ -401,16 +401,16 @@ describe("side panel slice (rhl.2, §10.1)", () => {
 
   it("expandedForToggleAll: collapse closes everything (2026-11-25 owner decision: only root rows stay visible)", () => {
     const flat = [
-      { path: "app/main/db", count: 1 },
-      { path: "app/main/config/runtime", count: 1 },
-      { path: "db/pool", count: 1 },
-      { path: "uncategorized", count: 1 },
+      { path: "app/main/db" },
+      { path: "app/main/config/runtime" },
+      { path: "db/pool" },
+      { path: "uncategorized" },
     ];
     expect(expandedForToggleAll(flat, false)).toEqual([]);
   });
 });
 
-function loadedWithCategories(overrides: { categories?: { path: string; count: number }[] } = {}): AppState {
+function loadedWithCategories(overrides: { categories?: { path: string }[] } = {}): AppState {
   return appReducer(initialAppState(), {
     kind: "load-success",
     load: {

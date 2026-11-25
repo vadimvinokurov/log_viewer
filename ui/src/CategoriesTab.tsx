@@ -1,5 +1,5 @@
 //! Categories tab of the side panel (FUNCTIONAL_SPEC §10, bead rhl.2):
-//! All tri-state checkbox on top, tree of checkboxes with counts, search
+//! All tri-state checkbox on top, tree of checkboxes, search
 //! input (matching branches fully expanded while active) and the
 //! expand/collapse-all fold button. Presentational: the decisions live in
 //! ui/src/categories.ts — the tri-state derives from the engine whitelist
@@ -11,8 +11,8 @@ import { nodeCheck, visibleUnderSearch, type CheckState, type UiCategoryNode } f
 export interface CategoriesTabProps {
   /** The loaded file's tree (buildTree over the flat load result). */
   tree: UiCategoryNode;
-  /** The loaded file's flat {path, count} list (All row count + check). */
-  flat: readonly { path: string; count: number }[];
+  /** The loaded file's flat {path} list (All checkbox derivation). */
+  flat: readonly { path: string }[];
   /** The snapshot's categories_enabled whitelist (raw order kept). */
   enabled: readonly string[];
   /** §10 tree search; "" = no search active. */
@@ -60,7 +60,6 @@ function allCheck(flat: readonly { path: string }[], enabled: readonly string[])
   }
   return !any ? "off" : all ? "on" : "partial";
 }
-
 function checkbox(check: CheckState, onClick: () => void): ReactElement {
   const cls = check === "off" ? "cb" : check === "partial" ? "cb part" : "cb on";
   return (
@@ -126,7 +125,6 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
 
   const paths = treePaths(tree);
   const everythingExpanded = paths.length > 0 && paths.every((p) => isOpen(p));
-  const total = flat.reduce((sum, { count }) => sum + count, 0);
   const allState = allCheck(flat, enabled);
 
   const renderNodes = (nodes: readonly UiCategoryNode[], depth: number): ReactElement[] =>
@@ -153,7 +151,6 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
           </span>
           {checkbox(check, () => onToggle(node.path, check !== "on"))}
           <span className="nm">{nameLabel(node.name, search)}</span>
-          <span className="ct">{node.count.toLocaleString("en-US")}</span>
         </div>
       );
       return expandedHere ? [row, ...renderNodes(node.children, depth + 1)] : [row];
@@ -196,7 +193,6 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
           <span className="tw">▾</span>
           {checkbox(allState, () => onToggleAll(allState !== "on"))}
           <span className="nm">All</span>
-          <span className="ct">{total.toLocaleString("en-US")}</span>
         </div>
         {renderNodes(tree.children, 0)}
       </div>

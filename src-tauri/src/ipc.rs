@@ -61,9 +61,8 @@ pub fn format_name(format: Format) -> &'static str {
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
-pub struct CategoryCount {
+pub struct CategoryPath {
   pub path: String,
-  pub count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -80,7 +79,7 @@ pub struct LoadResult {
   /// Byte size of the backing file (UI file slot: "name · size"); u32 like
   /// the other scalar fields of the DTO (specta forbids u64), saturating.
   pub size_bytes: u32,
-  pub categories: Vec<CategoryCount>,
+  pub categories: Vec<CategoryPath>,
   pub levels: Vec<LevelCount>,
   /// Load time in milliseconds (diagnostics; §16 monitoring).
   pub load_ms: u32,
@@ -120,10 +119,7 @@ pub fn to_load_result(model: &FileModel, load_ms: u32) -> LoadResult {
     size_bytes: model.size().min(u32::MAX.into()) as u32,
     categories: model
       .categories()
-      .map(|(path, count)| CategoryCount {
-        path: path.to_owned(),
-        count: count as u32,
-      })
+      .map(|path| CategoryPath { path: path.to_owned() })
       .collect(),
     // §11 counters: fixed level order, zero counts included.
     levels: level_order()
@@ -495,7 +491,7 @@ pub(crate) fn set_categories_bulk_inner(
 /// stays out of the whitelist; a disabled PARENT therefore also keeps its
 /// children hidden after a reload, which is the §10 behavior.
 fn repopulate_categories(vis: &mut VisibilityState, model: &FileModel) {
-  for (path, _) in model.categories() {
+  for path in model.categories() {
     let mut prefix = path;
     loop {
       if !vis.disabled_categories.contains(prefix) {

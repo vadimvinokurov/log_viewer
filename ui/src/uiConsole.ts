@@ -1009,7 +1009,7 @@ class UiConsole {
 
   /** The loaded file's flat category list; empty before a load (actions
    *  that need the tree no-op safely). */
-  private flatCategories = (): { path: string; count: number }[] =>
+  private flatCategories = (): { path: string }[] =>
     this.state.file?.load.categories ?? [];
 
   /** §10 category toggle: applies propagateToggle's differential through ONE

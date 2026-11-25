@@ -136,9 +136,8 @@ export const commands = {
 };
 
 /* Types */
-export type CategoryCount = {
+export type CategoryPath = {
 	path: string,
-	count: number,
 };
 
 /**
@@ -208,7 +207,7 @@ export type LoadResult = {
 	 *  the other scalar fields of the DTO (specta forbids u64), saturating.
 	 */
 	size_bytes: number,
-	categories: CategoryCount[],
+	categories: CategoryPath[],
 	levels: LevelCount[],
 	/**  Load time in milliseconds (diagnostics; §16 monitoring). */
 	load_ms: number,

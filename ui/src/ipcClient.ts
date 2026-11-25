@@ -84,7 +84,7 @@ function fromBindings(load: {
   format: string;
   line_count: number;
   size_bytes: number;
-  categories: { path: string; count: number }[];
+  categories: { path: string }[];
   levels: { level: string; count: number }[];
   load_ms: number;
 }): LoadInfo {

@@ -24,7 +24,7 @@ export interface LoadInfo {
   lineCount: number;
   /** Byte size of the backing file (UI file slot: "name · size"). */
   sizeBytes: number;
-  categories: { path: string; count: number }[];
+  categories: { path: string }[];
   levels: { level: string; count: number }[];
   loadMs: number;
 }

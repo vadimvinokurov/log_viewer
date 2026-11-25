@@ -1,5 +1,5 @@
 //! Tests for the categories tree model (FUNCTIONAL_SPEC §10): buildTree from
-//! the flat {path, count} load result, tri-state checks mirroring the engine's
+//! the flat {path} load result, tri-state checks mirroring the engine's
 //! category_allowed rule (exact path AND every ancestor prefix enabled),
 //! toggle propagation as a {add, remove} differential, the All checkbox, tree
 //! search visibility and expand/collapse targets. Pure logic only.
@@ -16,17 +16,16 @@ import {
 
 // ---------------------------------------------------------------- fixtures
 
-/** Flat list shaped like the load result: observed paths only (no
- * zero-count interior nodes), sorted by path, "uncategorized" as a regular
- * path. Counts are distinctive so own-count assertions are unambiguous. */
+/** Flat list shaped like the load result: observed paths only (no interior
+ * nodes), sorted by path, "uncategorized" as a regular path. */
 const FLAT = [
-  { path: "app", count: 1 },
-  { path: "app/main", count: 2 },
-  { path: "app/main/db", count: 3 },
-  { path: "app/main/net", count: 4 },
-  { path: "B/tree", count: 6 },
-  { path: "dbx", count: 5 },
-  { path: "uncategorized", count: 7 },
+  { path: "app" },
+  { path: "app/main" },
+  { path: "app/main/db" },
+  { path: "app/main/net" },
+  { path: "B/tree" },
+  { path: "dbx" },
+  { path: "uncategorized" },
 ];
 
 /** Node lookup by full path (throws when absent so tests fail loudly). */
@@ -74,7 +73,6 @@ describe("buildTree (§10 tree from the flat load result)", () => {
   it("returns a synthetic root with empty name and path", () => {
     expect(TREE.name).toBe("");
     expect(TREE.path).toBe("");
-    expect(TREE.count).toBe(0);
   });
 
   it("orders root children in byte order, deterministically", () => {
@@ -88,36 +86,36 @@ describe("buildTree (§10 tree from the flat load result)", () => {
 
   it("splits multi-level paths into a nested chain of full paths", () => {
     const app = node(TREE, "app");
-    expect(app.count).toBe(1);
+    expect(app.name).toBe("app");
     const main = node(app, "app/main");
     expect(main.name).toBe("main");
-    expect(main.count).toBe(2);
     expect(main.children.map((c) => c.path)).toEqual([
       "app/main/db",
       "app/main/net",
     ]);
-    expect(node(TREE, "app/main/db").count).toBe(3);
-    expect(node(TREE, "app/main/net").count).toBe(4);
+    expect(node(TREE, "app/main/db").path).toBe("app/main/db");
+    expect(node(TREE, "app/main/net").path).toBe("app/main/net");
   });
 
-  it("creates zero-count interior nodes for paths never logged directly", () => {
-    expect(node(TREE, "B").count).toBe(0);
-    expect(node(TREE, "B/tree").count).toBe(6);
+  it("creates interior nodes for paths never logged directly", () => {
+    const b = node(TREE, "B");
+    expect(b.children.map((c) => c.path)).toEqual(["B/tree"]);
   });
 
-  it("sums duplicate paths instead of duplicating nodes", () => {
+  it("deduplicates duplicate paths instead of duplicating nodes", () => {
     const merged = buildTree([
-      { path: "a/b", count: 2 },
-      { path: "a/b", count: 3 },
+      { path: "a/b" },
+      { path: "a/b" },
     ]);
-    expect(node(merged, "a/b").count).toBe(5);
+    expect(node(merged, "a/b").children).toEqual([]);
+    expect(merged.children.filter((c) => c.name === "a")).toHaveLength(1);
   });
 
   it("treats the uncategorized path like any other node", () => {
     const unc = node(TREE, "uncategorized");
     expect(unc.name).toBe("uncategorized");
     expect(unc.path).toBe("uncategorized");
-    expect(unc.count).toBe(7);
+    expect(unc.children).toEqual([]);
   });
 
   it("handles an empty flat list as a childless root", () => {
@@ -132,11 +130,11 @@ describe("buildTree (§10 tree from the flat load result)", () => {
 
   it("keeps empty path segments verbatim, mirroring the engine", () => {
     // spec interpretation: `//` is invalid input; each segment is kept as-is.
-    const weird = buildTree([{ path: "app//main", count: 1 }]);
+    const weird = buildTree([{ path: "app//main" }]);
     const app = node(weird, "app");
     const empty = app.children[0];
     expect(empty.name).toBe("");
-    expect(node(weird, "app//main").count).toBe(1);
+    expect(node(weird, "app//main").path).toBe("app//main");
   });
 });
 

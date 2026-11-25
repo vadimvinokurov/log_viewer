@@ -7,11 +7,11 @@ import { buildTree } from "./categories";
 afterEach(cleanup);
 
 const FLAT = [
-  { path: "app/main/db", count: 40 },
-  { path: "app/main/api", count: 20 },
-  { path: "unstable/pool", count: 5000 },
-  { path: "db/pool", count: 20 },
-  { path: "uncategorized", count: 20 },
+  { path: "app/main/db" },
+  { path: "app/main/api" },
+  { path: "unstable/pool" },
+  { path: "db/pool" },
+  { path: "uncategorized" },
 ];
 
 /** The engine's default whitelist: every observed path and every prefix. */
@@ -50,7 +50,7 @@ function baseProps(overrides: Partial<CategoriesTabProps> = {}): CategoriesTabPr
 }
 
 describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
-  it("renders the All row on top and the tree in build order with counts", () => {
+  it("renders the All row on top and the tree in build order, no counts (2026-11-25 owner decision)", () => {
     const { container } = render(createElement(CategoriesTab, baseProps()));
     const rows = Array.from(container.querySelectorAll<HTMLElement>(".tree .row"));
     expect(rows.map((el) => el.getAttribute("data-path"))).toEqual([
@@ -60,11 +60,7 @@ describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
       "uncategorized",
       "unstable", "unstable/pool",
     ]);
-    const counts = rows.map((el) => el.querySelector<HTMLElement>(".ct")?.textContent);
-    expect(counts[0]).toBe("5,100"); // All = total of the flat counts
-    expect(counts[1]).toBe("0"); // interior path, never observed directly
-    expect(counts[2]).toBe("0"); // app/main itself was not in the flat list
-    expect(counts[4]).toBe("40");
+    expect(container.querySelectorAll(".tree .row .ct")).toHaveLength(0);
   });
 
   it("full whitelist: every checkbox is on, no row is dimmed", () => {

@@ -80,7 +80,7 @@ fn fixtures() -> Vec<Fixture> {
 /// whitelist must hold every prefix).
 fn all_categories(model: &FileModel) -> Visibility {
   let mut vis = Visibility::new();
-  for (path, _) in model.categories() {
+  for path in model.categories() {
     let mut prefix: &str = path;
     loop {
       vis.set_category_enabled(prefix, true);

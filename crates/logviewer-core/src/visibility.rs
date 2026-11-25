@@ -246,7 +246,7 @@ impl<'m> CategoryIndex<'m> {
         allowed: Vec::new(),
       };
     }
-    let paths: Vec<&'m str> = model.categories().map(|(path, _)| path).collect();
+    let paths: Vec<&'m str> = model.categories().collect();
     let mut ids: HashMap<&'m str, u32> = HashMap::with_capacity(paths.len());
     for (id, path) in paths.iter().enumerate() {
       ids.insert(path, id as u32);
@@ -345,7 +345,7 @@ mod tests {
   /// from an empty whitelist, see the module docs.)
   fn all_categories(model: &FileModel) -> Visibility {
     let mut vis = Visibility::new();
-    for (path, _) in model.categories() {
+    for path in model.categories() {
       vis.set_category_enabled(path, true);
     }
     vis
@@ -655,7 +655,7 @@ mod tests {
 
       // Full whitelist with ancestors: plenty of visible rows.
       let mut vis = Visibility::new();
-      for (path, _) in model.categories() {
+      for path in model.categories() {
         all_with_ancestors(path, &mut vis);
       }
       check_parity(&vis, &model, &format!("[{format_label}] all enabled"));
@@ -677,7 +677,7 @@ mod tests {
 
       // Parents disabled on top of a full whitelist.
       let mut vis = Visibility::new();
-      for (path, _) in model.categories() {
+      for path in model.categories() {
         all_with_ancestors(path, &mut vis);
       }
       vis.set_category_enabled("app", false);
@@ -686,7 +686,7 @@ mod tests {
 
       // A mid-node disabled: its children hide too.
       let mut vis = Visibility::new();
-      for (path, _) in model.categories() {
+      for path in model.categories() {
         all_with_ancestors(path, &mut vis);
       }
       vis.set_category_enabled("путь/вложенный", false);

@@ -14,13 +14,13 @@ import { waitConsole } from "./base.mjs";
 
 const STUB = `(function () {
   const CATEGORIES = [
-    { path: "app", count: 0 },
-    { path: "app/main", count: 0 },
-    { path: "app/main/db", count: 250 },
-    { path: "app/main/api", count: 250 },
-    { path: "db", count: 0 },
-    { path: "db/pool", count: 250 },
-    { path: "uncategorized", count: 250 },
+    { path: "app" },
+    { path: "app/main" },
+    { path: "app/main/db" },
+    { path: "app/main/api" },
+    { path: "db" },
+    { path: "db/pool" },
+    { path: "uncategorized" },
   ];
   const LINE_COUNT = 1000;
   const CYCLE = ["app/main/db", "app/main/api", "db/pool", "uncategorized"];

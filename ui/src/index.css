@@ -468,13 +468,6 @@ body {
   text-overflow: ellipsis;
 }
 
-.tree .row .ct {
-  color: var(--dim);
-  margin-left: auto;
-  padding-left: 8px;
-  font-variant-numeric: tabular-nums;
-}
-
 .tree .row.off {
   opacity: .45;
 }

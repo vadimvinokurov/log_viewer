@@ -1,10 +1,11 @@
-//! Category tree and per-node row counts (FUNCTIONAL_SPEC §10).
+//! Category tree (FUNCTIONAL_SPEC §10).
 //!
 //! Categories are extracted at parse time (§3) and are hierarchical by `/`
 //! (§16). This module builds the side-panel tree: a synthetic root whose
-//! children are the top-level categories, every node carrying the row count
-//! of *its own* path (§10: "name (count)"). Checkbox state lives in the UI
-//! task (rhl.2) — this module is a pure tree, no selection semantics.
+//! children are the top-level categories. Owner decision 2026-11-25
+//! (log_viewer2-7u9): nodes carry no row counts — the tree is a shape only.
+//! Checkbox state lives in the UI task (rhl.2) — this module is a pure tree,
+//! no selection semantics.
 
 use std::collections::BTreeMap;
 
@@ -17,8 +18,6 @@ pub struct CategoryNode {
   pub name: String,
   /// Full path `app/main/db` (root: empty).
   pub path: String,
-  /// Rows with exactly this path (root: count of uncategorized rows).
-  pub count: u64,
   /// Children sorted by name byte-order, deterministic across rebuilds.
   pub children: Vec<CategoryNode>,
 }
@@ -28,21 +27,21 @@ pub struct CategoryNode {
 // spec interpretation: the uncategorized node is emitted as the FIRST child of
 // the root, named `uncategorized` (parser::UNCATEGORIZED), deterministically
 // ahead of the alphabetically sorted real categories. It is present when the
-// uncategorized bucket has rows or a deeper `uncategorized/...` category
+// file logs the `uncategorized` path or a deeper `uncategorized/...` category
 // exists; an empty model yields no children at all.
 pub fn build(model: &FileModel) -> CategoryNode {
   // Intermediate trie keyed by segment in a BTreeMap, so child order falls
   // out byte-sorted and rebuilds are deterministic.
   let mut trie = Trie::default();
-  let mut unc = 0_u64;
-  for (path, count) in model.categories() {
+  let mut unc_path_seen = false;
+  for path in model.categories() {
     if path == UNCATEGORIZED {
       // The parser maps missing categories to this path, so it is the
       // fallback bucket, never a real branch of the tree.
-      unc += count;
+      unc_path_seen = true;
       continue;
     }
-    trie.insert(path, count);
+    trie.insert(path);
   }
   // spec interpretation: a literal top-level `uncategorized` category is
   // indistinguishable from the fallback bucket from the model's side, so any
@@ -52,13 +51,12 @@ pub fn build(model: &FileModel) -> CategoryNode {
   let mut root = CategoryNode {
     name: String::new(),
     path: String::new(),
-    count: unc,
     children: trie.into_children(""),
   };
   // spec interpretation: the uncategorized node goes first, ahead of the
   // sorted categories, and is omitted when nothing falls into the bucket and
   // no `uncategorized/...` category exists.
-  if unc > 0 || unc_branch.is_some() {
+  if unc_path_seen || unc_branch.is_some() {
     let bucket = unc_branch.unwrap_or_default();
     let children = bucket.into_children(UNCATEGORIZED);
     root.children.insert(
@@ -66,7 +64,6 @@ pub fn build(model: &FileModel) -> CategoryNode {
       CategoryNode {
         name: UNCATEGORIZED.to_string(),
         path: UNCATEGORIZED.to_string(),
-        count: unc,
         children,
       },
     );
@@ -74,24 +71,17 @@ pub fn build(model: &FileModel) -> CategoryNode {
   root
 }
 
-/// Sum of a node's own count plus all descendants' counts (helps UI totals).
-pub fn subtree_count(node: &CategoryNode) -> u64 {
-  node
-    .count
-    + node.children.iter().map(subtree_count).sum::<u64>()
-}
-
-/// Build-time trie: counts land on the node of the exact category path.
+/// Build-time trie keyed by category segment; only the tree shape, no counts
+/// (owner decision 2026-11-25: the per-node row counters are gone).
 #[derive(Default)]
 struct Trie {
-  count: u64,
   children: BTreeMap<String, Trie>,
 }
 
 impl Trie {
   /// Insert one full category path; empty segments are kept verbatim
   /// (spec interpretation: `//` is invalid input, no collapsing is done).
-  fn insert(&mut self, path: &str, count: u64) {
+  fn insert(&mut self, path: &str) {
     let mut full = String::new();
     let mut node = self;
     for segment in path.split('/') {
@@ -101,7 +91,6 @@ impl Trie {
       full.push_str(segment);
       node = node.children.entry(segment.to_string()).or_default();
     }
-    node.count += count;
   }
 
   /// Convert into `CategoryNode`s; `parent_path` is the full path of this
@@ -117,7 +106,6 @@ impl Trie {
           format!("{parent_path}/{name}")
         };
         CategoryNode {
-          count: child.count,
           children: child.into_children(&path),
           name,
           path,
@@ -156,7 +144,7 @@ mod tests {
   // ------------------------------------------------------------- tests
 
   #[test]
-  fn category_tree_nested_chain_counts_own_rows() {
+  fn category_tree_nested_chain_shapes() {
     let model = model_of(
       "lv_cat_chain.log",
       concat!(
@@ -169,48 +157,20 @@ mod tests {
       ),
     );
     let root = build(&model);
-    // Root: uncategorized rows only (2 rows carry no category).
     assert_eq!(root.name, "");
     assert_eq!(root.path, "");
-    assert_eq!(root.count, 2);
     // Uncategorized node first, then top-level categories byte-sorted.
     assert_eq!(names(&root), vec!["uncategorized", "app"]);
-    assert_eq!(child(&root, "uncategorized").count, 2);
     assert_eq!(child(&root, "uncategorized").path, "uncategorized");
     assert!(child(&root, "uncategorized").children.is_empty());
-    // Chain app -> main -> db with own counts only.
+    // Chain app -> main -> db.
     let app = child(&root, "app");
     assert_eq!(app.path, "app");
-    assert_eq!(app.count, 1);
     let main = child(app, "main");
     assert_eq!(main.path, "app/main");
-    assert_eq!(main.count, 1);
     let db = child(main, "db");
     assert_eq!(db.path, "app/main/db");
-    assert_eq!(db.count, 2);
     assert!(db.children.is_empty());
-  }
-
-  #[test]
-  fn category_tree_subtree_counts_sum_descendants() {
-    let model = model_of(
-      "lv_cat_subtree.log",
-      concat!(
-        "2024-01-01T10:00:00.000 app/main LOG_MSG a\n",
-        "2024-01-01T10:00:01.000 app/main/db LOG_ERR b\n",
-        "2024-01-01T10:00:02.000 app LOG_TRC c\n",
-        "2024-01-01T10:00:03.000 app/main/db LOG_MSG d\n",
-        "2024-01-01T10:00:04.000 solo\n",
-        "2024-01-01T10:00:05.000 another\n",
-      ),
-    );
-    let root = build(&model);
-    // Root owns the uncategorized count and the uncategorized child node
-    // repeats it ("All" vs the bucket entry), so the root subtree exceeds
-    // line_count by the uncategorized rows: 2 + (2 + 1 + 1 + 2) = 8.
-    assert_eq!(subtree_count(&root), 8);
-    assert_eq!(subtree_count(child(&root, "app")), 4); // 1 + 1 + 2
-    assert_eq!(subtree_count(child(&root, "uncategorized")), 2);
   }
 
   #[test]
@@ -227,13 +187,12 @@ mod tests {
     let root = build(&model);
     // "B" (0x42) sorts before "a" (0x61) in byte order; no uncategorized row.
     assert_eq!(names(&root), vec!["B", "a"]);
-    assert_eq!(root.count, 0);
     assert_eq!(names(child(&root, "B")), vec!["x"]);
     assert_eq!(names(child(&root, "a")), vec!["m"]);
   }
 
   #[test]
-  fn category_tree_zero_count_interior_nodes() {
+  fn category_tree_interior_nodes() {
     let model = model_of(
       "lv_cat_interior.log",
       concat!(
@@ -244,10 +203,8 @@ mod tests {
     );
     let root = build(&model);
     let x = child(&root, "x");
-    // "x" has no rows of its own path: count 0, children y(1) and z(2).
-    assert_eq!(x.count, 0);
+    // "x" has no rows of its own path; the node exists as an interior node.
     assert_eq!(names(x), vec!["y", "z"]);
-    assert_eq!(subtree_count(x), 3);
   }
 
   #[test]
@@ -257,9 +214,7 @@ mod tests {
     let root = build(&model);
     assert_eq!(root.name, "");
     assert_eq!(root.path, "");
-    assert_eq!(root.count, 0);
     assert!(root.children.is_empty());
-    assert_eq!(subtree_count(&root), 0);
   }
 
   #[test]
@@ -272,9 +227,8 @@ mod tests {
       ),
     );
     let root = build(&model);
-    assert_eq!(root.count, 2);
     assert_eq!(names(&root), vec!["uncategorized"]);
-    assert_eq!(subtree_count(&root), 4);
+    assert!(child(&root, "uncategorized").children.is_empty());
   }
 
   #[test]
@@ -289,8 +243,7 @@ mod tests {
     let app = child(&root, "app");
     let empty = child(app, "");
     let main = child(empty, "main");
-    assert_eq!(main.count, 1);
-    assert_eq!(subtree_count(&root), 1);
+    assert_eq!(main.path, "app//main");
   }
 
   #[test]
@@ -306,12 +259,8 @@ mod tests {
       ),
     );
     let root = build(&model);
-    assert_eq!(root.count, 1); // only "plainrow" is the exact bucket path
     assert_eq!(names(&root), vec!["uncategorized"]); // bucket first, no dup
     let bucket = child(&root, "uncategorized");
-    assert_eq!(bucket.count, 1);
     assert_eq!(names(bucket), vec!["sub"]);
-    assert_eq!(subtree_count(bucket), 2);
-    assert_eq!(subtree_count(&root), 3);
   }
 }

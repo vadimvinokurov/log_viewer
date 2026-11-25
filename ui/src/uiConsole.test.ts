@@ -442,13 +442,13 @@ describe("viewport text RPC (§4, qt7.3)", () => {
  *  (row visible = exact path AND every prefix enabled). */
 function categoryStub() {
   const CATEGORIES = [
-    { path: "app", count: 0 },
-    { path: "app/main", count: 0 },
-    { path: "app/main/db", count: 40 },
-    { path: "app/main/api", count: 20 },
-    { path: "db", count: 0 },
-    { path: "db/pool", count: 20 },
-    { path: "uncategorized", count: 20 },
+    { path: "app" },
+    { path: "app/main" },
+    { path: "app/main/db" },
+    { path: "app/main/api" },
+    { path: "db" },
+    { path: "db/pool" },
+    { path: "uncategorized" },
   ];
   const everyPath = (cs: { path: string }[]): string[] =>
     [...new Set(cs.flatMap(({ path }) => {
@@ -500,8 +500,11 @@ function categoryStub() {
     },
     searchVisible: async () => ({ total: 0, positions: [] }),
     visibilitySnapshot: async () => ({
-      visible_count: CATEGORIES.filter((c) => c.count > 0 && allowed(c.path))
-        .reduce((sum, c) => sum + c.count, 0),
+      // Row model without per-category counts (2026-11-25 owner decision):
+      // each observed path stands in for its rows, so visible_count is the
+      // number of allowed observed paths; tests assert transitions, not row
+      // arithmetic.
+      visible_count: CATEGORIES.filter((c) => allowed(c.path)).length,
       levels: [],
       filters: [],
       pins: [],
@@ -602,8 +605,9 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     ]);
     expect(stub.setCategoryCalls()).toEqual([]);
     expect(snap.visibility?.categoriesEnabled).toEqual(["db", "db/pool", "uncategorized"]);
-    // app/main rows drop out of the visible count (40 + 20 of 100).
-    expect(snap.visibility?.visibleCount).toBe(40);
+    // app subtree paths drop out of the visible count (3 of the 7 observed
+    // paths stay allowed — row model without counts).
+    expect(snap.visibility?.visibleCount).toBe(3);
   });
 
   it("toggleCategory(on) adds the subtree + every ancestor prefix", async () => {
@@ -616,7 +620,7 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     expect(stub.setCategoryBulkCalls()).toEqual([
       { disable: [], enable: ["app", "app/main", "app/main/api", "app/main/db"] },
     ]);
-    expect(snap.visibility?.visibleCount).toBe(100);
+    expect(snap.visibility?.visibleCount).toBe(7);
   });
 
   it("setAllCategories(on=false) unchecks everything via the All checkbox", async () => {
@@ -640,7 +644,7 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     expect(stub.setCategoryBulkCalls()).toEqual([
       { disable: [], enable: CATEGORY_TOGGLE_ALL },
     ]);
-    expect(snap.visibility?.visibleCount).toBe(100);
+    expect(snap.visibility?.visibleCount).toBe(7);
   });
 
   it("toggleCategory without a loaded file is a safe no-op", async () => {
@@ -1255,7 +1259,7 @@ function categoryBurstStub(): BurstStub {
     pickFile: async () => null,
     loadFile: async () => ({
       format: "plain", line_count: 10, size_bytes: 883,
-      categories: [{ path: "a", count: 5 }, { path: "b", count: 5 }],
+      categories: [{ path: "a" }, { path: "b" }],
       levels: [], load_ms: 1,
     }),
     getRows: async () => [],
@@ -1684,7 +1688,7 @@ function loadStub(options: {
     pickFile: async () => null,
     loadFile: async () => ({
       format: "plain", line_count: 42, size_bytes: 883,
-      categories: [{ path: "app/db", count: 42 }], levels: [], load_ms: 1,
+      categories: [{ path: "app/db" }], levels: [], load_ms: 1,
     }),
     getRows: async () => [],
     addFilter: async () => null,

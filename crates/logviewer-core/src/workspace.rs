@@ -1,7 +1,7 @@
 //! In-memory file model of one loaded log file: a parsed index over the
 //! scanner, plus category and level rollups (FUNCTIONAL_SPEC §2, §4, §16).
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::Instant;
 
@@ -26,8 +26,11 @@ pub const LEVELS: [Level; 6] = [
 pub struct FileModel {
   format: Format,
   rows: Vec<Row>,
-  /// Row count per full category string (hierarchical by `/`).
-  categories: BTreeMap<String, u64>,
+  /// Distinct full category strings (hierarchical by `/`). Owner decision
+  /// 2026-11-25 (log_viewer2-7u9): no per-category row counting — the tree
+  /// shows checkboxes only, so the load pays one contains-check per row and
+  /// a String allocation per *distinct* path, not per row.
+  categories: BTreeSet<String>,
   /// Row count per level, in LEVELS order.
   levels: [u64; 6],
   /// Byte size of the backing file (UI file slot: "name · size").
@@ -49,7 +52,7 @@ impl FileModel {
     let rows: Vec<Row> = (1..=max)
       .map(|i| crate::parser::parse(format, line_no(i), scanner.raw_line(i)))
       .collect();
-    let mut categories: BTreeMap<String, u64> = BTreeMap::new();
+    let mut categories = BTreeSet::new();
     let mut levels = [0_u64; 6];
     for row in &rows {
       let key = if row.category.is_empty() {
@@ -57,7 +60,11 @@ impl FileModel {
       } else {
         &row.category
       };
-      *categories.entry(key.to_owned()).or_default() += 1;
+      // No String allocation on the hot path: the set check borrows the
+      // parsed category, only the first sighting of a path allocates.
+      if !categories.contains(key) {
+        categories.insert(key.to_owned());
+      }
       levels[level_index(row.level)] += 1;
     }
     Ok((
@@ -89,12 +96,9 @@ impl FileModel {
     &self.rows[start..end]
   }
 
-  /// Categories with row counts, sorted by full path.
-  pub fn categories(&self) -> impl Iterator<Item = (&str, u64)> + '_ {
-    self
-      .categories
-      .iter()
-      .map(|(path, count)| (path.as_str(), *count))
+  /// Distinct category paths, sorted by full path.
+  pub fn categories(&self) -> impl Iterator<Item = &str> + '_ {
+    self.categories.iter().map(|path| path.as_str())
   }
 
   /// Row count per level.
@@ -135,7 +139,11 @@ mod tests {
   }
 
   #[test]
-  fn loads_counts_and_categories() {
+  fn loads_distinct_categories() {
+    // Owner decision 2026-11-25 (log_viewer2-7u9): no per-category row
+    // counting — the model holds the distinct category paths only; levels
+    // keep the §11 counters. The fixture repeats "app" so the set semantics
+    // stay observable (it must appear exactly once).
     let path = temp_file(
       "lv_ws_basic.log",
       concat!(
@@ -143,6 +151,7 @@ mod tests {
         "2024-01-01T10:00:01.000 app/main/db LOG_ERR b\n",
         "2024-01-01T10:00:02.000 app LOG_TRC c\n",
         "2024-01-01T10:00:03.000 LOG_MSG no category\n",
+        "2024-01-01T10:00:04.000 app LOG_DBG dup\n",
         "\n",
       )
       .as_bytes(),
@@ -151,30 +160,29 @@ mod tests {
     // token -> KSIVA.
     let (model, _) = FileModel::load_path(&path).unwrap();
     assert_eq!(model.format(), Format::Ksiva);
-    assert_eq!(model.line_count(), 5);
+    assert_eq!(model.line_count(), 6);
     assert_eq!(
-      model
-        .categories()
-        .collect::<std::vec::Vec<(&str, u64)>>(),
+      model.categories().collect::<std::vec::Vec<&str>>(),
       vec![
-        // BTreeMap order: U+004C ("LOG_MSG") sorts before lowercase bytes.
-        ("LOG_MSG", 1_u64),
-        ("app", 1),
-        ("app/main", 1),
-        ("app/main/db", 1),
+        // BTreeSet order: U+004C ("LOG_MSG") sorts before lowercase bytes.
+        "LOG_MSG",
+        "app",
+        "app/main",
+        "app/main/db",
         // the trailing empty line is uncategorized with an empty message (§3)
-        ("uncategorized", 1),
+        "uncategorized",
       ]
     );
     // "2024-01-01T10:00:03.000 LOG_MSG no category": 4 tokens, so LOG_MSG is
     // the category (§3 rule: 3+ fields -> field 2 is the category).
     assert_eq!(model.level_count(Level::Msg), 3); // lines 1, 4 and the empty line
+    assert_eq!(model.level_count(Level::Debug), 1); // the "dup" line
     assert_eq!(model.level_count(Level::Error), 1);
     assert_eq!(model.level_count(Level::Trace), 1);
     assert_eq!(model.level_count(Level::Critical), 0);
     assert_eq!(model.row(0).unwrap().message, "a");
     assert_eq!(model.rows_slice(1, 2).len(), 2);
-    assert_eq!(model.rows_slice(4, 10).len(), 1);
+    assert_eq!(model.rows_slice(4, 10).len(), 2);
     assert_eq!(model.rows_slice(9, 10).len(), 0);
   }
 

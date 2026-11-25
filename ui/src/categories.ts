@@ -1,17 +1,17 @@
 //! Categories tree model for the side panel (FUNCTIONAL_SPEC §10, task
 //! log_viewer2-rhl.2). Pure logic, no React: the reducer/console (state.ts)
 //! wires these helpers to the raw IPC shapes
-//! (`categories: {path, count}[]` from the load result and the
+//! (`categories: {path}[]` from the load result and the
 //! `categories_enabled` whitelist from the snapshot; normalization lives in
 //! ipcClient.ts). The tri-state derives from the whitelist on every render —
 //! it is never stored.
 
 /** One node of the categories tree; mirrors the engine's CategoryNode
- * (crates/logviewer-core/src/categories.rs). */
+ * (crates/logviewer-core/src/categories.rs). No per-row counter: the
+ * 2026-11-25 owner decision removed the counts end to end. */
 export interface UiCategoryNode {
   name: string;
   path: string;
-  count: number;
   children: UiCategoryNode[];
 }
 
@@ -33,28 +33,27 @@ function prefixPath(path: string): string[] {
   return prefixes;
 }
 
-/** Build the tree from the flat {path, count} load result. Synthetic root
- * with an empty name/path; counts land on the node of the exact path
- * (node count = rows with exactly this path, engine categories.rs
- * semantics), zero for interior paths never logged directly. The
- * "uncategorized" path is handled like any other node here. */
-export function buildTree(flat: readonly { path: string; count: number }[]): UiCategoryNode {
-  type Trie = { count: number; children: Map<string, Trie> };
-  const rootTrie: Trie = { count: 0, children: new Map() };
-  for (const { path, count } of flat) {
+/** Build the tree from the flat {path} load result. Shape only: duplicate
+ * paths are the same path (a set insert), interior segments become nodes
+ * even when never logged directly, children are sorted in byte order. The
+ * synthetic root carries an empty name/path; "uncategorized" is handled
+ * like any other node here. */
+export function buildTree(flat: readonly { path: string }[]): UiCategoryNode {
+  type Trie = { children: Map<string, Trie> };
+  const rootTrie: Trie = { children: new Map() };
+  for (const { path } of flat) {
     // spec interpretation: `/`-segments are kept verbatim (empty segments
-    // included), mirroring categories.rs; duplicate paths sum their counts.
+    // included), mirroring categories.rs.
     let node: Trie = rootTrie;
     const segments = path.split("/");
     for (const segment of segments) {
       let child = node.children.get(segment);
       if (!child) {
-        child = { count: 0, children: new Map() };
+        child = { children: new Map() };
         node.children.set(segment, child);
       }
       node = child;
     }
-    node.count += count;
   }
 
   const materialize = (trie: Trie, parentPath: string): UiCategoryNode[] => {
@@ -64,14 +63,13 @@ export function buildTree(flat: readonly { path: string; count: number }[]): UiC
       nodes.push({
         name,
         path,
-        count: child.count,
         children: materialize(child, path),
       });
     }
     return nodes;
   };
 
-  return { name: "", path: "", count: 0, children: materialize(rootTrie, "") };
+  return { name: "", path: "", children: materialize(rootTrie, "") };
 }
 
 export type CheckState = "on" | "partial" | "off";

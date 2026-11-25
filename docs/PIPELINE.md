@@ -117,6 +117,17 @@ Claim tasks in the main session before spawning agents.
     tightened 21px -> 18px; the single source is `ROW_HEIGHT_PX` (pinned by a
     test, viewportAnchoring.test.ts) and the CSS `.row`/`.table-header` height
     agree with it. All goldens re-baselined again.
+  - Rebaseline 2026-11-25 (bead log_viewer2-7u9, owner decision: no per-category
+    row counters): the right-aligned `.ct` counter is removed from every tree
+    row (All included) — both in the design mock (UI_DESIGN.html) and the app;
+    the load pipeline no longer counts rows per category (Rust: the FileModel
+    holds a BTreeSet of distinct paths; IPC `categories` = `{path}[]`).
+    All loaded-state goldens re-baselined — the only content change is the
+    removed counter text at the panel's right edge; `panel-categories`,
+    `panel-uncheck`, `panel-tree-search` and `light-panel-categories` re-captured
+    (0.000% on the following full run). All diffs pre-baseline stayed inside the
+    0.5% threshold, so the re-baseline was done explicitly per the visual-change
+    rule, not because the suite failed.
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app
