@@ -154,3 +154,34 @@ b328d145/405193b3/c5dcb43a doc-edit Edit chains are the same pattern one tool ov
 - Main vs subagents: 79% / 21% of est. cost.
 - Average main turn: ≈ 77 k input + 114 k cache-read ≈ **191 k tokens read per
   assistant response** before tool results.
+
+---
+
+## Addendum (2026-11-25, later): Ollama Cloud Usage API calibration
+
+The backend is Ollama Cloud (`ANTHROPIC_BASE_URL=https://ollama.com`, model
+`glm-5.3-flash`), docs `https://docs.ollama.com/api/cloud-usage.md`. Real metering
+(`GET /api/usage?range=30d&group_by=model`, taken 2026-11-25):
+
+- `usage_usd` **$1.44383**, `request_count` **468**, `input_tokens` **37,941,020**
+  (of which `cached_input_tokens` **36,335,680** = 95.8 %, a *subset* of input, not
+  additive), `output_tokens` **220,990**. Balance API: included $58.55 / allowance
+  $60, period from 2026-11-25 08:10:34Z, purchased $0.
+- All usage sits in the single non-empty day bucket **2026-11-25** (`partial: true`);
+  the plan period starts that morning, so 11-22…24 traffic is not metered anywhere.
+- Calibration for the overlapping window (sessions 11-25 after 08:10 UTC —
+  mostly 405193b3 tail + c07fb80d + 30b13d1a + e8dc6629): Ollama request_count
+  468 ≈ client assistant-turn count ~472 for the same sessions → **1 request = 1
+  assistant turn**. Billed input 37.9 M vs client-recorded input+cache-read ~75–80 M
+  for the same traffic; billed input per turn (~81 k) is close to client-recorded
+  fresh input per turn (~95 k), while client `cache_read` recording is not what the
+  backend caches (real cached share 95.8 %).
+
+Conclusions changed for report-01 (Russian, rewritten):
+- Transcript "tokens" and billing are **different scales**; the weighted-cost
+  estimate (332 M units) is retired. Transcripts remain the source for *context
+  pressure* (latency, window, 429 weekly limits), Usage API for costs.
+- Money levers on this backend: request count and non-cached input. A degenerate
+  loop call = one billed request with full context (~$0.003/request average).
+- Docs pages consulted: `docs.ollama.com/api/cloud-usage.md` (field semantics),
+  `docs.ollama.com/cloud/usage.md`, `docs.ollama.com/api/balance.md`.
