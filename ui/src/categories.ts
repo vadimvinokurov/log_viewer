@@ -240,14 +240,7 @@ export function visibleUnderSearch(node: UiCategoryNode, query: string): Set<str
   return visible;
 }
 
-/** Expand/collapse-all targets (§10): the expanded set to install.
- * - expand = true: every path (keepRoots only matters when collapsing).
- * - expand = false, keepRoots = true: root-level paths (no "/") stay
- *   expanded, everything else is collapsed.
- * - expand = false, keepRoots = false: nothing stays expanded. */
-export function expandTargets(allPaths: readonly string[], expand: boolean, keepRoots: boolean): string[] {
-  if (expand) {
-    return [...allPaths].sort(byName);
-  }
-  return keepRoots ? allPaths.filter((path) => !path.includes("/")).sort(byName) : [];
-}
+// expandTargets (§10 expanded set for the collapse/expand-all button) was
+// removed 2026-11-25: the shell installs collapse/expand targets through
+// expandedForToggleAll in state.ts (collapse closes everything), this copy
+// carried the superseded keepRoots semantics.

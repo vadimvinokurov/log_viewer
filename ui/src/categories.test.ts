@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTree,
-  expandTargets,
   nodeCheck,
   propagateToggle,
   toggleAll,
@@ -335,44 +334,5 @@ describe("visibleUnderSearch (§10 tree search)", () => {
         "uncategorized",
       ]),
     );
-  });
-});
-
-// ------------------------------------------------------------- expandTargets
-
-describe("expandTargets (§10 expand/collapse-all button)", () => {
-  const paths = ["app", "app/main", "app/main/db", "B", "B/tree"];
-
-  it("expand returns every path sorted", () => {
-    expect(expandTargets(["app", "app/main", "B"], true, false)).toEqual([
-      "B",
-      "app",
-      "app/main",
-    ]);
-  });
-
-  it("collapse with keepRoots leaves only root-level paths expanded", () => {
-    // Spec interpretation: keepRoots matters only when collapsing; the result
-    // is the expanded set to install (top-level paths stay expanded).
-    expect(expandTargets(paths, false, true)).toEqual(["B", "app"]);
-  });
-
-  it("collapse without keepRoots clears the set", () => {
-    expect(expandTargets(paths, false, false)).toEqual([]);
-  });
-
-  it("expand ignores keepRoots and covers the whole tree, sorted", () => {
-    expect(expandTargets(paths, true, true)).toEqual([
-      "B",
-      "B/tree",
-      "app",
-      "app/main",
-      "app/main/db",
-    ]);
-  });
-
-  it("returns empty targets for an empty path list", () => {
-    expect(expandTargets([], true, false)).toEqual([]);
-    expect(expandTargets([], false, true)).toEqual([]);
   });
 });

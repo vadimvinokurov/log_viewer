@@ -389,16 +389,14 @@ describe("side panel slice (rhl.2, §10.1)", () => {
     ]);
   });
 
-  it("expandedForToggleAll: collapse keeps only the roots expanded (§10 action 5)", () => {
+  it("expandedForToggleAll: collapse closes everything (2026-11-25 owner decision: only root rows stay visible)", () => {
     const flat = [
       { path: "app/main/db", count: 1 },
       { path: "app/main/config/runtime", count: 1 },
       { path: "db/pool", count: 1 },
       { path: "uncategorized", count: 1 },
     ];
-    expect(expandedForToggleAll(flat, false)).toEqual([
-      "app", "db", "uncategorized",
-    ]);
+    expect(expandedForToggleAll(flat, false)).toEqual([]);
   });
 });
 
