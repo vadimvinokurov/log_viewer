@@ -16,14 +16,15 @@ export type LevelCounts = Record<Level, number>;
 /** Which levels are currently on (§2.1: disabled levels survive reload). */
 export type EnabledLevels = Record<Level, boolean>;
 
-/** Bottom-bar captions per level, matching the UI_DESIGN mock. */
+/** Bottom-bar captions per level: 3 letters (2026-11-25 owner decision on the
+ *  design page — "CRT ERR WRN MSG DBG TRC"; full names grew the bar too wide). */
 export const LEVEL_LABELS: Record<Level, string> = {
-  critical: "CRITICAL",
-  error: "ERROR",
-  warning: "WARNING",
+  critical: "CRT",
+  error: "ERR",
+  warning: "WRN",
   msg: "MSG",
-  debug: "DEBUG",
-  trace: "TRACE",
+  debug: "DBG",
+  trace: "TRC",
 };
 
 const THIN_SPACE = " ";

@@ -72,11 +72,18 @@ describe("LEVEL_ORDER (§11 fixed button order)", () => {
     ]);
   });
 
-  it("has a caption for every level", () => {
+  it("has a 3-letter caption for every level (2026-11-25 owner decision: CRT ERR WRN MSG DBG TRC)", () => {
+    const expected: Record<string, string> = {
+      critical: "CRT",
+      error: "ERR",
+      warning: "WRN",
+      msg: "MSG",
+      debug: "DBG",
+      trace: "TRC",
+    };
     for (const level of LEVEL_ORDER) {
-      expect(LEVEL_LABELS[level]).toBe(level.toUpperCase());
+      expect(LEVEL_LABELS[level]).toBe(expected[level]);
     }
-    expect(LEVEL_LABELS.msg).toBe("MSG");
   });
 });
 
@@ -110,12 +117,12 @@ describe("LevelBar component (§11)", () => {
       (b) => b.getAttribute("aria-label") ?? "",
     );
     expect(captions).toEqual([
-      "CRITICAL",
-      "ERROR",
-      "WARNING",
+      "CRT",
+      "ERR",
+      "WRN",
       "MSG",
-      "DEBUG",
-      "TRACE",
+      "DBG",
+      "TRC",
     ]);
     expect(buttons(container)[2].textContent).toContain("2" + " " + "041");
     expect(buttons(container)[3].textContent).toContain("4.2M");
