@@ -1,0 +1,231 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Дорожная карта скилов кита</title>
+<style>
+  :root { color-scheme: light dark;
+    --bg: #fafaf7; --fg: #1c1d22; --muted: #6d6e76; --panel: #ffffff; --line: #e3e2da;
+    --accent: #0f6b3f; --accent-soft: #e9f3ee; --bad: #b3261e; --bad-soft: #fbe9e6;
+    --good: #22683a; --good-soft: #e8f2ec; --warn: #9a5b00; --warn-soft: #fdf3e0; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark;
+    --bg: #17181c; --fg: #e6e6e9; --muted: #9a9ba3; --panel: #1f2026; --line: #34353d;
+    --accent: #86d1a3; --accent-soft: #14301f; --bad: #e8837c; --bad-soft: #3a1a17;
+    --good: #7ccb99; --good-soft: #14301f; --warn: #e2b163; --warn-soft: #38290e; } }
+  :root[data-theme="dark"] { color-scheme: dark;
+    --bg: #17181c; --fg: #e6e6e9; --muted: #9a9ba3; --panel: #1f2026; --line: #34353d;
+    --accent: #86d1a3; --accent-soft: #14301f; --bad: #e8837c; --bad-soft: #3a1a17;
+    --good: #7ccb99; --good-soft: #14301f; --warn: #e2b163; --warn-soft: #38290e; }
+  body { font: 400 14px/1.55 system-ui, sans-serif; max-width: 980px; margin: 0 auto;
+    padding: 28px max(16px, env(safe-area-inset-left, 0px)) 60px max(16px, env(safe-area-inset-right, 0px));
+    background: var(--bg); color: var(--fg); }
+  h1 { font-size: 22px; letter-spacing: -0.01em; } h2 { font-size: 16px; margin-top: 34px; }
+  h3 { font-size: 14px; margin-top: 22px; margin-bottom: 4px; }
+  a { color: var(--accent); }
+  p, ul, ol { margin: 8px 0; } ul, ol { padding-left: 22px; } li { margin: 5px 0; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin: 10px 0; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left; font-size: 13px; vertical-align: top; }
+  th { text-transform: uppercase; font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+  code { font-family: ui-monospace, monospace; font-size: 12px; background: var(--panel);
+    border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; min-width: 150px; }
+  .card b { font-size: 18px; font-variant-numeric: tabular-nums; display: block; }
+  .card span { color: var(--muted); font-size: 12px; }
+  .verdict { display: inline-block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+    padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+  .v-load { background: var(--good-soft); color: var(--good); }
+  .v-margin { background: var(--warn-soft); color: var(--warn); }
+  .v-gapped { background: var(--bad-soft); color: var(--bad); }
+</style>
+
+<h1>Дорожная карта скилов vvv-claude-kit</h1>
+<p>Что создавать, что доделать в существующих скилах, чего не создавать вовсе —
+чтобы разработка приложений агентом стала дешевле и предсказуемее. Консолидация
+трёх отчётов проекта + инвентаризация самого кита. Каждая рекомендация несёт
+доказательство из реальных сессий; порядок — по (урон × частота) / цена.
+Сопутствующие отчёты:
+<a href="report-01-token-usage.html">токены</a> ·
+<a href="report-02-agent-mistakes.html">ошибки агента</a> ·
+<a href="report-03-testing.html">тестирование</a>.</p>
+
+<div class="cards">
+  <div class="card"><b>6</b><span>скилов в ките сегодня</span></div>
+  <div class="card"><b>7</b><span>новых скилов в дорожной карте</span></div>
+  <div class="card"><b>4</b><span>хука/скрипта вместо скилов</span></div>
+  <div class="card"><b>3</b><span>версии существующих скилов</span></div>
+  <div class="card"><b>2</b><span>дублей superpowers создавать не надо</span></div>
+</div>
+
+<h2>1. Существующее покрытие и его дыры</h2>
+<table>
+  <tr><th style="width:28%">Скил кита</th><th>Что несёт</th><th style="width:14%">Статус</th></tr>
+  <tr><td><code>building-testable-apps</code></td><td>Конституция headless-разработки:
+  чистые модули, schema-команды, dual-path оракулы, golden-корпус, strict types,
+  text RPC, визуальная приемка.</td><td>Несущий</td></tr>
+  <tr><td><code>token-economy</code></td><td>Шейп сессии, бюджет чтения, дисциплина
+  правок, расписание гейтов, метраж бюджета. Закрывает рекомендации
+  <code>session-shape</code> и <code>gate-scheduler</code> из токен-отчёта.</td>
+  <td>Несущий</td></tr>
+  <tr><td><code>subagent-contract</code></td><td>Спавн-тест (делегировать/инлайн),
+  пятиполевой контракт, бюджеты и чекпойнты, ждание правил. Закрывает механизмы
+  P7/P8/P3/P13 из ошибочного отчёта.</td><td>Несущий</td></tr>
+  <tr><td><code>ui-development</code> <em>(новый, 2026-11-25)</em></td><td>Пайплайн
+  «стиль-гайд из живых компонентов»: компонентные + композитные goldens, live на
+  рубежах, ловушки апрува/ребазлайна. Закрывает P9 и рекомендации design-oracle.</td>
+  <td>Протестирован RED/GREEN</td></tr>
+  <tr><td><code>common-rules</code>, <code>using-skills</code></td><td>Общие правила
+  сессии; мета-дисциплина триггеринга скилов.</td><td>Несущие</td></tr>
+  <tr><td>hooks: <code>protect-secrets</code></td><td>Из двух рекомендаций хуков
+  (ошибки-отчет, п. 2–3) реализован один: секретный блокиратор.</td>
+  <td>Частично</td></tr>
+</table>
+<p><strong>Уже покрыто superpowers — не дублировать:</strong> TDD
+(<code>test-driven-development</code>), отладка (<code>systematic-debugging</code> —
+закрывает P4 «отладку наррацией» на уровне процесса), планы
+(<code>writing-plans</code>, <code>executing-plans</code), мозговой штурм
+(<code>brainstorming</code>), верификация завершения
+(<code>verification-before-completion</code> — закрывает P3),
+dispatching-parallel-agents. Кит должен лишь следить, чтобы эти скилы
+триггерались (см. хук-триггер, §3).</p>
+
+<h2>2. Новые скилы — по порядку сборки</h2>
+<table>
+  <tr><th>#</th><th>Скил</th><th>Что предписывает (один экран)</th><th>Доказательство из проекта</th><th style="width:12%">Цена</th></tr>
+
+  <tr><td>1</td><td><code>headless-text-rpc</code></td>
+  <td>Для любого stateful-приложения: каждая интерактивная способность =
+  capability на текстовом RPC; один reducer для тестов и UI; границы коэрсится
+  ровно в одном месте; стабы зеркалят сырой IPC; новое состояние = RPC-кейс до
+  разметки.</td>
+  <td>45 capabilities / 106 кейсов; весь headless-переписывание v0.3 ехало на нём;
+  «ключевой камень» инвентаризации тестирования</td><td>~день</td></tr>
+
+  <tr><td>2</td><td><code>golden-rebaseline</code></td>
+  <td>Красный golden = триаж-протокол: diff % сначала; ребазлайн только
+  задуманного, с before/after по каждом стейту, записанным в acceptance задачи;
+  0.000 % дифф при видимой перемене = поехала логика; заметка ребазлайна — часть
+  доказательств.</td>
+  <td>9 документированных ребазлайнов, ноль тихих после того, как харнесс принял
+  обязанность</td><td>~полдня</td></tr>
+
+  <tr><td>3</td><td><code>live-check</code></td>
+  <td>Милстоун = live-прогон реального окна: драйвер, числовые ассерты, no-retry
+  на мутирующих батчах; named-чеки накапливаются, никогда не заменяются; живой
+  файл по абсолютному пути.</td>
+  <td>14 named-чеков; живой слой поймал per-probe обход counts и idle-CPU спин —
+  недостижимо офлайн-слоями; дрейф 14→милстоун-специфичный — зафиксированный
+  анти-пример</td><td>~полдня</td></tr>
+
+  <tr><td>4</td><td><code>dual-path-oracle</code></td>
+  <td>Каждая неочевидная оптимизация везёт наивную reference в том же PR +
+  <code>*_matches_the_naive_reference</code> тест навсегда; benchmark до/после —
+  строка в BENCHMARKS.md.</td>
+  <td>3 алгоритма оракулены; visibility 154→75.7 мс с доказательством; узость
+  (regex fallback не оракулен) — зафиксированный пробел</td><td>~полдня</td></tr>
+
+  <tr><td>5</td><td><code>benchmark-gates</code></td>
+  <td>Прогон без вердикта не существует: сравнение <code>--baseline prev</code>;
+  no-perf-claim без строки в таблице базлайнов; наборы чисто скипаются без
+  корпуса (CI-safety).</td>
+  <td>«Измеряем всегда, падаем никогда» — фиксированный как пробел инвентаризации
+  тестирования</td><td>~час</td></tr>
+
+  <tr><td>6</td><td><code>release-gates</code></td>
+  <td>Релизный тег = только после локального прогона того же, что гоняет CI
+  (cargo test + tsc -b + vitest + e2e), на тегируемом коммите; список гейтов и
+  порядок — в скрипте, а не в голове; тег пушится скриптом, который сначала
+  гоняет.</td>
+  <td>P2: CI поймал ошибки tsc после v0.2.0; 3 перетега за один релизный день
+  (ошибочный отчёт)</td><td>~2 ч (скил) + скрипт</td></tr>
+
+  <tr><td>7</td><td><code>agent-brief</code></td>
+  <td>Bootstrap-шаблон <code>docs/notes/agent-brief.md</code> в первой сессии
+  нового проекта: правила слоя, разбиение файла, стиль, гейты, известные ловушки;
+  формат промпта агента = только указатели (бисл ID + brief + раздел спеки).
+  Разграничение с <code>subagent-contract</code> (он описывает промпт-контракт,
+  этот скил — создание и поддержку самого brief).</td>
+  <td>промпт ~1 к токенов → ~30 строк указателей; лучшая проверенная экономия
+  токен-отчёта</td><td>~1 ч</td></tr>
+</table>
+<p>Каждый скил из таблицы проходит обязательный процесс принятия (см. §5):
+baseline-агент без скила → минимальный SKILL.md под конкретные провалы →
+агент со скилом → закрытие выявленных лазеек. Прецедент:
+<code>ui-development</code> собран этим циклом в одной сессии.</p>
+
+<h2>3. Хуки и скрипты вместо скилов</h2>
+<p>Ошибки-отчёт уже свёл паттерн: то, что нужно <em>никогда</em>, не должно
+зависеть от того, что агент вспомнил прочитать скил. Механизмы, где хук
+правильнее документа:</p>
+<table>
+  <tr><th>Механизм</th><th>Тип</th><th>Что делает</th><th>Закрывает</th></tr>
+  <tr><td><code>loop-breaker</code></td><td>PostToolUse-хук</td>
+  <td>Считает подряд вызовы того же инструмента/цели; на третьем отклоняет и
+  требует смену маршрута (Write целиком / точечный гейт / делегация).</td>
+  <td>P5; 359 потерянных вызовов в одной сессии = 359 биллингуемых запросов</td></tr>
+  <tr><td>файл-правки через Bash блокиратор</td><td>PostToolUse-хук</td>
+  <td>Третья Bash-мутация файла за ход отклоняется с указанием Edit/Write.
+  (Дублирует правило 7 CLAUDE.md, но правило уже дважды провалено.)</td>
+  <td>P5: повторяющиеся heredoc-борьбы</td></tr>
+  <tr><td>инжект-хук триггеринга скилов</td><td>PostToolUse-хук</td>
+  <td>Редактор, тронувший <code>ui/</code> или новые фич-пути, получает
+  однострочное напоминание: который скил должен применяться на этом пути.</td>
+  <td>P12: скилы не триггерились, владелец спрашивал дважды</td></tr>
+  <tr><td><code>release_gates.sh</code> + пречек тег-пуша</td><td>скрипт +
+  PreToolUse-хук</td><td>Скрипт гоняет гейты релиза в порядке правил; тег-пуш без
+  свежего прохождения — отклоняется.</td><td>P2, P11</td></tr>
+</table>
+
+<h2>4. Версии существующих скилов (малые издания)</h2>
+<ol>
+  <li><strong><code>building-testable-apps</code> + строка гейтов:</strong>
+  «перед закрытием кодовой задачи — один точечный гейт файла модуля; полный
+  воркспейс — один раз перед коммитом» (расписание уже в токен-скиле; здесь —
+  строка-указатель, чтобы конституция не заставляла гонять всё за каждым
+  микроправкой).</li>
+  <li><strong><code>ui-development</code> + visual-check-budget:</strong> не более
+  одной картинки на решение; никогда не перечитывать ту же картинку; снимок по
+  элементу вместо полного окна; PNG-чтение = только визуальная приемка.</li>
+  <li><strong><code>building-testable-apps</code> + property-testing:</strong> в
+  правило 4 (golden-корпус) добавить класс: компонент, смотрящий в произвольные
+  пользовательские байты (парсер, декодер), обязан иметь property/fuzz-тест
+  (произвольные байты → нет паники, нет зависания), когда такой компонент
+  существует. Закрывает крупнейший тестовый пробел (инвентаризация §3.1).</li>
+</ol>
+
+<h2>5. Процесс принятия каждого нового скила</h2>
+<p>Скил без теста — неопробованная инструкция. Цикл (по
+<code>superpowers:writing-skills</code>, прецедент — <code>ui-development</code>):</p>
+<ol>
+  <li><strong>RED:</strong> свежий агент получает типовую задачу скила
+  (например, «добавить компонентный вариант») <em>без</em> скила; записывается
+  вербатим, как агент по умолчанию ведёт себя, — это и есть список провалов, под
+  которье пишется документ.</li>
+  <li><strong>GREEN:</strong> тот же сценарий с текстом скила в контексте свежего
+  агента; сверяется, что пайплайн воспроизведён, а не пересказан.</li>
+  <li><strong>REFACTOR:</strong> каждая лазейка/грань, выявленная прогоном,
+  возвращается в скил (например, грань «новый рендер не имеет before» попала в
+  таблицу ловушек именно прогона).</li>
+  <li>Коммит скила с упоминанием прогона в сообщении — иначе не видно, что
+  скил вообще кто-то проверил.</li>
+</ol>
+
+<h2>6. Чего создавать не надо</h2>
+<ul>
+  <li><strong>Дублей superpowers:</strong> TDD, планирование, отладка,
+  мозговой штурм уже есть — вместо новых скилов решается триггеринг (хук, §3).</li>
+  <li><strong>Проектные скилы:</strong> специфика одного репо (структура бисов,
+  имена скриптов, порядок релизов) живет в CLAUDE.md и бисах проекта; скил кита
+  — только то, что переезжает между проектами.</li>
+  <li><strong>Зонтичные скилы:</strong> «testing»-скил в один документ, покрывающий
+  RPC + goldens + live + benchmarks — не триггерится по описанию и читается
+  наполовину; один скил = одна сессия-проблема.</li>
+  <li><strong>Мотивационные документы вместо хуков:</strong> если требование
+  должно выполняться <em>никогда не наоборот</em> (каждая картинка, каждый
+  heredoc, тег-пуш), — это хук, а не пункт в документе.</li>
+</ul>
+
+<p class="est">Методология: консолидация рекомендаций трёх отчётов
+(report-02 §рекомендуемые механизмы, report-01 §6, report-03 §4 + §7) и
+инвентаризации текущего состояния кита (5 существующих скилов, 1 создан в этой
+сессии, 1 хук); каждая строка несёт доказательство — число или событие из
+транскриптов проекта. Приоритеты: (1)–(3) скилы тестового слоя, (6)–(7) релиз и
+экономика, хуки — параллельно.</p>
