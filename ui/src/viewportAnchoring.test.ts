@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ROW_HEIGHT_PX,
+  TABLE_HEADER_PX,
   anchorForChange,
   anchorScrollTop,
   captureAnchor,
@@ -90,14 +91,19 @@ describe("anchorScrollTop", () => {
   });
 
   it("a null resolution (nothing visible after the anchor) scrolls to the bottom", () => {
-    const bottom = 1000 * ROW_HEIGHT_PX - 900;
+    // The scroller's content height includes the header row (LogTable renders
+    // rows at translateY(start + ROW_HEIGHT_PX) with total += ROW_HEIGHT_PX),
+    // so the true bottom is count*ROW + HEADER - viewport; a clamp computed
+    // without it left the last content row (a bottom-edge anchor) below the
+    // fold (owner repro 2026-11-25).
+    const bottom = 1000 * ROW_HEIGHT_PX + TABLE_HEADER_PX - 900;
     expect(anchorScrollTop(null, anchor, 1000, 900)).toBe(bottom);
     // Even the bottom never goes negative on a short table.
     expect(anchorScrollTop(null, anchor, 10, 900)).toBe(0);
   });
 
   it("clamps into the scrollable range for both ends", () => {
-    const bottom = 1000 * ROW_HEIGHT_PX - 900;
+    const bottom = 1000 * ROW_HEIGHT_PX + TABLE_HEADER_PX - 900;
     expect(anchorScrollTop(0, anchor, 1000, 900)).toBe(0);
     const hugeOffset = { line: 105, offsetPx: -100000 };
     expect(anchorScrollTop(50, hugeOffset, 1000, 900)).toBe(bottom);

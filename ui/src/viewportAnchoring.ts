@@ -10,6 +10,14 @@ export const ROW_HEIGHT_PX = 18; // 13px glyph + 3px breathing (mock 97b7ed7);
 // lives here so the virtualizer offsets and the CSS `.row` height agree —
 // this pure module may compute scroll offsets without importing the table.
 
+/** The header row lives inside the scroller: LogTable renders rows at
+ *  translateY(vi.start + ROW_HEIGHT_PX) and the content height is
+ *  rowCount*ROW_HEIGHT_PX + ROW_HEIGHT_PX, so the scrollable max is one row
+ *  taller than count*ROW. A clamp computed without it left a bottom-edge
+ *  anchor (the selected last row) below the fold at restore (owner repro
+ *  2026-11-25). */
+export const TABLE_HEADER_PX = ROW_HEIGHT_PX;
+
 /** Resolves the 1-based line_no of visible row i (0-based), or null when the
  *  row is outside the sequence or otherwise unavailable. */
 export type LineAt = (i: number) => Promise<number | null>;
@@ -108,9 +116,11 @@ export function anchorScrollTop(
   rowCount: number,
   viewportPx: number,
 ): number {
-  const max = Math.max(0, rowCount * ROW_HEIGHT_PX - viewportPx);
-  const target =
-    index === null ? max : index * ROW_HEIGHT_PX - anchor.offsetPx;
+  const max = Math.max(
+    0,
+    rowCount * ROW_HEIGHT_PX + TABLE_HEADER_PX - viewportPx,
+  );
+  const target = index === null ? max : index * ROW_HEIGHT_PX - anchor.offsetPx;
   return Math.max(0, Math.min(target, max));
 }
 
