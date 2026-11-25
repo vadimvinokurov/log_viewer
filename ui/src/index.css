@@ -450,16 +450,39 @@ body {
   flex: none;
 }
 
-/* Native checkboxes (mock 1d80977): the .cb class survives as a selector
-   hook; appearance comes from the system + accent-color. */
+/* Custom-drawn checkboxes (2026-11-25 paint bug): native checkboxes paint
+   grey-until-hover in WKWebView's scrolled content — the whole look now
+   comes from CSS (appearance:none), same 16px native-style shape and the
+   same accent tokens as the mock look (UI_DESIGN line 183). */
 .tree .row input.cb {
+  appearance: none;
   width: 16px;
   height: 16px;
   flex: none;
   margin: 0;
   padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
   cursor: pointer;
-  accent-color: var(--accent);
+}
+
+.tree .row input.cb:hover {
+  border-color: var(--accent);
+}
+
+.tree .row input.cb:checked,
+.tree .row input.cb:indeterminate {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.tree .row input.cb:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 5.2l2 2L8.2 3' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.tree .row input.cb:indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 5h6' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 .tree .row .nm {
