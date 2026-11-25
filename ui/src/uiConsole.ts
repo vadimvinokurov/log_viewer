@@ -142,12 +142,16 @@ const settingsCommands = (): SettingsCommands => {
   const settingsGet = typeof stub?.settingsGet === "function" ? stub.settingsGet : null;
   const setLastOpenDir = typeof stub?.setLastOpenDir === "function" ? stub.setLastOpenDir : null;
   if (stub !== null && settingsGet !== null && setLastOpenDir !== null) {
+    // A narrowed copy (a bare `stub.setColumnWidths` inside a closure is
+    // possibly-undefined for TS — the release CI's tsc rejected it).
+    const stubSetColumnWidths =
+      typeof stub?.setColumnWidths === "function" ? stub.setColumnWidths : null;
     return {
       settingsGet,
       setLastOpenDir,
       setColumnWidths:
-        typeof stub?.setColumnWidths === "function"
-          ? (widths) => stub.setColumnWidths(widths)
+        stubSetColumnWidths !== null
+          ? stubSetColumnWidths
           : () => Promise.resolve(null),
     };
   }

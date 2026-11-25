@@ -2625,6 +2625,12 @@ describe("column-widths persistence (design 2026-11-25-column-resize)", () => {
    *  set_column_widths records its calls. `withSetter` off = the stub does
    *  NOT know the new command (commit must degrade to a no-op fallback). */
   interface ColumnWidthsStub extends RawIpc {
+    /** RAW §15 shapes (the stub carries them; RawIpc does not declare
+     *  settings commands). setColumnWidths is optional: withSetter off
+     *  exercises the seam's no-op fallback. */
+    settingsGet(): Promise<{ history_size: number; last_open_dir: string; default_categories_enabled: boolean }>;
+    setLastOpenDir(dir: string): Promise<null>;
+    setColumnWidths?(widths: number[] | null): Promise<null>;
     columnWidthsCalls(): (number[] | null)[];
   }
 
