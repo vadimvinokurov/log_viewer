@@ -23,6 +23,7 @@
     --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --bg: #eef1f5;
     --surface: #ffffff;        /* table, menus */
+    --table-bg: #f5f7fa;       /* log table background — a step off white, easier on the eyes */
     --chrome: #f3f5f8;         /* titlebar, bottom bar, sidebar */
     --chrome-2: #e9edf2;       /* table header row, button hover */
     --ink: #1b2531;
@@ -47,6 +48,7 @@
     :root:not([data-theme="light"]) {
       --bg: #0b1016;
       --surface: #141c24;
+      --table-bg: #141c24;
       --chrome: #101722;
       --chrome-2: #1a2430;
       --ink: #d7e0ea;
@@ -71,6 +73,7 @@
   :root[data-theme="dark"] {
     --bg: #0b1016;
     --surface: #141c24;
+    --table-bg: #141c24;
     --chrome: #101722;
     --chrome-2: #1a2430;
     --ink: #d7e0ea;
@@ -143,12 +146,12 @@
   }
 
   /* ============ window frame ============ */
-  .mock-scroll { border: 1px solid var(--border-strong); border-radius: 12px; overflow-x: auto; background: var(--surface); box-shadow: 0 8px 28px rgba(9, 18, 28, .13), 0 1px 3px rgba(9, 18, 28, .1); }
+  .mock-scroll { border: 1px solid var(--border-strong); border-radius: 12px; overflow-x: auto; background: var(--table-bg); box-shadow: 0 8px 28px rgba(9, 18, 28, .13), 0 1px 3px rgba(9, 18, 28, .1); }
   :root[data-theme="dark"] .mock-scroll, :root:not([data-theme="light"]) .mock-scroll { box-shadow: 0 8px 28px rgba(0, 0, 0, .5); }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) .mock-scroll { box-shadow: 0 8px 28px rgba(0, 0, 0, .5); }
   }
-  .app { min-width: 760px; background: var(--surface); }
+  .app { min-width: 760px; background: var(--table-bg); }
 
   .titlebar {
     height: 30px; background: var(--chrome); border-bottom: 1px solid var(--border);
@@ -218,8 +221,8 @@
   .hrow { height: 21px; background: var(--chrome); border-bottom: 1px solid var(--border); color: var(--dim); font: 600 11px/21px var(--font-sans); }
 
   .drow { height: 21px; cursor: default; }
-  .drow:nth-child(even):not(.sel):not(:hover) { background: color-mix(in srgb, var(--chrome) 35%, var(--surface)); }
-  .drow:hover { background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface)); }
+  .drow:nth-child(even):not(.sel):not(:hover) { background: color-mix(in srgb, var(--chrome) 35%, var(--table-bg)); }
+  .drow:hover { background: color-mix(in srgb, var(--chrome-2) 60%, var(--table-bg)); }
   .drow.sel { background: var(--accent-tint); }
   .drow .ln { position: relative; text-align: right; padding-right: 12px; color: var(--dim); }
   .drow.pin .ln::before { content: ""; position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 5px; height: 5px; border-radius: 50%; background: var(--pin); }
@@ -612,7 +615,7 @@
     <thead><tr><th>Token</th><th>Light</th><th>Dark</th><th>Use</th></tr></thead>
     <tbody>
       <tr><td>fonts</td><td class="mono">system-ui 13px · mono 13px</td><td class="mono">same (system stacks)</td><td>chrome sans; data in the system fixed font (SF Mono / Menlo / Consolas); no webfonts — v1 parity</td></tr>
-      <tr><td>bg / surface</td><td class="mono">#eef1f5 / #ffffff</td><td class="mono">#0b1016 / #141c24</td><td>page around the window · table, menus</td></tr>
+      <tr><td>bg / surface / table</td><td class="mono">#eef1f5 / #ffffff / #f5f7fa</td><td class="mono">#0b1016 / #141c24 / #141c24</td><td>page around the window · menus, buttons · the log table (a step off white — v1's #F5F5F5 "card" idea)</td></tr>
       <tr><td>chrome / chrome-2</td><td class="mono">#f3f5f8 / #e9edf2</td><td class="mono">#101722 / #1a2430</td><td>bars, sidebar, header row, hovers</td></tr>
       <tr><td>ink / muted / dim</td><td class="mono">#1b2531 / #5a6a7a / #8795a4</td><td class="mono">#d7e0ea / #9babbc / #6d7e8f</td><td>message · category · line number, time, counts</td></tr>
       <tr><td>accent</td><td class="mono sw2"><i style="background:#0078d7"></i>#0078d7</td><td class="mono sw2"><i style="background:#4da3e8"></i>#4da3e8</td><td>selection tint, focus, command prefix, tabs</td></tr>
