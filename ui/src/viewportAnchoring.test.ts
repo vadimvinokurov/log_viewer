@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ROW_HEIGHT_PX,
+  anchorForChange,
   anchorScrollTop,
   captureAnchor,
   remapSelection,
@@ -100,6 +101,62 @@ describe("anchorScrollTop", () => {
     expect(anchorScrollTop(0, anchor, 1000, 900)).toBe(0);
     const hugeOffset = { line: 105, offsetPx: -100000 };
     expect(anchorScrollTop(50, hugeOffset, 1000, 900)).toBe(bottom);
+  });
+});
+
+/** §4/§7 (owner bug report, 2026-11-25): with a selection pivot on screen
+ *  the anchor is the pivot — the selected row must not shift when filters
+ *  or categories change; the qt7.3 top-row anchor let rows inserted above
+ *  the selection push it out of the viewport. */
+describe("anchorForChange (selection-anchored restore)", () => {
+  const top = { index: 100, line: 105 };
+  const viewportPx = 900;
+
+  it("an on-screen selection pivot anchors instead of the top row", () => {
+    // scrollTop 1500, viewport 1500..2400; pivot index 85 (start 1530) sits
+    // 30px below the viewport top — on screen.
+    const pivot = { index: 85, line: 71 };
+    const live = anchorForChange(top, pivot, 1500, viewportPx);
+    expect(live).toEqual({
+      index: 85,
+      anchor: { line: 71, offsetPx: 85 * ROW_HEIGHT_PX - 1500 },
+    });
+  });
+
+  it("an off-screen pivot leaves the top-row anchor in charge", () => {
+    // Pivot wholly above (offset −1410) and wholly below (+3900): nothing
+    // visible around either to preserve.
+    expect(anchorForChange(top, { index: 5, line: 6 }, 1500, viewportPx))
+      .toEqual({ index: 100, anchor: { line: 105, offsetPx: 300 } });
+    expect(anchorForChange(top, { index: 300, line: 95 }, 1500, viewportPx))
+      .toEqual({ index: 100, anchor: { line: 105, offsetPx: 300 } });
+  });
+
+  it("a pivot row partially visible at the top edge still anchors", () => {
+    // Start 9px above the top edge (offset −9 > −ROW): partially drawn row
+    // still intersects the viewport, so it anchors.
+    const pivot = { index: 100, line: 101 };
+    const live = anchorForChange(top, pivot, 1809, viewportPx);
+    expect(live?.index).toBe(100);
+  });
+
+  it("a pivot whose line is unknown (not in the rows cache) falls back", () => {
+    const scrollTop = 100 * ROW_HEIGHT_PX - 300;
+    expect(anchorForChange(top, { index: 60, line: null }, scrollTop, viewportPx))
+      .toEqual({ index: 100, anchor: { line: 105, offsetPx: 300 } });
+  });
+
+  it("no selection (pivot null) is exactly the qt7.3 top-row capture", () => {
+    const scrollTop = 100 * ROW_HEIGHT_PX - 300;
+    expect(anchorForChange(top, null, scrollTop, viewportPx)).toEqual({
+      index: 100,
+      anchor: { line: 105, offsetPx: 300 },
+    });
+  });
+
+  it("an unknown top-row line with no usable pivot yields null (restore keeps scrollTop)", () => {
+    const scrollTop = 100 * ROW_HEIGHT_PX - 300;
+    expect(anchorForChange({ index: 100, line: null }, null, scrollTop, viewportPx)).toBeNull();
   });
 });
 

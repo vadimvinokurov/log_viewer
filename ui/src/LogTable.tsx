@@ -22,8 +22,8 @@ import type { CopyMode } from "./uiConsole";
 import { overlaySegments, type HighlightSpan } from "./highlights";
 import {
   ROW_HEIGHT_PX,
+  anchorForChange,
   anchorScrollTop,
-  captureAnchor,
   resolveLineIndex,
   type Anchor,
   type ViewportInfo,
@@ -45,8 +45,10 @@ export interface LogTableHandle {
   /** Copy the selection (raw lines or Message column, §4); resolves to
    * the text that was put on the clipboard. */
   copy(mode: CopyMode): Promise<string>;
-  /** Viewport scroll state incl. the live anchor (§4, qt7.3); assertions
-   * use this text RPC, never the DOM. Null without a mounted viewport. */
+  /** Viewport scroll state incl. the live anchor (§4, qt7.3): identity and
+   * offset of the next anchor row — the first visible row, or the on-screen
+   * selection pivot (2026-11-25). Assertions use this text RPC, never the
+   * DOM. Null without a mounted viewport. */
   viewport(): ViewportInfo | null;
 }
 
@@ -99,13 +101,25 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   useLayoutEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
-  // Live anchor: identity and captured offset of the current first visible
-  // row; the visibility-epoch step restores scrollTop from it (§4, qt7.3).
+  // Live anchor: identity and captured offset of the anchor row for the next
+  // visibility change — the first visible row, or the selection pivot while
+  // it is on screen (§4/§7, 2026-11-25 revision: the selected row must not
+  // shift when filters/categories change).
   interface LiveAnchor {
     index: number;
     anchor: Anchor;
   }
   const anchorRef = useRef<LiveAnchor | null>(null);
+  // The pivot's 1-based line at selection time (§7 remap input): file line
+  // numbers survive every visibility change, so this stays valid even while
+  // the rows cache is cleared and refilled mid-mutation — the capture reads
+  // the pivot line from here instead of a possibly-stale pivot INDEX.
+  const pivotLineRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const pivot = selection.anchor;
+    pivotLineRef.current =
+      pivot === null ? null : rowsRef.current.get(pivot)?.line_no ?? null;
+  }, [selection]);
   // Current epoch pair in a ref: the in-flight fetch loop cannot read the
   // effect closure for the freshest value once a newer effect has re-run.
   const epochsRef = useRef({ file: fileEpoch, visibility: visibilityEpoch });
@@ -267,9 +281,13 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
   // Visual items of the current layout pass (also the fetch effect's input).
   const virtualItems = virtualizer.getVirtualItems();
 
-  // §4 qt7.3: the live anchor ref updates on every layout pass, after the
+  // §4/§7: the live anchor ref updates on every layout pass, after the
   // restore step above ran (so a same-commit visibility bump first sees the
-  // pre-refilter anchor).
+  // pre-refilter anchor). With a selection pivot on screen the anchor row is
+  // the pivot (2026-11-25 revision); the cache-consistency check
+  // (cached line at the pivot index must equal the pivot line captured at
+  // selection time) makes a stale mid-refetch pivot index fall back to the
+  // top row rather than anchor a different row by accident.
   useLayoutEffect(() => {
     const viewport = scrollRef.current;
     const first = virtualItems[0];
@@ -277,15 +295,22 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
       anchorRef.current = null;
       return;
     }
-    const captured = captureAnchor(
+    const pivot =
+      pivotLineRef.current !== null &&
+      selection.anchor !== null &&
+      rowsRef.current.get(selection.anchor)?.line_no === pivotLineRef.current
+        ? { index: selection.anchor, line: pivotLineRef.current }
+        : null;
+    anchorRef.current = anchorForChange(
       {
         index: first.index,
         line: rowsRef.current.get(first.index)?.line_no ?? null,
       },
+      pivot,
       viewport.scrollTop,
+      viewport.clientHeight,
     );
-    anchorRef.current = captured === null ? null : { index: first.index, anchor: captured };
-  }, [virtualItems, rows]);
+  }, [virtualItems, rows, selection]);
 
   /** §4 copy: raw lines (Ctrl+C / Copy) or the Message column. Rows missing
    * from the visible cache are fetched first. Resolves to the copy text. */

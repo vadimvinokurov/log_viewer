@@ -48,6 +48,30 @@ export function captureAnchor(
   };
 }
 
+/** §4/§7 (owner bug report, 2026-11-25): with a selection pivot on screen
+ *  the anchor row is the pivot — the selected row must not shift when
+ *  categories/filters change (the qt7.3 top-row anchor let rows inserted
+ *  above the selection push it out of the viewport). An off-screen pivot,
+ *  no selection, or a pivot whose row line is unknown anchor the top
+ *  visible row exactly as before (qt7.3) — there is nothing visible around
+ *  an off-screen anchor to keep in place, and the table must not jump. */
+export function anchorForChange(
+  top: { index: number; line: number | null },
+  pivot: { index: number; line: number | null } | null,
+  scrollTop: number,
+  viewportPx: number,
+): { index: number; anchor: Anchor } | null {
+  const offset = pivot === null ? 0 : pivot.index * ROW_HEIGHT_PX - scrollTop;
+  const onScreen =
+    pivot !== null &&
+    pivot.line !== null &&
+    offset > -ROW_HEIGHT_PX &&
+    offset < viewportPx;
+  const chosen = onScreen ? pivot : top;
+  const anchor = captureAnchor(chosen, scrollTop);
+  return anchor === null ? null : { index: chosen.index, anchor };
+}
+
 /**
  * Binary search: the first 0-based visible index whose line_no >= `line`
  * (upper bound). The anchor row hidden by the change therefore lands on the
