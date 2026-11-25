@@ -6,16 +6,21 @@
   Color — cool slate neutrals with the app's steel-blue accent; the whole log line is tinted by level
   (§3.1). Two complete themes: light (cool paper) and dark (deep blue-slate), auto-switched by
   prefers-color-scheme, with a manual override toggle for preview only.
-  Type — system sans for chrome (buttons, tabs, labels), IBM Plex Mono for every piece of data
-  (rows, counts, tree, command line). Chrome stays quiet; the table owns ~90% of the pixels.
-  Layout — slim titlebar, full-bleed table, default 220px Categories sidebar docked right (hidden
-  only by demand), 36px bottom bar
+  Type — system sans for chrome (buttons, tabs, labels), system fixed-font mono (SF Mono / Menlo /
+  Consolas — the OS system mono, v1 parity) for every piece of data (rows, counts, command line).
+  Chrome stays quiet; the table owns ~90% of the pixels. No webfonts.
+  Sizes — carried over from the v1 Qt app (log-viewer-v1): table row 21px (mono glyph height + 6),
+  columns 50/110/150, bottom bar 32px, controls 24px tall, sidebar 280px, tabs as pills,
+  native-style 16px checkboxes in the tree.
+  Layout — slim titlebar, full-bleed table, default 280px Categories sidebar docked right (hidden
+  only by demand), 32px bottom bar
   (Open/Reload · command line · level buttons). Page presents framed window mocks,
   component studies, and the token sheet.
 -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
   :root {
+    --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --bg: #eef1f5;
     --surface: #ffffff;        /* table, menus */
     --chrome: #f3f5f8;         /* titlebar, bottom bar, sidebar */
@@ -93,7 +98,7 @@
     margin: 0;
     background: var(--bg);
     color: var(--ink);
-    font: 400 14px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 400 13px/1.6 var(--font-sans);
     padding-block: 0 72px;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -128,12 +133,12 @@
   section > p.note code { font-size: 12px; }
 
   kbd {
-    font: 500 11.5px/1.4 "IBM Plex Mono", ui-monospace, monospace;
+    font: 500 11.5px/1.4 var(--font-mono);
     background: var(--surface); border: 1px solid var(--border-strong); border-bottom-width: 2px;
     border-radius: 5px; padding: 1px 6px; white-space: nowrap;
   }
   code {
-    font: 500 12.5px/1.4 "IBM Plex Mono", ui-monospace, monospace;
+    font: 500 12.5px/1.4 var(--font-mono);
     background: var(--chrome-2); border-radius: 5px; padding: 1.5px 6px; white-space: nowrap;
   }
 
@@ -159,44 +164,46 @@
   .app-main { display: flex; min-height: 0; }
 
   /* ============ sidebar ============ */
-  .side { width: 220px; flex: none; background: var(--chrome); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+  .side { width: 280px; flex: none; background: var(--chrome); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
   .tabs { display: flex; border-bottom: 1px solid var(--border); }
   .tabs span {
-    flex: 1; text-align: center; padding: 7px 3px 6px;
-    font: 500 11px/1 system-ui, sans-serif; color: var(--dim); cursor: pointer;
-    border-bottom: 2px solid transparent;
+    flex: 1; text-align: center; padding: 5px 12px 5px; margin: 5px 0;
+    font: 600 11px/1 var(--font-sans); color: var(--ink); cursor: pointer;
+    background: var(--chrome-2); border-radius: 8px;
   }
-  .tabs span.on { color: var(--accent); border-bottom-color: var(--accent); }
-  .tree { padding: 10px 0 14px; font: 500 12px/1.9 "IBM Plex Mono", ui-monospace, monospace; overflow-y: auto; }
+  .tabs span + span { margin-left: 2px; }
+  .tabs span.on { background: var(--surface); box-shadow: 0 0 0 .5px var(--border); }
+  .tree { padding: 10px 0 14px; font: 400 13px/1.85 var(--font-sans); overflow-y: auto; }
   .tree .row { display: flex; align-items: center; gap: 7px; padding: 0 12px; white-space: nowrap; }
   .tree .row .tw { width: 10px; color: var(--dim); font-size: 9px; flex: none; }
-  .tree .row .cb { width: 12px; height: 12px; flex: none; border: 1.5px solid var(--border-strong); border-radius: 3px; background: var(--surface); position: relative; }
+  .tree .row .cb { width: 16px; height: 16px; flex: none; border: 1.5px solid var(--border-strong); border-radius: 4px; background: var(--surface); position: relative; }
   .tree .row .cb.on { background: var(--accent); border-color: var(--accent); }
   .tree .row .cb.on::after { content: ""; position: absolute; inset: 1.5px 2px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-50deg) translateY(-1px); }
   .tree .row .cb.part::after { content: ""; position: absolute; inset: 2.5px; background: var(--accent); border-radius: 1.5px; }
   .tree .row .nm { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
-  .tree .row .ct { color: var(--dim); margin-left: auto; padding-left: 8px; font-variant-numeric: tabular-nums; }
+  .tree .row .ct { color: var(--dim); margin-left: auto; padding-left: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
   .tree .row.off { opacity: .45; }
   .tree .indent1 { padding-left: 26px; }
   .tree .indent2 { padding-left: 40px; }
   .tree-search { margin: 10px 12px 0; display: flex; gap: 6px; align-items: center; }
   .tree-search input {
-    flex: 1 1 auto; min-width: 0; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface);
-    color: var(--ink); font: 400 11.5px/1 system-ui, sans-serif; padding: 5px 8px; outline: none;
+    flex: 1 1 auto; min-width: 0; border: none; border-radius: 8px; background: var(--chrome-2);
+    color: var(--ink); font: 400 12px/1 var(--font-sans); padding: 6px 10px; outline: none;
   }
+  .tree-search input:focus { background: var(--surface); box-shadow: 0 0 0 1px var(--accent); }
   .fold {
-    flex: none; width: 25px; height: 25px; border-radius: 6px; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center; color: var(--muted);
-    /* native push-button: hairline ring, soft drop shadow, barely-there fill */
+    flex: none; width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; color: var(--ink);
+    /* v1 toggle: flat filled push-button, 26×26, radius 8 */
     border: none;
-    background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--chrome) 60%, var(--surface)));
-    box-shadow: 0 0 0 .5px var(--border-strong), 0 1px 2px rgba(0,0,0,.12);
+    background: var(--chrome-2);
+    box-shadow: none;
   }
-  .fold:hover { color: var(--ink); background: var(--surface); }
-  .fold:active { background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface)); box-shadow: 0 0 0 .5px var(--border-strong) inset; }
+  .fold:hover { background: var(--chrome-2); filter: brightness(.96); }
+  .fold:active { box-shadow: 0 0 0 1px var(--border-strong) inset; }
   .panelwrap { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; margin-top: 12px; }
   .panel {
-    width: 262px; height: 500px; display: flex; flex-direction: column;
+    width: 280px; height: 500px; display: flex; flex-direction: column;
     border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden;
     background: var(--chrome); box-shadow: 0 8px 28px rgba(9, 18, 28, .13), 0 1px 3px rgba(9, 18, 28, .1);
   }
@@ -206,15 +213,15 @@
 
   /* ============ table ============ */
   .tablewrap { flex: 1 1 auto; min-width: 0; position: relative; }
-  .grid { font: 500 12.5px/23px "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .grid { font: 400 13px/21px var(--font-mono); font-variant-numeric: tabular-nums; }
 
   .hrow, .drow {
-    display: grid; grid-template-columns: 54px 96px 168px minmax(0, 1fr);
+    display: grid; grid-template-columns: 50px 110px 150px minmax(0, 1fr);
     align-items: center; white-space: nowrap;
   }
-  .hrow { height: 26px; background: var(--chrome); border-bottom: 1px solid var(--border); color: var(--dim); font: 500 11px/26px system-ui, sans-serif; }
+  .hrow { height: 21px; background: var(--chrome); border-bottom: 1px solid var(--border); color: var(--dim); font: 600 11px/21px var(--font-sans); }
 
-  .drow { height: 23px; cursor: default; }
+  .drow { height: 21px; cursor: default; }
   .drow:nth-child(even):not(.sel):not(:hover) { background: color-mix(in srgb, var(--chrome) 35%, var(--surface)); }
   .drow:hover { background: color-mix(in srgb, var(--chrome-2) 60%, var(--surface)); }
   .drow.sel { background: var(--accent-tint); }
@@ -236,33 +243,33 @@
 
   /* ============ bottom bar ============ */
   .bbar {
-    height: 38px; background: var(--chrome); border-top: 1px solid var(--border);
-    display: flex; align-items: center; gap: 8px; padding: 0 10px;
+    height: 32px; background: var(--chrome); border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; padding: 0 8px;
   }
   .btn {
-    border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface);
-    color: var(--ink); font: 500 12px/1 system-ui, sans-serif; padding: 6px 12px; cursor: pointer;
+    border: none; border-radius: 6px; background: transparent;
+    color: var(--ink); font: 400 12px/1 var(--font-sans); padding: 5px 8px; cursor: pointer;
   }
   .btn:hover { background: var(--chrome-2); }
   .cmd {
     flex: 1; min-width: 0; display: flex; align-items: center; gap: 0;
-    border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
-    height: 27px; padding: 0 10px; color: var(--dim);
-    font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+    height: 24px; padding: 0 10px; color: var(--dim);
+    font: 400 12px/1 var(--font-mono);
   }
   .cmd:focus-within { border-color: var(--accent); }
   .cmd input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; }
 
   .levels { display: flex; gap: 4px; }
   .lv {
-    display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 9px;
+    display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px;
     border-radius: 6px; border: none; background: transparent; cursor: pointer;
-    font: 500 11.5px/1 system-ui, sans-serif; color: var(--ink);
+    font: 400 12px/1 var(--font-sans); color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
   .lv:hover { background: var(--chrome-2); }
   .lv i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  .lv .n { color: var(--dim); font: 500 11px/1 "IBM Plex Mono", monospace; }
+  .lv .n { color: var(--dim); font: 400 11px/1 var(--font-mono); }
   .lv.crt i { background: var(--lvl-crt); } .lv.crt { color: var(--lvl-crt); }
   .lv.err i { background: var(--lvl-err); } .lv.err { color: var(--lvl-err); }
   .lv.wrn i { background: var(--lvl-wrn); } .lv.wrn { color: var(--lvl-wrn); }
@@ -277,12 +284,12 @@
     display: inline-flex; align-items: center; gap: 6px;
     padding: 5px 8px 5px 11px; border: 1px solid var(--border-strong); border-radius: 9px;
     background: var(--surface); box-shadow: 0 5px 18px rgba(0, 0, 0, .16);
-    font: 500 12px/1 system-ui, sans-serif; color: var(--muted);
+    font: 500 12px/1 var(--font-sans); color: var(--muted);
   }
   .findbar .field {
     min-width: 150px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--bg); color: var(--ink);
-    font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--bg); color: var(--ink); white-space: nowrap;
+    font: 500 12px/1 var(--font-mono);
   }
   .findbar .cnt { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .findbar .tg, .findbar .ar {
@@ -304,14 +311,14 @@
   .cm div:hover { background: var(--accent-tint); }
   .cm div.dim { color: var(--dim); }
   .cm .sep { height: 1px; padding: 0; margin: 4px 2px; background: var(--border); border-radius: 0; }
-  .cm .k { color: var(--dim); font: 500 11px/1.9 "IBM Plex Mono", monospace; }
+  .cm .k { color: var(--dim); font: 500 11px/1.9 var(--font-mono); }
 
   /* ============ empty state ============ */
   .empty {
     border: 1.5px dashed var(--border-strong); border-radius: 12px;
     padding: 54px 20px; text-align: center; background: var(--surface);
   }
-  .empty .big { font: 500 13px/1 "IBM Plex Mono", monospace; color: var(--ink); }
+  .empty .big { font: 400 15px/1.4 var(--font-sans); color: var(--muted); }
   .empty .small { color: var(--dim); font-size: 12px; margin-top: 9px; }
 
   /* ============ panels around mocks ============ */
@@ -326,7 +333,7 @@
   .tok thead th { font: 600 11px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); background: var(--chrome); }
   .tok tr:last-child td { border-bottom: none; }
   .tok code { background: none; padding: 0; }
-  .tok .mono { font: 500 12px/1 "IBM Plex Mono", monospace; }
+  .tok .mono { font: 500 12px/1 var(--font-mono); }
   .sw2 { display: inline-flex; gap: 8px; align-items: center; }
   .sw2 i { width: 26px; height: 16px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .12); flex: none; }
 </style>
@@ -348,7 +355,7 @@
   <h2>Main window</h2>
   <p class="note">The canonical state: file loaded, default layout. The Categories sidebar stands open on the
   right by default (§10) and hides only by demand — <code>Ctrl+B</code>. The table takes
-  the whole window under a 30-px titlebar and a 38-px bottom bar. Columns per §4 —
+  the whole window under a 30-px titlebar and a 32-px bottom bar. Columns per §4 —
   <code>Line</code> <code>Time</code> <code>Category</code> <code>Message</code>, with Message taking everything that is left.
   Whole line is tinted by level (§3.1), line numbers and timestamps are dim: the eye should land on Message.</p>
   <div class="mock-scroll">
@@ -484,7 +491,7 @@
       </div>
     </div>
   </div>
-  <p class="note">Same file, same scroll anchor: only the panel comes and goes. The 220-px panel is a fixed-width
+  <p class="note">Same file, same scroll anchor: only the panel comes and goes. The 280-px panel is a fixed-width
   column; Message flexes around it.</p>
 </section>
 
@@ -608,6 +615,7 @@
   <div class="tok"><table>
     <thead><tr><th>Token</th><th>Light</th><th>Dark</th><th>Use</th></tr></thead>
     <tbody>
+      <tr><td>fonts</td><td class="mono">system-ui 13px · mono 13px</td><td class="mono">same (system stacks)</td><td>chrome sans; data in the system fixed font (SF Mono / Menlo / Consolas); no webfonts — v1 parity</td></tr>
       <tr><td>bg / surface</td><td class="mono">#eef1f5 / #ffffff</td><td class="mono">#0b1016 / #141c24</td><td>page around the window · table, menus</td></tr>
       <tr><td>chrome / chrome-2</td><td class="mono">#f3f5f8 / #e9edf2</td><td class="mono">#101722 / #1a2430</td><td>bars, sidebar, header row, hovers</td></tr>
       <tr><td>ink / muted / dim</td><td class="mono">#1b2531 / #5a6a7a / #8795a4</td><td class="mono">#d7e0ea / #9babbc / #6d7e8f</td><td>message · category · line number, time, counts</td></tr>
@@ -631,16 +639,17 @@
     <li><strong>The table is the app.</strong> Chrome is two hairline bars (30 px + 38 px); Message gets every
     remaining pixel. No tabs, no ribbon, no panel above the logs — ever.</li>
     <li><strong>The panel is furniture, not a mode.</strong> The Categories sidebar stands open, docked to the
-    right edge (§10), and hides only by demand — <kbd>Ctrl+B</kbd>; its 220 px are fixed, Message flexes around it.</li>
+    right edge (§10), and hides only by demand — <kbd>Ctrl+B</kbd>; its 280 px are fixed, Message flexes around it.</li>
     <li><strong>Color speaks only where data speaks.</strong> Neutrals are cool-slate and quiet; the only
     saturated color on a default screen is level tint and the accent selection.</li>
     <li><strong>Whole-line level coloring</strong> (§3.1) instead of a level cell: one glance down the edge of the
     screen shows the error distribution, and no column width is wasted on it.</li>
     <li><strong>Pin = gold dot, highlight = translucent behind spans</strong> (§9): both survive at 6.4 M rows
     because they cost no layout.</li>
-    <li><strong>Chrome text in the system sans, data in IBM Plex Mono</strong> — the split is visible at a glance:
-    anything you read from the log file is mono, anything the app itself says is sans.</li>
-    <li><strong>Density over comfort.</strong> Row is 23 px (glyph height + 6 px, §4); zebra striping is faint and
+    <li><strong>Chrome text in the system sans, data in the system fixed font</strong> — the split is visible at a glance:
+    anything you read from the log file is the system mono, anything the app itself says is the system sans. No webfonts —
+    the v1 Qt app used <code>QFontDatabase</code> system fonts and the design keeps that parity.</li>
+    <li><strong>Density over comfort.</strong> Row is 21 px (system-mono glyph height + 6 px, v1 parity); zebra striping is faint and
     disappears on hover/selection, so scanning stays primary.</li>
   </ul>
 </section>
