@@ -574,12 +574,12 @@ describe("panel console actions (rhl.2, §10.1)", () => {
     ]);
   });
 
-  it("expandAllCategories(expand=false) closes everything (2026-11-25 owner decision)", async () => {
+  it("expandAllCategories(expand=false) closes everything except the All root (2026-11-25 owner decision)", async () => {
     const { console_ } = await freshConsole(categoryStub());
     await console_.load("/tmp/log.txt");
     await console_.expandAllCategories(true);
     const expanded = console_.expandAllCategories(false).panel.expanded;
-    expect(expanded).toEqual([]);
+    expect(expanded).toEqual([""]);
   });
 
   it("load resets the expansion to the new file's root-level paths", async () => {

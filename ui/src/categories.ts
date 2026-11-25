@@ -240,5 +240,5 @@ export function visibleUnderSearch(node: UiCategoryNode, query: string): Set<str
 
 // expandTargets (§10 expanded set for the collapse/expand-all button) was
 // removed 2026-11-25: the shell installs collapse/expand targets through
-// expandedForToggleAll in state.ts (collapse closes everything), this copy
-// carried the superseded keepRoots semantics.
+// expandedForToggleAll in state.ts (collapse closes everything except the
+// All root), this copy carried the superseded keepRoots semantics.

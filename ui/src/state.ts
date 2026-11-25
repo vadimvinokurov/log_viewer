@@ -226,9 +226,9 @@ export function defaultExpanded(categories: readonly { path: string }[]): string
 
 /** expand/collapse-all targets straight from the flat list (§10 action 5):
  *  expand installs every tree path including the implicit prefixes; collapse
- *  closes everything — even the root level stays collapsed, only the root
- *  ROWS remain visible (2026-11-25 owner decision;Finder-style collapse-all,
- *  one click closes the whole tree, not one level at a time). */
+ *  closes everything except the All root — it stays expanded so the top-level
+ *  rows remain visible below the All row, each collapsed (2026-11-25 owner
+ *  decision; a fully collapsed All would hide the whole top level). */
 export function expandedForToggleAll(
   categories: readonly { path: string }[],
   expand: boolean,
@@ -249,7 +249,7 @@ export function expandedForToggleAll(
     }
     return [...paths].sort();
   }
-  return [];
+  return categories.length > 0 ? [""] : [];
 }
 
 export function initialAppState(): AppState {
