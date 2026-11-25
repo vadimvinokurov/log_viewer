@@ -37,6 +37,14 @@
 
 8. **Standing commit authority.** (Owner's feedback, 2026-11-24: «комить сам, когда считаешь нужным».) The agent commits locally on its own judgment — after every milestone with green gates (per rule 7's checkpoint commits), no owner approval needed. Push / Dolt remote sync stays out of scope: local commits only; pushing requires an explicit owner request.
 
+9. **Release push = local gates first.** (Owner's rule, 2026-11-25, after the
+   v0.2.0 CI typecheck failure.) A release tag push must come only after the
+   SAME runs CI performs were made locally, on the tagged commit, and are
+   green: `cargo test --workspace` + `npm run build` (tsc -b! — the only gate
+   that catches TS errors; wipe stale tsbuildinfo caches) + full
+   `npx vitest run` + `npm run e2e`. Details and the lesson learned:
+   `docs/PIPELINE.md` §6a.
+
 ## Workflow
 
 Three storage roles:

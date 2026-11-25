@@ -125,6 +125,31 @@ Every Tauri command is a contract: typed params, typed result, TS bindings gener
 from schemas (tauri-specta) - no hand-written bindings files. UI state stays thin;
 data transformations live in logviewer-core.
 
+## 6a. Release (owner rule, 2026-11-25 - learned from the v0.2.0 failure)
+
+Pushing a release tag (`v*`, the tag-driven `release` workflow) is allowed only
+after the SAME runs the CI performs have been made locally, on the exact commit
+the tag will point to, and came back green:
+
+1. `cargo test --workspace` (repo root; regenerates `ui/src/bindings.ts` - a
+   dirty tree after it is a finding, not commit noise).
+2. From `ui/`: `npm run build` - this is `tsc -b && vite build`. `tsc -b` is the
+   only gate that catches TypeScript errors; vitest does not (esbuild strips
+   types), so a suite green without this step proves nothing about types.
+   The incremental cache (tsbuildinfo) can hide breakage: wipe stale caches
+   (or `rm -f tsconfig*.tsbuildinfo node_modules/.tmp/*.tsbuildinfo`) before
+   the decisive check.
+3. From `ui/`: `npx vitest run` (full suite, not per file).
+4. From `ui/`: `npm run e2e` (all states against the committed goldens).
+5. A live check in the real window (`scripts/live_check.mjs`) for whatever the
+   release adds - the milestone rule 5 lives here too.
+
+Only when all of the above passed: commit, push `main`, create and push the
+`v*` tag. Watching the run (`gh run view`) completes the release; a red run is
+a stop-and-fix, not a re-tag later. The release history (v0.2.0, 2026-11-25):
+the gates were run, but with a stale incremental tsc cache and without a fresh
+`tsc -b`; the tag had to be moved after the CI typecheck failure.
+
 ## 7. Knowledge lifecycle
 
 - Future-session facts → `bd remember "<insight>"`.
