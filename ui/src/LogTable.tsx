@@ -556,10 +556,14 @@ export const LogTable = forwardRef<LogTableHandle, Props>(function LogTable(
       <div
         className="table-inner"
         style={{
-          // Header row occupies one ROW_HEIGHT at the top; virtual rows slide
-          // under the sticky header while scrolling.
+          // The extra ROW at the end is the under-header slack: virtual rows
+          // render at +ROW_HEIGHT (they slide under the sticky header) and
+          // must fill the viewport down to the last band. The padding that
+          // used to "reserve" the header row above sat in flow BEFORE the
+          // sticky header and pushed it one row down: at scrollTop=0 the
+          // header showed a row-height gap above and covered row 0 (abspos
+          // rows are unaffected by the padding — 2026-11-25 top-gap bug).
           height: virtualizer.getTotalSize() + ROW_HEIGHT_PX,
-          paddingTop: ROW_HEIGHT_PX,
         }}
         onContextMenu={rowCount > 0 ? openMenu : undefined}
       >
