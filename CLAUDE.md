@@ -61,6 +61,16 @@
     driver POST with `{"js": "return ..."}` returning `null` vs hanging, and
     beads memory `tauri-debug-build-needs-custom-protocol`.
 
+    **Owner's rule, 2026-11-25: a request to "run the app" means a CI-shaped
+    build, not a test run.** CI (`.github/workflows/release.yml`, tauri-action)
+    produces `tauri build` = `npm --prefix ui run build` + cargo **release**
+    with `tauri/custom-protocol`. So the local equivalent for launching is:
+    `npm --prefix ui run build` → `cargo build --release --features
+    tauri/custom-protocol` (in `src-tauri/`) → run
+    `target/release/logviewer`. Bundling (dmg/NSIS/updater signing) is CI-only
+    and is skipped locally. No test runs are required for a launch request —
+    release gates are for release-tag pushes only (rule 9).
+
 ## Workflow
 
 Three storage roles:
