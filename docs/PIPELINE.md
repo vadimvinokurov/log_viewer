@@ -143,8 +143,10 @@ Claim tasks in the main session before spawning agents.
     variant goldens plus 3–5 composite screens**, with the design doc GENERATED from
     the component sources (`ui_design/ui_components/`); a hand-made mock compared
     against the app (today's `design_check.mjs` PAIRS) is a listed trap. The project
-    is in the skill's "hand-made design doc present (pre-migration)" state; migration
-    is planned work (bead), not a silent rewrite of the harness.
+    is in the skill's "hand-made design doc present (pre-migration)" state, and the
+    owner decided (2026-11-25) to STAY there: the migration is parked (bead
+    log_viewer2-5d3), not planned work — do not start it without an explicit owner
+    request (CLAUDE.md rule 3 exception).
 - OS screen capture is not acceptance evidence; a live-window check stays
   for what the harness cannot show (titlebar, min-clamps, real window size).
 - Live-window check runs the committed driver: start the debug app

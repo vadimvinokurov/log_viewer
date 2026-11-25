@@ -6,8 +6,9 @@ the coordinator must not restate spec semantics in prompts (CLAUDE.md rule 7).
 ## Where truth lives
 - Behavior: `docs/FUNCTIONAL_SPEC.html` (§-sections; owner reads it, do not paraphrase).
 - Visuals: `docs/UI_DESIGN.html` is the oracle — classes/tokens are copied verbatim from it.
-  (Status per the `ui-development` skill: hand-made doc, pre-migration; the generated-doc
-  migration is planned work — see docs/PIPELINE.md §5.)
+  (Status per the `ui-development` skill: hand-made doc, pre-migration — and that is a
+  deliberate owner decision (2026-11-25): the generated-doc migration is PARKED,
+  not planned work; see docs/PIPELINE.md §5, CLAUDE.md rule 3.)
 - Process: `docs/PIPELINE.md` (TDD, goldens, file partition, IPC conventions).
 - Stack/versions: `docs/STACK.md`.
 
