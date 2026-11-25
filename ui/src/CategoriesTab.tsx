@@ -155,7 +155,9 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
             style={{ cursor: hasChildren ? "pointer" : "default" }}
             onClick={hasChildren ? () => onToggleExpand(node.path) : undefined}
           >
-            {hasChildren ? (expandedHere ? "▾" : "▸") : "·"}
+            {/* leaves render no twisty mark (owner, 2026-11-25): an empty
+                16px .tw keeps the checkbox column aligned */}
+            {hasChildren ? (expandedHere ? "▾" : "▸") : ""}
           </span>
           {checkbox(check, () => onToggle(node.path, check !== "on"))}
           <span className="nm">{nameLabel(node.name, search)}</span>
@@ -205,7 +207,7 @@ export function CategoriesTab(props: CategoriesTabProps): ReactElement {
             style={{ cursor: hasTopLevel ? "pointer" : "default" }}
             onClick={hasTopLevel ? () => onToggleExpand("") : undefined}
           >
-            {hasTopLevel ? (allOpen ? "▾" : "▸") : "·"}
+            {hasTopLevel ? (allOpen ? "▾" : "▸") : ""}
           </span>
           {checkbox(allState, () => onToggleAll(allState !== "on"))}
           <span className="nm">All</span>

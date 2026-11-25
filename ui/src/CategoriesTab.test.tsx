@@ -164,16 +164,16 @@ describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
     expect(onlyAll.map((el) => el.getAttribute("data-path"))).toEqual([""]);
     expect(collapsed.querySelector('[data-path=""] .tw')?.textContent).toBe("▸");
 
-    // a file with no categories: the All row renders as a leaf (dead dot)
+    // a file with no categories: the All row is a childless node (no twisty mark)
     const emptyProps = baseProps({ tree: buildTree([]), flat: [], expanded: [] });
     const { container: empty } = render(createElement(CategoriesTab, emptyProps));
     const leaf = empty.querySelector<HTMLElement>('[data-path=""] .tw');
-    expect(leaf?.textContent).toBe("·");
+    expect(leaf?.textContent).toBe("");
     fireEvent.click(leaf ?? empty);
     expect(emptyProps.onToggleExpand).not.toHaveBeenCalled();
   });
 
-  it("the twisty toggles one node's expansion; leaves render a dot", () => {
+  it("the twisty toggles one node's expansion; leaves render no twisty mark", () => {
     const props = baseProps({ expanded: ["", "app"] });
     const { container } = render(createElement(CategoriesTab, props));
     const collapsed = container.querySelector<HTMLElement>(
@@ -187,7 +187,7 @@ describe("CategoriesTab (rhl.2, §10, UI_DESIGN categories frame)", () => {
     const leaf = container.querySelector<HTMLElement>(
       '[data-path="uncategorized"] .tw',
     )?.textContent;
-    expect(leaf).toBe("·");
+    expect(leaf).toBe("");
     // leaf twisty is not clickable
     fireEvent.click(container.querySelector('[data-path="uncategorized"] .tw') ?? container);
     expect(props.onToggleExpand).toHaveBeenCalledTimes(1);
