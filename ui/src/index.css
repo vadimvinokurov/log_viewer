@@ -388,7 +388,7 @@ body {
 .tabs span {
   flex: 1;
   text-align: center;
-  padding: 7px 0 6px;
+  padding: 7px 3px 6px;
   font: 500 11px/1 var(--font-chrome);
   color: var(--dim);
   cursor: pointer;
