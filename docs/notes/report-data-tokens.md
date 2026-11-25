@@ -185,3 +185,19 @@ Conclusions changed for report-01 (Russian, rewritten):
   loop call = one billed request with full context (~$0.003/request average).
 - Docs pages consulted: `docs.ollama.com/api/cloud-usage.md` (field semantics),
   `docs.ollama.com/cloud/usage.md`, `docs.ollama.com/api/balance.md`.
+
+## Addendum 2 (2026-11-25): second account (key retrieved from macOS Keychain, never printed)
+
+`GET /api/usage?range=7d&group_by=model` with the second key: all traffic on
+`glm-5.3-flash`, **request counts only** (legacy plan: no tokens/dollars per the API
+docs). Daily: 11-18: 1,153 · 11-19: 2,662 · 11-20: 104 · 11-21: 13 · 11-22: 61 ·
+11-23: 1,530 · 11-24: 3,000 · 11-25 (partial): 1,058. **Last 3 project days: 5,588
+requests.** Balance API: included $60/allowance $60 untouched, period 11-04 → 12-04,
+purchased $0.
+
+Attribution: client-side logviewer2 turns for the same window ≈ 4,877 → 5,588/4,877
+≈ 1.15 → **~85–90 % of account-2 traffic over the 3 days is this project**; remainder
+≈ 0.7 k is web search/fetch and other work (account had non-project days 11-18/19).
+The 1 request ≈ 1 assistant turn calibration holds on both accounts. Known 429
+deaths (P1 in report-02) map onto this account's request-counter plan: weekly limits
+count requests, not only tokens.
