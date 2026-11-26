@@ -23,10 +23,16 @@ shared files: every instance reads and writes the same data.
 - Cross-process file locking for settings/history. Writes are user-paced and
   sub-millisecond on tiny files; the read-modify-write race window (~1 ms per
   command) is accepted. Revisit only if a real lost-update is ever observed.
+  (Torn-read corruption — one instance reading a half-written file during the
+  other's write — is closed instead: writes publish atomically through a
+  per-process temp file + rename, review fix 2026-11-26.)
 - Debug multi-instance (with per-PID port files). The owner keeps debug
   single-instance on purpose.
 - Live sync of in-memory state *between* instances (e.g. column widths
   changing in the other window every repaint). Reads/writes only.
+- Updater behavior with several release instances running at once (two
+  simultaneous auto-update downloads/installations). Unexamined; revisit only
+  if it ever misbehaves.
 
 ## Approaches
 
