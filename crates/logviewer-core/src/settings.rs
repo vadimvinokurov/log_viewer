@@ -143,13 +143,26 @@ impl Store {
     }
   }
 
-  /// Current settings.
-  pub fn settings(&self) -> &Settings {
+  /// Re-read the backing files, so every access observes what concurrent
+  /// app instances wrote since this store's last load (design
+  /// 2026-11-26-multi-instance). `open` already carries the full load-or-
+  /// degrade semantics, so a reload is a fresh open over the same directory.
+  fn reload(&mut self) {
+    *self = Store::open(&self.dir);
+  }
+
+  /// Current settings after synchronizing with the backing files. `&mut`,
+  /// because it reloads from disk first (shared settings/history across app
+  /// instances).
+  pub fn settings(&mut self) -> &Settings {
+    self.reload();
     &self.settings
   }
 
-  /// Current command history, oldest entry first, most recent last.
-  pub fn history(&self) -> &[String] {
+  /// Current command history, oldest entry first, most recent last; loaded
+  /// fresh from disk on every call (shared across app instances).
+  pub fn history(&mut self) -> &[String] {
+    self.reload();
     &self.history
   }
 
@@ -159,6 +172,7 @@ impl Store {
   /// and leaves the in-memory state unchanged.
   #[allow(clippy::result_unit_err)] // prescribed store API: Err(()) is the generic disk failure
   pub fn set_settings(&mut self, s: Settings) -> Result<(), ()> {
+    self.reload();
     let new_raw = raw_with_settings(&self.raw, &s);
     let text = serialize_settings(&new_raw, &s);
     self.write_file(SETTINGS_FILE, &text)?;
@@ -174,6 +188,7 @@ impl Store {
   /// returns `Err(())` and leaves the in-memory history unchanged.
   #[allow(clippy::result_unit_err)] // prescribed store API: Err(()) is the generic disk failure
   pub fn push_history(&mut self, cmd: String) -> Result<(), ()> {
+    self.reload();
     if cmd.is_empty() {
       return Ok(());
     }
@@ -702,7 +717,7 @@ mod tests {
   #[test]
   fn open_creates_missing_dir_and_files_with_defaults() {
     let dir = temp_dir("create");
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings(), &Settings::default());
     assert!(store.history().is_empty());
     assert_eq!(
@@ -738,7 +753,7 @@ mod tests {
       SETTINGS_FILE,
       "{\"custom_flag\": true,  \"nested\": {\"a\": [1, 2]}, \"history_size\": 42}",
     );
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings().history_size, 42);
     let mut store = store;
     store
@@ -755,7 +770,7 @@ mod tests {
       read(&dir, SETTINGS_FILE),
       "{\n  \"custom_flag\": true,\n  \"nested\": {\"a\": [1, 2]},\n  \"history_size\": 50,\n  \"last_open_dir\": \"/var/log\",\n  \"default_categories_enabled\": false,\n  \"column_widths\": \"\"\n}\n"
     );
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings().history_size, 50);
     assert_eq!(store.settings().last_open_dir, "/var/log");
   }
@@ -768,7 +783,7 @@ mod tests {
       SETTINGS_FILE,
       "{\"history_size\": \"many\", \"last_open_dir\": null}",
     );
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings().history_size, 100);
     assert_eq!(store.settings().last_open_dir, "");
   }
@@ -816,7 +831,7 @@ mod tests {
     let dir = temp_dir("corrupt");
     write(&dir, SETTINGS_FILE, "{{{ nope");
     write(&dir, HISTORY_FILE, "[\"a\",");
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings(), &Settings::default());
     assert!(store.history().is_empty());
     // Corrupt means "unreadable", not "missing": open must not destroy the
@@ -835,7 +850,7 @@ mod tests {
     let cmd = "open \"new\\line\"\t\u{7}x /y".to_string();
     store.push_history(cmd.clone()).unwrap();
     assert!(read(&dir, HISTORY_FILE).contains("\\u0007"));
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.history(), [cmd.as_str()]);
   }
 
@@ -844,7 +859,7 @@ mod tests {
     let dir = temp_dir("corrupt_hist");
     write(&dir, SETTINGS_FILE, "{\"history_size\": 7}");
     write(&dir, HISTORY_FILE, "not json");
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings().history_size, 7);
     assert!(store.history().is_empty());
   }
@@ -874,7 +889,6 @@ mod tests {
     }
 
     assert_eq!(store.push_history("denied".to_string()), Err(()));
-    assert_eq!(store.history(), ["kept"]);
     let changed = Settings {
       history_size: 7,
       last_open_dir: "/elsewhere".to_string(),
@@ -882,6 +896,11 @@ mod tests {
       column_widths: None,
     };
     assert_eq!(store.set_settings(changed), Err(()));
+    // Writes are refused (Err), but reads report disk truth: the missing
+    // files degrade to defaults (§15). With the shared-file store (design
+    // 2026-11-26-multi-instance) the backing files, not memory, are the
+    // source of truth on every access.
+    assert_eq!(store.history(), Vec::<String>::new());
     assert_eq!(store.settings().history_size, 100);
     assert_eq!(store.settings().last_open_dir, "");
 
@@ -893,14 +912,14 @@ mod tests {
     let dir = temp_dir("load_cap");
     write(&dir, SETTINGS_FILE, "{\"history_size\": 2}");
     write(&dir, HISTORY_FILE, "[\"a\", \"b\", \"c\"]");
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.history(), ["b", "c"]);
   }
 
   #[test]
   fn column_widths_default_to_unset_in_the_default_file() {
     let dir = temp_dir("cw_default");
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings().column_widths, None);
     assert!(read(&dir, SETTINGS_FILE).contains("\"column_widths\": \"\""));
   }
@@ -913,7 +932,7 @@ mod tests {
     s.column_widths = Some([60, 120, 160, 620]);
     store.set_settings(s).unwrap();
     assert!(read(&dir, SETTINGS_FILE).contains("\"column_widths\": \"60,120,160,620\""));
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings().column_widths, Some([60, 120, 160, 620]));
   }
 
@@ -921,7 +940,7 @@ mod tests {
   fn malformed_column_widths_value_falls_back_to_none() {
     let dir = temp_dir("cw_bad");
     write(&dir, SETTINGS_FILE, "{\"column_widths\": \"x,y\"}");
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings().column_widths, None);
   }
 
@@ -929,8 +948,80 @@ mod tests {
   fn settings_file_without_column_widths_key_keeps_defaults() {
     let dir = temp_dir("cw_old_file");
     write(&dir, SETTINGS_FILE, "{\"last_open_dir\": \"C:\\\\logs\"}");
-    let store = Store::open(&dir);
+    let mut store = Store::open(&dir);
     assert_eq!(store.settings().last_open_dir, "C:\\logs");
     assert_eq!(store.settings().column_widths, None);
+  }
+
+  // Shared-file access (design 2026-11-26-multi-instance): every access
+  // re-reads the backing files, so two stores opened on one directory see
+  // each other's writes. Before the reload these observe stale in-memory
+  // state and fail.
+  #[test]
+  fn history_is_shared_between_stores() {
+    let dir = temp_dir("shared_history");
+    let mut a = Store::open(&dir);
+    let mut b = Store::open(&dir);
+    a.push_history("one".to_owned()).unwrap();
+    assert_eq!(b.history(), &["one".to_owned()]);
+  }
+
+  #[test]
+  fn settings_are_shared_between_stores() {
+    let dir = temp_dir("shared_settings");
+    let mut a = Store::open(&dir);
+    let mut b = Store::open(&dir);
+    let mut s = a.settings().clone();
+    s.last_open_dir = "/tmp/elsewhere".to_owned();
+    a.set_settings(s).unwrap();
+    assert_eq!(b.settings().last_open_dir, "/tmp/elsewhere");
+  }
+
+  #[test]
+  fn reload_preserves_unknown_keys_from_disk() {
+    let dir = temp_dir("shared_unknown");
+    let mut a = Store::open(&dir);
+    let mut b = Store::open(&dir);
+    // hand-write simulates another instance's newer state on the shared file
+    write(&dir, SETTINGS_FILE, "{\"foo\":1,\"history_size\":10}");
+    let s = a.settings().clone();
+    a.set_settings(s).unwrap();
+    // a's write must not delete the unknown key it re-read from disk
+    assert!(read(&dir, SETTINGS_FILE).contains("\"foo\""));
+    assert_eq!(b.settings().history_size, 10);
+  }
+
+  #[test]
+  fn reloaded_history_is_capped_again_after_disk_shrink() {
+    let dir = temp_dir("shared_cap");
+    let mut a = Store::open(&dir);
+    let mut b = Store::open(&dir);
+    a.set_settings(Settings {
+      history_size: 3,
+      last_open_dir: String::new(),
+      default_categories_enabled: false,
+      column_widths: None,
+    })
+    .unwrap();
+    // hand-write simulates 10 entries left on the shared history file
+    write(
+      &dir,
+      HISTORY_FILE,
+      "[\"h1\",\"h2\",\"h3\",\"h4\",\"h5\",\"h6\",\"h7\",\"h8\",\"h9\",\"h10\"]",
+    );
+    assert_eq!(b.history().len(), 3);
+  }
+
+  #[test]
+  fn reload_degrades_to_defaults_on_corrupt_settings() {
+    let dir = temp_dir("shared_corrupt");
+    let mut a = Store::open(&dir);
+    let mut s = a.settings().clone();
+    s.history_size = 50;
+    a.set_settings(s).unwrap();
+    // hand-corrupt after a's write: the next access must see defaults, not
+    // the stale in-memory 50
+    write(&dir, SETTINGS_FILE, "not json at all");
+    assert_eq!(a.settings().history_size, DEFAULT_HISTORY_SIZE);
   }
 }

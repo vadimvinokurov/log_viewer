@@ -28,7 +28,7 @@ fn temp_dir(tag: &str) -> PathBuf {
 #[test]
 fn open_creates_missing_files_with_defaults() {
   let dir = temp_dir("create");
-  let store = Store::open(&dir);
+  let mut store = Store::open(&dir);
   assert_eq!(store.settings(), &Settings::default());
   assert!(store.history().is_empty());
   assert_eq!(
@@ -95,14 +95,14 @@ fn corrupt_json_falls_back_to_defaults() {
   let dir = temp_dir("corrupt");
   std::fs::write(dir.join("settings.json"), "{{{ nope").unwrap();
   std::fs::write(dir.join("history.json"), "[\"a\",").unwrap();
-  let store = Store::open(&dir); // must not panic
+  let mut store = Store::open(&dir); // must not panic
   assert_eq!(store.settings(), &Settings::default());
   assert!(store.history().is_empty());
 }
 
 #[cfg(unix)]
 #[test]
-fn read_only_dir_write_fails_and_memory_state_is_unchanged() {
+fn read_only_dir_write_fails_and_reads_report_disk_truth() {
   use std::os::unix::fs::PermissionsExt;
 
   let dir = temp_dir("readonly");
@@ -124,7 +124,6 @@ fn read_only_dir_write_fails_and_memory_state_is_unchanged() {
   }
 
   assert_eq!(store.push_history("denied".to_string()), Err(()));
-  assert_eq!(store.history(), ["kept"]);
   assert_eq!(
     store.set_settings(Settings {
       history_size: 7,
@@ -134,6 +133,11 @@ fn read_only_dir_write_fails_and_memory_state_is_unchanged() {
     }),
     Err(())
   );
+  // Writes are refused (Err), but reads report disk truth: the missing files
+  // degrade to defaults (§15). With the shared-file store (design
+  // 2026-11-26-multi-instance) the backing files are the source of truth on
+  // every access, so the pre-failure in-memory "kept" state is gone.
+  assert_eq!(store.history(), Vec::<String>::new());
   assert_eq!(store.settings().history_size, 100);
   assert_eq!(store.settings().last_open_dir, "");
   std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();

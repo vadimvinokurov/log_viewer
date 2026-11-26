@@ -702,7 +702,7 @@ pub fn new_settings_state_at(dir: &std::path::Path) -> SettingsState {
 pub async fn history_get(
   state: tauri::State<'_, SettingsState>,
 ) -> Result<Vec<String>, String> {
-  let guard = state.lock().map_err(|_| lock_err())?;
+  let mut guard = state.lock().map_err(|_| lock_err())?;
   Ok(guard.history().to_vec())
 }
 
@@ -728,7 +728,7 @@ pub async fn history_push(
 pub async fn settings_get(
   state: tauri::State<'_, SettingsState>,
 ) -> Result<SettingsDto, String> {
-  let guard = state.lock().map_err(|_| lock_err())?;
+  let mut guard = state.lock().map_err(|_| lock_err())?;
   let s = guard.settings();
   Ok(SettingsDto {
     history_size: s.history_size,
@@ -1349,7 +1349,7 @@ fn history_roundtrip_and_persistence() {
   }
   // Reopen through the same constructor: the store must persist.
   let store = new_settings_state_at(&dir);
-  let guard = store.lock().unwrap();
+  let mut guard = store.lock().unwrap();
   assert_eq!(guard.history(), &[":f started".to_string()]);
   drop(guard);
 
@@ -1362,7 +1362,7 @@ fn history_roundtrip_and_persistence() {
     guard.set_settings(next).unwrap();
   }
   let store = new_settings_state_at(&dir);
-  let guard = store.lock().unwrap();
+  let mut guard = store.lock().unwrap();
   assert_eq!(guard.settings().last_open_dir, "/tmp/whence");
   assert_eq!(guard.settings().history_size, 100);
 }
