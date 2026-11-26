@@ -41,6 +41,7 @@
 //! - Serializer output is human-readable: two-space indent, one entry per
 //!   line, trailing newline. The parser accepts any valid subset file.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const SETTINGS_FILE: &str = "settings.json";
@@ -209,10 +210,25 @@ impl Store {
     Ok(())
   }
 
-  /// Write one data file, creating the directory lazily if it vanished.
+  /// Write one data file atomically: content goes to a per-process temp file
+  /// in the same directory, and a single rename publishes it at once, so a
+  /// concurrent reader of the shared file (another app instance's reload,
+  /// design 2026-11-26-multi-instance) never sees a truncated or half-written
+  /// file — and the truncating in-place rewrite cannot destroy the previous
+  /// content on a failed or interrupted write. The temp name embeds the
+  /// process id, so concurrent instances never share a staging file. The
+  /// temp is synced before the rename for power-loss safety; on failure the
+  /// target file is untouched.
   fn write_file(&self, name: &str, text: &str) -> Result<(), ()> {
     let _ = std::fs::create_dir_all(&self.dir);
-    std::fs::write(self.dir.join(name), text).map_err(|_| ())
+    let temp = self.dir.join(format!(".{}.tmp{}", name, std::process::id()));
+    let mut file = std::fs::File::create(&temp).map_err(|_| ())?;
+    file.write_all(text.as_bytes()).map_err(|_| ())?;
+    file.sync_all().map_err(|_| ())?;
+    drop(file);
+    std::fs::rename(&temp, self.dir.join(name)).map_err(|_| {
+      let _ = std::fs::remove_file(&temp);
+    })
   }
 }
 
@@ -1023,5 +1039,50 @@ mod tests {
     // the stale in-memory 50
     write(&dir, SETTINGS_FILE, "not json at all");
     assert_eq!(a.settings().history_size, DEFAULT_HISTORY_SIZE);
+  }
+
+  // Atomic publish (review finding 2026-11-26): a write to the shared file
+  // must refuse on a read-only directory even when the target file exists —
+  // the truncating in-place write used to succeed there, silently rewriting
+  // the data file behind a directory the user has locked down.
+  #[test]
+  fn read_only_dir_refuses_writes_even_over_existing_files() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = temp_dir("atomic_refuse");
+    let mut store = Store::open(&dir);
+    store.push_history("kept".to_owned()).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let probe = dir.join(".probe");
+    if std::fs::write(&probe, b"x").is_ok() {
+      // Running with enough privilege to write anyway (e.g. root): skip.
+      std::fs::remove_file(&probe).ok();
+      std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+      return;
+    }
+    let before = (read(&dir, SETTINGS_FILE), read(&dir, HISTORY_FILE));
+    assert_eq!(store.push_history("new".to_owned()), Err(()));
+    // the refused write leaves both data files byte-identical
+    assert_eq!(read(&dir, SETTINGS_FILE), before.0);
+    assert_eq!(read(&dir, HISTORY_FILE), before.1);
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+  }
+
+  // The write path stages through a temp file in the data directory; a
+  // successful (or refused) write must not leave it behind.
+  #[test]
+  fn writes_leave_no_temp_litter_in_the_data_dir() {
+    let dir = temp_dir("no_litter");
+    let mut store = Store::open(&dir);
+    store.push_history("a".to_owned()).unwrap();
+    let mut s = store.settings().clone();
+    s.history_size = 5;
+    store.set_settings(s).unwrap();
+    let mut names: Vec<String> = std::fs::read_dir(&dir)
+      .unwrap()
+      .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+      .collect();
+    names.sort();
+    assert_eq!(names, vec![HISTORY_FILE.to_owned(), SETTINGS_FILE.to_owned()]);
   }
 }
