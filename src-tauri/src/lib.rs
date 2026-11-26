@@ -102,9 +102,11 @@ mod tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  // Single-instance guard (bead vdr): the second start leaves the shared
-  // port file alone and exits before any window exists. The lock is held
-  // for the process lifetime; the OS releases it even on kill -9.
+  // Single-instance guard (bead vdr): only in debug builds — the driver's
+  // shared port file makes two live-check targets nondeterministic. Release
+  // builds allow several instances (design 2026-11-26-multi-instance); the
+  // lock releases with the process, so no stale-lock cleanup exists.
+  #[cfg(debug_assertions)]
   let _instance = match try_acquire_instance(&dirs_home()) {
     Ok(l) => l,
     Err(msg) => {
